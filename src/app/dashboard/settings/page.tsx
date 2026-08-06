@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Card,
   CardContent,
@@ -20,6 +21,8 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useData } from "@/context/data-context";
+import { BusinessType, BusinessSize } from "@/lib/types";
+import { INDUSTRY_CONFIGS } from "@/lib/industry-intelligence";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,29 +34,43 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Check, Loader2, X } from "lucide-react";
+import { Check, Loader2, X, Sparkles, Building2, Zap, Trash2, RefreshCw } from "lucide-react";
 
 export default function SettingsPage() {
   const { toast } = useToast();
-  const { clearAllData, activePlan, isProcessingPayment, handleUpgrade } = useData();
+  const {
+    clearAllData,
+    activePlan,
+    isProcessingPayment,
+    handleUpgrade,
+    businessProfile,
+    updateBusinessProfile,
+    loadDemoBusiness,
+    hasDemoData,
+    setShowOnboardingWizard,
+  } = useData();
 
-  const handleUpdateProfile = () => {
-    toast({
-      title: "Profile Updated",
-      description: "Your profile information has been saved.",
-    });
-  };
+  const [bizName, setBizName] = useState(businessProfile?.businessName || "My Business");
+  const [bizType, setBizType] = useState<BusinessType>(businessProfile?.businessType || "Retail");
+  const [bizSize, setBizSize] = useState<BusinessSize>(businessProfile?.businessSize || "2-10 Employees");
+  const [currency, setCurrency] = useState(businessProfile?.currency || "INR (₹)");
+  const [country, setCountry] = useState(businessProfile?.country || "India");
 
-  const handleSaveChanges = () => {
-    toast({
-      title: "Workspace Settings Saved",
-      description: "Your workspace settings have been updated.",
+  const handleSaveBusinessProfile = async () => {
+    await updateBusinessProfile({
+      businessName: bizName,
+      businessType: bizType,
+      businessSize: bizSize,
+      currency: currency,
+      country: country,
+      industry: INDUSTRY_CONFIGS[bizType]?.label || "General Business",
     });
   };
 
   const handleResetWorkspace = async () => {
     try {
       await clearAllData();
+      toast({ title: "Workspace Cleared", description: "All inventory and transaction records have been reset." });
     } catch (error) {
       console.error("Reset failed:", error);
     }
@@ -61,288 +78,177 @@ export default function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-lg font-semibold md:text-2xl">Settings</h1>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight md:text-2xl">Settings & Business Setup</h1>
+          <p className="text-xs text-muted-foreground">Manage your AI Copilot profile, workspace preferences, and plan tier.</p>
+        </div>
+
+        <Button
+          onClick={() => setShowOnboardingWizard(true)}
+          variant="outline"
+          className="rounded-xl text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          Re-run Setup Wizard
+        </Button>
+      </div>
 
       <div className="grid gap-6">
-        <Card>
+        {/* Business Profile Card */}
+        <Card className="ios-glass rounded-2xl border-primary/20">
           <CardHeader>
-            <CardTitle>Profile</CardTitle>
-            <CardDescription>
-              Update your personal information.
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base font-bold flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-primary" />
+                  Business Profile & AI Personalization
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Your business context directly customizes AI Advisor recommendations and benchmarks.
+                </CardDescription>
+              </div>
+              <Badge className="bg-primary/15 text-primary border-primary/25 text-xs px-3 py-1">
+                {INDUSTRY_CONFIGS[bizType]?.label || bizType}
+              </Badge>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
-              <Input id="name" defaultValue="Workspace Owner" />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="biz-name">Business Name</Label>
+                <Input
+                  id="biz-name"
+                  value={bizName}
+                  onChange={(e) => setBizName(e.target.value)}
+                  className="rounded-xl"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="biz-type">Business Type</Label>
+                <Select value={bizType} onValueChange={(val: BusinessType) => setBizType(val)}>
+                  <SelectTrigger id="biz-type" className="rounded-xl">
+                    <SelectValue placeholder="Select Business Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.keys(INDUSTRY_CONFIGS).map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="biz-size">Team Size</Label>
+                <Select value={bizSize} onValueChange={(val: BusinessSize) => setBizSize(val)}>
+                  <SelectTrigger id="biz-size" className="rounded-xl">
+                    <SelectValue placeholder="Select Size" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {['Solo', '2-10 Employees', '11-50 Employees', '50+'].map((sz) => (
+                      <SelectItem key={sz} value={sz}>
+                        {sz}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="currency">Base Currency</Label>
+                <Select value={currency} onValueChange={(val) => setCurrency(val)}>
+                  <SelectTrigger id="currency" className="rounded-xl">
+                    <SelectValue placeholder="Select Currency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="INR (₹)">INR (₹)</SelectItem>
+                    <SelectItem value="USD ($)">USD ($)</SelectItem>
+                    <SelectItem value="EUR (€)">EUR (€)</SelectItem>
+                    <SelectItem value="GBP (£)">GBP (£)</SelectItem>
+                    <SelectItem value="AED (Dhs)">AED (Dhs)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" defaultValue="owner@example.com" />
+
+            <div className="p-3.5 rounded-2xl bg-secondary/50 border border-border/40 text-xs space-y-1.5">
+              <div className="flex items-center gap-1.5 font-semibold text-primary">
+                <Sparkles className="w-3.5 h-3.5" /> Industry AI Context Active
+              </div>
+              <p className="text-muted-foreground">{INDUSTRY_CONFIGS[bizType]?.aiPriority}</p>
             </div>
-            <Button onClick={handleUpdateProfile}>Update Profile</Button>
+
+            <Button onClick={handleSaveBusinessProfile} className="rounded-xl text-xs gap-1.5 bg-primary text-primary-foreground">
+              Save Business Profile
+            </Button>
           </CardContent>
         </Card>
 
-        <Card>
+        {/* Demo Business & Workspace Reset Card */}
+        <Card className="ios-glass rounded-2xl border-border/50">
           <CardHeader>
-            <CardTitle>Workspace</CardTitle>
-            <CardDescription>
-              Manage your workspace settings.
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <Zap className="w-5 h-5 text-amber-500" />
+              Demo Data & Workspace Management
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Load demo products & orders to test AI features or clear data to start fresh.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="workspace-name">Workspace Name</Label>
-              <Input id="workspace-name" defaultValue="AnalyzeUp" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="timezone">Timezone</Label>
-              <Select defaultValue="gmt-5">
-                <SelectTrigger id="timezone">
-                  <SelectValue placeholder="Select timezone" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="gmt-8">
-                    (GMT-08:00) Pacific Time
-                  </SelectItem>
-                  <SelectItem value="gmt-5">
-                    (GMT-05:00) Eastern Time
-                  </SelectItem>
-                  <SelectItem value="gmt">
-                    (GMT+00:00) Greenwich Mean Time
-                  </SelectItem>
-                  <SelectItem value="gmt+1">
-                    (GMT+01:00) Central European Time
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button onClick={handleSaveChanges}>Save Changes</Button>
-          </CardContent>
-        </Card>
-
-        {/* Billing & Subscriptions Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Billing & Subscriptions</CardTitle>
-            <CardDescription>
-              Manage your workspace subscription plan. Current tier:{" "}
-              <span className="font-bold text-primary">{activePlan}</span>
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid gap-6 md:grid-cols-3">
-              {/* Plan 1: Free Trial */}
-              <div
-                className={`flex flex-col justify-between p-5 rounded-2xl border ${
-                  activePlan === "Free Trial"
-                    ? "border-primary bg-primary/5 shadow-md"
-                    : "border-border bg-card"
-                } transition-all duration-200`}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-secondary/40 border border-border/40">
+              <div>
+                <h4 className="text-sm font-semibold flex items-center gap-1.5">
+                  Explore Demo Business
+                  {hasDemoData && <Badge className="bg-emerald-500/20 text-emerald-500 text-[10px]">Loaded</Badge>}
+                </h4>
+                <p className="text-xs text-muted-foreground">
+                  Populate 200+ products, 15+ suppliers & 500+ sales transactions.
+                </p>
+              </div>
+              <Button
+                onClick={() => loadDemoBusiness(bizType)}
+                className="rounded-xl text-xs gap-1.5 bg-amber-600 hover:bg-amber-500 text-white shrink-0"
               >
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-base">Free Trial</span>
-                    {activePlan === "Free Trial" && (
-                      <Badge variant="secondary" className="bg-primary/20 text-primary">
-                        Active
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="text-3xl font-extrabold mb-4">
-                    ₹0{" "}
-                    <span className="text-xs font-normal text-muted-foreground">
-                      / month
-                    </span>
-                  </div>
-                  <ul className="space-y-2.5 mb-6 text-sm text-muted-foreground">
-                    <li className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-primary shrink-0" /> Up to 50 products
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-primary shrink-0" /> Inventory, Orders & Suppliers
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-primary shrink-0" /> Core CSV import/export
-                    </li>
-                    <li className="flex items-center gap-2 text-muted-foreground/50">
-                      <X className="h-4 w-4 shrink-0 text-muted-foreground/40" /> Today's AI Brief & Chat locked
-                    </li>
-                  </ul>
-                </div>
-                <Button variant="outline" disabled={activePlan === "Free Trial"}>
-                  {activePlan === "Free Trial" ? "Current Plan" : "Downgrade"}
-                </Button>
+                <RefreshCw className="w-3.5 h-3.5" />
+                {hasDemoData ? 'Reload Demo Data' : 'Load Demo Business'}
+              </Button>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-rose-500/5 border border-rose-500/20">
+              <div>
+                <h4 className="text-sm font-semibold text-rose-500">Reset Workspace Data</h4>
+                <p className="text-xs text-muted-foreground">
+                  Permanently delete all products, suppliers, purchase orders & transactions.
+                </p>
               </div>
 
-              {/* Plan 2: Starter Plan */}
-              <div
-                className={`flex flex-col justify-between p-5 rounded-2xl border ${
-                  activePlan === "Starter Plan"
-                    ? "border-primary bg-primary/5 shadow-md"
-                    : "border-border bg-card"
-                } transition-all duration-200`}
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-base">Starter Plan</span>
-                    {activePlan === "Starter Plan" && (
-                      <Badge variant="secondary" className="bg-primary/20 text-primary">
-                        Active
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="text-3xl font-extrabold mb-4">
-                    ₹499{" "}
-                    <span className="text-xs font-normal text-muted-foreground">
-                      / month
-                    </span>
-                  </div>
-                  <ul className="space-y-2.5 mb-6 text-sm text-muted-foreground">
-                    <li className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-primary shrink-0" /> Up to 500 products
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-primary shrink-0" /> Today's AI Brief unlocked
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-primary shrink-0" /> AI Reorder Alerts unlocked
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-primary shrink-0" /> Chat Widget & Copilot unlocked
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-primary shrink-0" /> Dynamic CSV exports
-                    </li>
-                  </ul>
-                </div>
-                <Button
-                  onClick={() => handleUpgrade("starter_monthly", 499, "Starter Plan")}
-                  disabled={activePlan === "Starter Plan" || isProcessingPayment !== null}
-                  className={
-                    activePlan === "Starter Plan"
-                      ? ""
-                      : "bg-primary text-primary-foreground hover:bg-primary/90"
-                  }
-                >
-                  {isProcessingPayment === "starter_monthly" ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Processing...
-                    </>
-                  ) : activePlan === "Starter Plan" ? (
-                    "Current Plan"
-                  ) : (
-                    "Upgrade to Starter"
-                  )}
-                </Button>
-              </div>
-
-              {/* Plan 3: Pro Plan */}
-              <div
-                className={`flex flex-col justify-between p-5 rounded-2xl border ${
-                  activePlan === "Pro Plan"
-                    ? "border-primary bg-primary/5 shadow-md"
-                    : "border-border bg-card"
-                } transition-all duration-200`}
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-base">Pro Plan</span>
-                    {activePlan === "Pro Plan" && (
-                      <Badge variant="secondary" className="bg-primary/20 text-primary">
-                        Active
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="text-3xl font-extrabold mb-4">
-                    ₹999{" "}
-                    <span className="text-xs font-normal text-muted-foreground">
-                      / month
-                    </span>
-                  </div>
-                  <ul className="space-y-2.5 mb-6 text-sm text-muted-foreground">
-                    <li className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-primary shrink-0" /> Unlimited products
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-primary shrink-0" /> Everything in Starter
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-primary shrink-0" /> Advanced AI Advisor & Strategy
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-primary shrink-0" /> Business Health Score & Insights
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-primary shrink-0" /> Premium PDF downloads
-                    </li>
-                  </ul>
-                </div>
-                <Button
-                  onClick={() => handleUpgrade("pro_monthly", 999, "Pro Plan")}
-                  disabled={activePlan === "Pro Plan" || isProcessingPayment !== null}
-                  className={
-                    activePlan === "Pro Plan"
-                      ? ""
-                      : "bg-primary text-primary-foreground hover:bg-primary/90"
-                  }
-                >
-                  {isProcessingPayment === "pro_monthly" ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Processing...
-                    </>
-                  ) : activePlan === "Pro Plan" ? (
-                    "Current Plan"
-                  ) : (
-                    "Upgrade to Pro"
-                  )}
-                </Button>
-              </div>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" className="rounded-xl text-xs gap-1.5 shrink-0">
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Reset Workspace
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="rounded-2xl">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Reset Workspace?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This action cannot be undone. All products, orders, and transactions will be deleted.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleResetWorkspace} className="rounded-xl bg-rose-600">
+                      Yes, Clear Workspace
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-destructive">Danger Zone</CardTitle>
-            <CardDescription>
-              These actions are permanent and cannot be undone.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <h4 className="font-semibold text-destructive">Reset Workspace Data</h4>
-              <p className="text-sm text-muted-foreground mt-1">
-                Permanently delete all products, orders, suppliers, and transactions. Profile
-                settings will remain.
-              </p>
-            </div>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive">Reset All Data</Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete all your inventory
-                    records, sales history, and supplier information.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={handleResetWorkspace}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  >
-                    Reset Data
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
           </CardContent>
         </Card>
       </div>

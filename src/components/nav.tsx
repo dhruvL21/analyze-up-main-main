@@ -9,7 +9,8 @@ import {
   BarChart3,
   Sparkles,
   Activity,
-  Lock,
+  RefreshCw,
+  Layers,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -25,6 +26,11 @@ const navItems = [
     label: "Dashboard",
   },
   {
+    href: "/dashboard/returns",
+    icon: RefreshCw,
+    label: "Returns",
+  },
+  {
     href: "/dashboard/inventory",
     icon: Boxes,
     label: "Inventory",
@@ -38,6 +44,11 @@ const navItems = [
     href: "/dashboard/suppliers",
     icon: Truck,
     label: "Suppliers",
+  },
+  {
+    href: "/dashboard/integrations",
+    icon: Layers,
+    label: "Integrations",
   },
   {
     href: "/dashboard/ai-advisor",
@@ -76,44 +87,45 @@ export default function Nav({ isMobile = false }: { isMobile?: boolean }) {
 
   if (isMobile) {
     return (
-        <nav className="grid gap-2 text-lg font-medium">
-            <SheetClose asChild>
-                <Link
-                    href="/dashboard"
-                    className="flex items-center gap-2 text-xl font-semibold mb-4"
-                >
-                    <AnalyzeUpIcon className="h-6 w-6 text-primary" />
-                    <span>AnalyzeUp</span>
-                </Link>
-            </SheetClose>
-            {navItems.map((item) => (
-                <SheetClose key={item.href} asChild>
-                    <Link
-                        href={item.href}
-                        onClick={(e) => handleNavClick(e, item.href)}
-                        className={cn("flex items-center gap-3 rounded-lg px-3 py-2 text-foreground/70 transition-all hover:text-primary",
-                            pathname === item.href && "text-primary bg-primary/10"
-                        )}
-                    >
-                        <item.icon className="h-4 w-4" />
-                        {item.label}
-                    </Link>
-                </SheetClose>
-            ))}
-        </nav>
+      <nav className="grid gap-2 text-lg font-medium">
+        <SheetClose asChild>
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-2 text-xl font-semibold mb-4"
+          >
+            <AnalyzeUpIcon className="h-6 w-6 text-primary" />
+            <span>AnalyzeUp</span>
+          </Link>
+        </SheetClose>
+        {navItems.map((item) => (
+          <SheetClose key={item.href} asChild>
+            <Link
+              href={item.href}
+              onClick={(e) => handleNavClick(e, item.href)}
+              className={cn("flex items-center gap-3 rounded-lg px-3 py-2 text-foreground/70 transition-all hover:text-primary",
+                pathname === item.href && "text-primary bg-primary/10"
+              )}
+            >
+              <item.icon className="h-4 w-4" />
+              {item.label}
+            </Link>
+          </SheetClose>
+        ))}
+      </nav>
     );
   }
 
   return (
     <nav className="hidden md:flex items-center gap-1 text-sm font-medium">
       {navItems.map((item) => (
-        <Link 
-            key={item.href}
-            href={item.href}
-            onClick={(e) => handleNavClick(e, item.href)}
-            className={cn("transition-all duration-200 hover:text-foreground/80 px-4 py-2 rounded-full cursor-pointer relative hover:scale-105",
-                pathname === item.href ? "text-accent-foreground" : "text-muted-foreground"
-            )}
+        <Link
+          key={item.href}
+          href={item.href}
+          data-tour={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
+          onClick={(e) => handleNavClick(e, item.href)}
+          className={cn("transition-all duration-200 hover:text-foreground/80 px-4 py-2 rounded-full cursor-pointer relative hover:scale-105",
+            pathname === item.href ? "text-accent-foreground" : "text-muted-foreground"
+          )}
         >
           {item.label}
           {pathname === item.href && (

@@ -29,7 +29,6 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import Papa from 'papaparse';
-import type { Product, Transaction } from '@/lib/types';
 import {
   Select,
   SelectContent,
@@ -56,8 +55,7 @@ export default function InsightsPage() {
         entries.forEach(entry => {
           if (entry.isIntersecting) {
             entry.target.classList.add("revealed");
-          } else {
-            entry.target.classList.remove("revealed");
+            observer.unobserve(entry.target);
           }
         });
       },

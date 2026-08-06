@@ -1,42 +1,61 @@
 'use server';
 
 import { openai } from '@/ai/openai';
-import { z } from 'zod';
-import { Product } from '@/lib/types';
-
-const MappingSchema = z.record(z.string(), z.string());
 
 export type FieldMapping = Record<string, string>;
 
 const PRODUCT_FIELDS_LIST = [
-  'name',
-  'description',
-  'sku',
-  'categoryId',
-  'stock',
-  'price',
-  'costPrice',
-  'imageUrl',
-  'supplierId',
+  // Products
+  'name', 'sku', 'product_id', 'description', 'category_id', 'category', 'brand_id', 'selling_price', 'price', 'cost_price', 'costPrice', 'weight', 'status',
+  // Users
+  'user_id', 'user_name', 'email', 'phone', 'password_hash', 'role', 'user_status', 'user_created_at',
+  // Customers
+  'customer_id', 'gender', 'DOB', 'loyalty_points', 'lifetime_value',
+  // Addresses
+  'address_id', 'address_line1', 'city', 'state', 'country', 'pincode', 'address_type',
+  // Categories & Brands
+  'category_name', 'parent_category_id', 'brand_name', 'brand_description',
+  // Product Variants
+  'variant_id', 'color', 'size', 'material', 'variant_sku', 'variant_price',
+  // Inventory
+  'inventory_id', 'stock_quantity', 'stock', 'reserved_stock', 'reorder_level', 'current_stock', 'reorder_point',
+  // Warehouses
+  'warehouse_id', 'warehouse_name', 'location', 'manager', 'capacity',
+  // Suppliers
+  'supplier_id', 'company_name', 'contact_person', 'supplier_email', 'supplier_phone', 'supplier_name', 'lead_time', 'rating',
+  // Purchase Orders & Items
+  'po_id', 'order_date', 'expected_delivery', 'expected_date', 'po_status', 'po_item_id', 'po_item_quantity', 'unit_cost',
+  // Orders & Items
+  'order_id', 'total_amount', 'payment_status', 'order_status', 'order_item_id', 'order_item_quantity', 'unit_price', 'discount',
+  // Payments
+  'payment_id', 'payment_method', 'amount', 'transaction_id', 'payment_status_details',
+  // Refunds
+  'refund_id', 'refund_amount', 'refund_reason', 'refund_status',
+  // Shipments
+  'shipment_id', 'courier_name', 'tracking_number', 'shipped_date', 'delivered_date',
+  // Returns
+  'return_id', 'return_reason', 'return_status',
+  // Coupons
+  'coupon_id', 'coupon_code', 'discount_type', 'discount_value', 'expiry_date',
+  // Reviews
+  'review_id', 'review_rating', 'review_comment', 'review_created_at',
+  // Wishlist
+  'wishlist_id', 'wishlist_added_at',
+  // Cart
+  'cart_id', 'cart_created_at', 'cart_item_id', 'cart_item_quantity',
+  // Employees & Vendors
+  'employee_id', 'employee_name', 'department', 'employee_role', 'salary', 'vendor_id', 'vendor_name', 'service_type', 'contact_details',
+  // Campaigns & Support
+  'campaign_id', 'campaign_name', 'budget', 'start_date', 'end_date', 'ticket_id', 'issue_type', 'ticket_status', 'assigned_to',
+  // Notifications & Audit Logs
+  'notification_id', 'notification_title', 'notification_message', 'read_status', 'log_id', 'log_action', 'log_timestamp', 'IP_address',
+  // Stock Movements & Forecasts & Alerts
+  'quantity_change', 'movement_type', 'timestamp', 'predicted_sales', 'confidence_score', 'alert_type', 'severity', 'recommendation',
+  // Business Metrics
+  'revenue', 'profit', 'inventory_turnover', 'stockout_rate'
 ];
 
-const TRANSACTION_FIELDS_LIST = [
-  'transactionId',
-  'transactionDate',
-  'productName',
-  'sku',
-  'category',
-  'type',
-  'quantity',
-  'price',
-  'totalRevenue',
-  'costPerUnit',
-  'totalCost',
-  'supplier',
-  'customerName',
-  'paymentMethod',
-  'status',
-];
+const TRANSACTION_FIELDS_LIST: string[] = [];
 
 export async function getSmartMapping(
   externalHeaders: string[],

@@ -66,14 +66,7 @@ const COLORS = [
   'hsl(var(--primary))',
 ];
 
-const chartComponents = {
-  bar: BarChart,
-  line: LineChart,
-  area: AreaChart,
-  pie: PieChart,
-  radar: RadarChart,
-  radialBar: RadialBarChart,
-};
+
 
 export function DataVisualizer() {
   const { transactions, products, categories, isLoading } = useData();
@@ -116,8 +109,7 @@ export function DataVisualizer() {
         entries.forEach(entry => {
           if (entry.isIntersecting) {
             entry.target.classList.add("revealed");
-          } else {
-            entry.target.classList.remove("revealed");
+            observer.unobserve(entry.target);
           }
         });
       },
@@ -344,7 +336,6 @@ export function DataVisualizer() {
   }, [chartType, metric, data, canShare, isMobile]);
   
   const renderChart = () => {
-    const ChartComponent = chartComponents[chartType];
     const commonProps = {
         data: data,
     };
@@ -405,7 +396,7 @@ export function DataVisualizer() {
         return (
             <PieChart>
                 <Pie data={data} dataKey={metric} nameKey="name" cx="50%" cy="50%" outerRadius={120} label>
-                    {data.map((entry, index) => (
+                    {data.map((_, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                 </Pie>
@@ -442,7 +433,7 @@ export function DataVisualizer() {
                         background
                         dataKey={metric}
                     >
-                     {data.map((entry, index) => (
+                     {data.map((_, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                     </RadialBar>

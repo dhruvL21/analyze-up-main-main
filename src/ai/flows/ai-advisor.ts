@@ -1,13 +1,7 @@
 'use server';
 
 import { openai } from '@/ai/openai';
-import { z } from 'zod';
-
-const AIAdvisorOutputSchema = z.object({
-  businessHealthComment: z.string(),
-  deadStockTips: z.record(z.string()), // maps product name to a tip
-  supplierInsights: z.record(z.string()), // maps supplier name to an insight
-});
+import { getIndustryConfig } from '@/lib/industry-intelligence';
 
 export type AIAdvisorInsights = {
   businessHealthComment: string;
@@ -18,10 +12,16 @@ export type AIAdvisorInsights = {
 export async function generateAIAdvisorInsights(
   products: any[],
   transactions: any[],
-  suppliers: any[]
+  suppliers: any[],
+  businessProfile?: any
 ): Promise<AIAdvisorInsights> {
+  const industry = getIndustryConfig(businessProfile?.businessType);
+
   const prompt = `
-You are a senior business intelligence consultant. You are analyzing data for a small business.
+You are AnalyzeUp, an AI Business Copilot assisting a founder in the "${industry.label}" sector (Business Size: ${businessProfile?.businessSize || 'SMB'}, Country: ${businessProfile?.country || 'India'}).
+Industry Priority: ${industry.aiPriority}
+Benchmark Profit Margin: ${industry.benchmarkMargin}
+
 Here is the current business data:
 
 Products:
@@ -33,10 +33,10 @@ ${JSON.stringify(transactions, null, 2)}
 Suppliers:
 ${JSON.stringify(suppliers, null, 2)}
 
-Based on this data, please generate:
-1. A concise, professional, actionable comment on the overall Business Health Score (covering margins, dead stock risk, and stock availability). Mention the biggest opportunity or risk.
-2. Strategic suggestions to clear "Dead Stock" items (items that have stock but no recent sales or zero sales). For each dead stock product, provide a short, specific, creative suggestion (e.g., "Bundle with [popular product] for a 15% discount" or "Run a BOGO clearance").
-3. Supplier Intelligence insights: analyze lead time and stock out risks. For each supplier, provide a short actionable risk or performance comment (e.g., "High risk: lead time is 14 days and supplies low stock items. Place reorder immediately" or "Stable supplier, but consider diversifying for SKU X").
+Based on this data, please generate tailored insights for a ${industry.label} business:
+1. A concise, professional, actionable comment on the overall Business Health Score (covering margins, dead stock risk, stock availability, and ${industry.focusAreas.join(', ')}). Mention the biggest decision the founder should make right now.
+2. Strategic suggestions to clear "Dead Stock" items tailored to ${industry.label} (e.g. food spoilage clearance, seasonal fashion bundle, electronics accessory promo, etc.).
+3. Supplier Intelligence insights: analyze lead time and stock out risks. For each supplier, provide a short actionable risk or performance comment.
 
 Respond ONLY in valid JSON with these exact keys:
 "businessHealthComment": string

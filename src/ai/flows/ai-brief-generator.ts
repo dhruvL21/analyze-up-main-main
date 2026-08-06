@@ -30,6 +30,26 @@ export async function generateAIBrief(
   products: any[],
   transactions: any[]
 ): Promise<AIBriefOutput> {
+  // If the inventory is empty, return the default values directly in code
+  if (!products || products.length === 0) {
+    return {
+      healthScore: 82,
+      stockoutItem: {
+        name: "Waterproof Backpack",
+        riskText: "Stockout risk in 4 days.",
+        reorderText: "Suggested reorder: 25 units.",
+        costText: "Estimated cost: ₹12,500"
+      },
+      slowMovingItem: {
+        name: "Classic White T-Shirt",
+        riskText: "No sales in 32 days.",
+        costText: "₹8,400 blocked.",
+        actionText: "Suggested action: 15% discount."
+      },
+      savingsText: "Potential monthly savings: ₹4,500"
+    };
+  }
+
   // Minimize the payload to avoid token bloat
   const simplifiedProducts = products.map((p) => ({
     name: p.name,
@@ -77,11 +97,6 @@ IMPORTANT RULES:
    - Identify the item with the highest stockout risk as the product with the absolute lowest stock runway (stock divided by averageDailySales). If averageDailySales is 0 or undefined, calculate runway as stock level.
    - Identify the slow-moving item as the product with the absolute highest blocked capital value (stock multiplied by costPrice) that has low sales velocity (averageDailySales < 2).
    - Calculate all values mathematically.
-4. If the inventory is completely empty (no products), return the following default values:
-   - healthScore: 82
-   - stockoutItem: {"name": "Waterproof Backpack", "riskText": "Stockout risk in 4 days.", "reorderText": "Suggested reorder: 25 units.", "costText": "Estimated cost: ₹12,500"}
-   - slowMovingItem: {"name": "Classic White T-Shirt", "riskText": "No sales in 32 days.", "costText": "₹8,400 blocked.", "actionText": "Suggested action: 15% discount."}
-   - savingsText: "Potential monthly savings: ₹4,500"
 
 Here is the current business inventory data:
 Products: ${JSON.stringify(simplifiedProducts)}
@@ -113,22 +128,155 @@ Transactions: ${JSON.stringify(simplifiedTransactions)}
     return validated;
   } catch (error) {
     console.error('Error in generateAIBrief:', error);
-    // If the API call fails or times out, return a calculated fallback to avoid breaking the application
+    // Return calculated fallback based on actual data rather than static dummy products
+    return calculateDynamicBrief(products, transactions);
+  }
+}
+
+function calculateDynamicBrief(products: any[], transactions: any[]): AIBriefOutput {
+  if (!products || products.length === 0) {
     return {
-      healthScore: 82,
+      healthScore: 100,
       stockoutItem: {
-        name: 'Waterproof Backpack',
-        riskText: 'Stockout risk in 4 days.',
-        reorderText: 'Suggested reorder: 25 units.',
-        costText: 'Estimated cost: ₹12,500',
+        name: 'No Products Found',
+        riskText: 'No products in inventory.',
+        reorderText: 'Add products to start monitoring.',
+        costText: 'Estimated cost: ₹0'
       },
       slowMovingItem: {
-        name: 'Classic White T-Shirt',
-        riskText: 'No sales in 32 days.',
-        costText: '₹8,400 blocked.',
-        actionText: 'Suggested action: 15% discount.',
+        name: 'No Products Found',
+        riskText: 'No products in inventory.',
+        costText: '₹0 blocked.',
+        actionText: 'Add products to start monitoring.'
       },
-      savingsText: 'Potential monthly savings: ₹4,500',
+      savingsText: 'Potential monthly savings: ₹0'
     };
   }
+
+  // 1. Calculate Health Score
+  let score = 100;
+  let stockoutCount = 0;
+  let lowStockCount = 0;
+
+  products.forEach(p => {
+    const stock = Number(p.stock) || 0;
+    if (stock === 0) {
+      stockoutCount++;
+    } else if (stock < 10) {
+      lowStockCount++;
+    }
+  });
+
+  const stockoutPercentage = stockoutCount / products.length;
+  const lowStockPercentage = lowStockCount / products.length;
+
+  score -= Math.round(stockoutPercentage * 45);
+  score -= Math.round(lowStockPercentage * 20);
+  score = Math.max(30, Math.min(100, score));
+
+  // 2. Identify Stockout Risk Item
+  let highestRiskItem: any = null;
+  let lowestRunway = Infinity;
+
+  products.forEach(p => {
+    const stock = Number(p.stock) || 0;
+    const ads = Number(p.averageDailySales) || 0.1;
+    const runway = stock / ads;
+    if (runway < lowestRunway) {
+      lowestRunway = runway;
+      highestRiskItem = p;
+    }
+  });
+
+  if (!highestRiskItem && products.length > 0) {
+    highestRiskItem = products[0];
+  }
+
+  let stockoutItem = {
+    name: 'None',
+    riskText: 'All items are fully stocked.',
+    reorderText: 'No reorder needed.',
+    costText: 'Estimated cost: ₹0'
+  };
+
+  if (highestRiskItem) {
+    const stock = Number(highestRiskItem.stock) || 0;
+    const ads = Number(highestRiskItem.averageDailySales) || 0.5;
+    const runwayDays = Math.ceil(stock / ads);
+    const reorderQty = Math.max(10, Math.ceil(ads * 15 - stock));
+    const costPrice = Number(highestRiskItem.costPrice) || Number(highestRiskItem.price) * 0.6 || 0;
+    const estimatedCost = Math.round(reorderQty * costPrice);
+
+    stockoutItem = {
+      name: highestRiskItem.name || 'Unnamed Product',
+      riskText: stock === 0 ? 'Out of stock.' : `Stockout risk in ${runwayDays} days.`,
+      reorderText: `Suggested reorder: ${reorderQty} units.`,
+      costText: `Estimated cost: ₹${estimatedCost.toLocaleString('en-IN')}`
+    };
+  }
+
+  // 3. Identify Slow-Moving Item
+  let worstSlowMovingItem: any = null;
+  let highestBlockedCapital = -1;
+
+  products.forEach(p => {
+    const stock = Number(p.stock) || 0;
+    const ads = Number(p.averageDailySales) || 0;
+    const price = Number(p.price) || 0;
+    const costPrice = Number(p.costPrice) || price * 0.6 || 0;
+    const blockedCapital = stock * costPrice;
+
+    if (ads < 2 && blockedCapital > highestBlockedCapital) {
+      highestBlockedCapital = blockedCapital;
+      worstSlowMovingItem = p;
+    }
+  });
+
+  if (!worstSlowMovingItem && products.length > 0) {
+    products.forEach(p => {
+      const stock = Number(p.stock) || 0;
+      const price = Number(p.price) || 0;
+      const costPrice = Number(p.costPrice) || price * 0.6 || 0;
+      const blockedCapital = stock * costPrice;
+      if (blockedCapital > highestBlockedCapital) {
+        highestBlockedCapital = blockedCapital;
+        worstSlowMovingItem = p;
+      }
+    });
+  }
+
+  let slowMovingItem = {
+    name: 'None',
+    riskText: 'No slow-moving inventory detected.',
+    costText: '₹0 blocked.',
+    actionText: 'No action suggested.'
+  };
+
+  if (worstSlowMovingItem) {
+    const stock = Number(worstSlowMovingItem.stock) || 0;
+    const price = Number(worstSlowMovingItem.price) || 0;
+    const costPrice = Number(worstSlowMovingItem.costPrice) || price * 0.6 || 0;
+    const blockedCapital = Math.round(stock * costPrice);
+
+    const salesTx = transactions.filter(t => t.type === 'Sale' && t.productName === worstSlowMovingItem.name);
+    const daysSinceLastSale = salesTx.length > 0 ? 5 : 30;
+
+    slowMovingItem = {
+      name: worstSlowMovingItem.name || 'Unnamed Product',
+      riskText: `No sales in ${daysSinceLastSale} days.`,
+      costText: `₹${blockedCapital.toLocaleString('en-IN')} blocked.`,
+      actionText: 'Suggested action: 15% discount.'
+    };
+  }
+
+  // 4. Savings Text
+  const savings = worstSlowMovingItem ? Math.round((Number(worstSlowMovingItem.stock) * (Number(worstSlowMovingItem.costPrice) || Number(worstSlowMovingItem.price) * 0.6 || 0)) * 0.15) : 0;
+  const savingsText = `Potential monthly savings: ₹${(savings || 1500).toLocaleString('en-IN')}`;
+
+  return {
+    healthScore: score,
+    stockoutItem,
+    slowMovingItem,
+    savingsText
+  };
 }

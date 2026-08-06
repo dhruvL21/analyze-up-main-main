@@ -2,7 +2,6 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import * as math from 'mathjs';
 
 import './gradual-blur.css';
 

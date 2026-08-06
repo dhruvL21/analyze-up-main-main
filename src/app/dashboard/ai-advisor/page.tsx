@@ -31,12 +31,8 @@ import {
   Truck,
   PackageX,
   Send,
-  HelpCircle,
-  TrendingUp,
   RefreshCw,
   Info,
-  Layers,
-  ArrowRight,
   ShieldCheck,
   Lock
 } from 'lucide-react';
@@ -44,7 +40,7 @@ import { generateAIAdvisorInsights } from '@/ai/flows/ai-advisor';
 import { askAnalyzeUpChat, ChatMessage } from '@/ai/flows/chat';
 
 export default function AIAdvisorPage() {
-  const { products, transactions, suppliers, isLoading, activePlan, setShowSubscriptionModal } = useData();
+  const { products, transactions, suppliers, activePlan, setShowSubscriptionModal, businessProfile } = useData();
   const [isPending, startTransition] = useTransition();
   const [isChatPending, startChatTransition] = useTransition();
   const [aiInsights, setAiInsights] = useState<{
@@ -123,8 +119,8 @@ export default function AIAdvisorPage() {
     const margin = totalSales > 0 ? ((totalSales - totalCOGS) / totalSales) * 100 : 25;
     const marginHealth = Math.min(100, Math.round((margin / 40) * 100)); // Normalize 40% margin as 100 score
 
-    // Combined score
-    const score = Math.round((inventoryHealth * 0.4) + (capitalEfficiency * 0.4) + (marginHealth * 0.2));
+    // Overall Score: weighted average
+    const score = Math.round((inventoryHealth * 0.35) + (capitalEfficiency * 0.35) + (marginHealth * 0.30));
 
     // Map dead stock list
     const deadStockList = deadStockProducts.map(p => {
@@ -168,7 +164,7 @@ export default function AIAdvisorPage() {
       deadStockList,
       supplierDetails
     };
-  }, [products, transactions, suppliers, hasData, aiInsights]);
+  }, [products, transactions, suppliers, hasData, aiInsights, businessProfile]);
 
   // Load insights from AI
   const fetchAIInsights = () => {
@@ -195,7 +191,7 @@ export default function AIAdvisorPage() {
           email: s.email
         }));
 
-        const data = await generateAIAdvisorInsights(simplifiedProducts, simplifiedTransactions, simplifiedSuppliers);
+        const data = await generateAIAdvisorInsights(simplifiedProducts, simplifiedTransactions, simplifiedSuppliers, businessProfile);
         setAiInsights(data);
       } catch (err) {
         console.error('Failed to get AI advisor insights:', err);

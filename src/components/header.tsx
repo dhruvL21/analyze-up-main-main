@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { useRouter, usePathname } from 'next/navigation';
 import { useState } from 'react';
-import { LogOut, Settings, Menu, Sun, Moon, X, LayoutDashboard, Boxes, ShoppingCart, Truck, BarChart3, Sparkles, Activity, Lock } from 'lucide-react';
+import { LogOut, Settings, Menu, Sun, Moon, X, LayoutDashboard, Boxes, ShoppingCart, Truck, BarChart3, Sparkles, Activity, RefreshCw, Compass } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -30,6 +30,7 @@ import { useData } from '@/context/data-context';
 
 const mobileNavItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/dashboard/returns', label: 'Returns', icon: RefreshCw },
   { href: '/dashboard/inventory', label: 'Inventory', icon: Boxes },
   { href: '/dashboard/orders', label: 'Order', icon: ShoppingCart },
   { href: '/dashboard/suppliers', label: 'Suppliers', icon: Truck },
@@ -51,8 +52,8 @@ const containerVariants = {
 
 const itemVariants = {
   hidden: { opacity: 0, y: -12, scale: 0.95 },
-  show: { 
-    opacity: 1, 
+  show: {
+    opacity: 1,
     y: 0,
     scale: 1,
     transition: {
@@ -70,7 +71,7 @@ export function Header() {
   const auth = useAuth();
   const { theme, setTheme } = useTheme();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { isLimitExceeded, activePlan, setShowSubscriptionModal } = useData();
+  const { isLimitExceeded, activePlan, setShowSubscriptionModal, setIsTourOpen } = useData();
 
   const handleLogout = async () => {
     if (auth) {
@@ -83,7 +84,7 @@ export function Header() {
   return (
     <header className="sticky top-0 z-20 flex h-16 w-full items-center justify-between gap-2 px-4 lg:px-6 navbar">
       <div className="flex flex-shrink-0 items-center gap-2 font-semibold">
-        <Link href="/dashboard" className="flex items-center gap-2">
+        <Link href="/dashboard" data-tour="header-logo" className="flex items-center gap-2">
           <AnalyzeUpIcon className="h-6 w-6 text-primary" />
           <span className="text-xl font-semibold">AnalyzeUp</span>
         </Link>
@@ -96,19 +97,19 @@ export function Header() {
       <div className="flex flex-shrink-0 items-center justify-end gap-1">
         <TooltipProvider>
           {/* Theme Toggle - Desktop Only */}
-          <div className="hidden md:block">
+          <div className="hidden md:block" data-tour="theme-toggle">
             <Tooltip>
               <TooltipTrigger asChild>
-                  <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className='rounded-full' 
-                      onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-                  >
-                      <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-                      <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-                      <span className="sr-only">Toggle theme</span>
-                  </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className='rounded-full'
+                  onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+                >
+                  <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+                  <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+                  <span className="sr-only">Toggle theme</span>
+                </Button>
               </TooltipTrigger>
               <TooltipContent>
                 <p>Toggle Theme</p>
@@ -117,7 +118,7 @@ export function Header() {
           </div>
 
           {/* Settings - Desktop Only */}
-          <div className="hidden md:block">
+          <div className="hidden md:block" data-tour="settings-btn">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -249,8 +250,8 @@ export function Header() {
                 className="flex flex-col gap-2.5"
               >
                 {mobileNavItems.map((item) => {
-                  const isActive = item.href === '/dashboard' 
-                    ? pathname === '/dashboard' 
+                  const isActive = item.href === '/dashboard'
+                    ? pathname === '/dashboard'
                     : pathname.startsWith(item.href);
 
                   const isPremiumRoute =
@@ -272,8 +273,8 @@ export function Header() {
                         }}
                         className={cn(
                           "flex items-center gap-3.5 rounded-xl px-4 py-3 text-base font-medium transition-all duration-200 relative border border-border/20 shadow-sm",
-                          isActive 
-                            ? "bg-primary/10 text-primary border-primary/20" 
+                          isActive
+                            ? "bg-primary/10 text-primary border-primary/20"
                             : "text-muted-foreground hover:text-foreground bg-secondary/20 hover:bg-secondary/40"
                         )}
                       >
