@@ -1,5 +1,14 @@
-import { DataVisualizer } from '@/components/data-visualizer';
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function BusinessHealthPage() {
-    return <DataVisualizer />;
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace('/dashboard/insights');
+  }, [router]);
+
+  return null;
 }

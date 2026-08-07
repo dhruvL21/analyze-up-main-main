@@ -10,6 +10,11 @@ import Script from 'next/script';
 import SubscriptionModal from '@/components/subscription-modal';
 import { useData } from '@/context/data-context';
 import { ChatWidget } from '@/components/chat-widget';
+import { FeatureTour } from '@/components/feature-tour';
+
+import { SmartOnboardingWizard } from '@/components/smart-onboarding-wizard';
+import { SmartWelcomeModal } from '@/components/smart-welcome-modal';
+import { ShopifyConnectModal } from '@/components/shopify-connect-modal';
 
 function DashboardLoading() {
     return (
@@ -31,7 +36,16 @@ function DashboardLoading() {
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useUser();
-  const { showSubscriptionModal, setShowSubscriptionModal, isLimitExceeded, activePlan } = useData();
+  const {
+    showSubscriptionModal,
+    setShowSubscriptionModal,
+    isLimitExceeded,
+    activePlan,
+    isTourOpen,
+    setIsTourOpen,
+    businessProfile,
+    setShowOnboardingWizard,
+  } = useData();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -51,19 +65,29 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     }
   }, [user, loading, router]);
 
-  // Check if user has just registered to prompt them with plans
+  // Check if user needs smart onboarding setup
   useEffect(() => {
     if (loading || !user) return;
+    const hasPrompted = sessionStorage.getItem(`analyzeup_onboarding_prompted_${user.uid}`);
+    if (!hasPrompted && (!businessProfile || !businessProfile.isOnboardingCompleted)) {
+      setShowOnboardingWizard(true);
+      sessionStorage.setItem(`analyzeup_onboarding_prompted_${user.uid}`, 'true');
+    }
+  }, [user, loading, businessProfile, setShowOnboardingWizard]);
+
+  // Check if user has just registered to prompt them with plans
+  useEffect(() => {
+    if (loading || !user || isTourOpen) return;
     const justRegistered = localStorage.getItem("analyzeup_just_registered");
     if (justRegistered === "true") {
       setShowSubscriptionModal(true);
       localStorage.removeItem("analyzeup_just_registered");
     }
-  }, [setShowSubscriptionModal, loading, user]);
+  }, [setShowSubscriptionModal, loading, user, isTourOpen]);
 
   // Show popup once per login session if user is on the Free Trial, or on explicit login redirect
   useEffect(() => {
-    if (loading || !user) return;
+    if (loading || !user || isTourOpen) return;
     const savedPlan = localStorage.getItem("analyzeup_subscription_plan") || "Free Trial";
 
     const justLoggedIn = localStorage.getItem("analyzeup_just_logged_in");
@@ -83,10 +107,27 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         sessionStorage.setItem("analyzeup_free_trial_session_prompted", "true");
       }
     }
-  }, [setShowSubscriptionModal, loading, user]);
+  }, [setShowSubscriptionModal, loading, user, isTourOpen]);
+
+  // Auto-trigger feature tour for the first 3 user logins per account
+  useEffect(() => {
+    if (loading || !user) return;
+    const tourStorageKey = `analyzeup_feature_tour_login_count_${user.uid}`;
+    const currentTourCount = parseInt(localStorage.getItem(tourStorageKey) || '0', 10);
+
+    if (currentTourCount < 3) {
+      localStorage.setItem(tourStorageKey, (currentTourCount + 1).toString());
+      const timer = setTimeout(() => {
+        setShowSubscriptionModal(false);
+        setIsTourOpen(true);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [user, loading, setIsTourOpen, setShowSubscriptionModal]);
 
   // Auto-pop the subscription modal if visiting a locked feature page based on plan or product limit
   useEffect(() => {
+    if (isTourOpen) return;
     const isPremiumRoute =
       pathname.startsWith("/dashboard/ai-advisor") ||
       pathname.startsWith("/dashboard/insights") ||
@@ -96,12 +137,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
     if (isLocked) {
       setShowSubscriptionModal(true);
-      // If the subscription modal is closed while on a locked premium route, redirect back to the main dashboard
       if (!showSubscriptionModal) {
         router.push("/dashboard");
       }
     }
-  }, [pathname, activePlan, isLimitExceeded, showSubscriptionModal, setShowSubscriptionModal, router]);
+  }, [pathname, activePlan, isLimitExceeded, showSubscriptionModal, setShowSubscriptionModal, router, isTourOpen]);
 
   if (loading || !user) {
     return <DashboardLoading />;
@@ -132,7 +172,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </main>
       </div>
       <ChatWidget />
+      <FeatureTour />
       <SubscriptionModal />
+      <SmartOnboardingWizard />
+      <SmartWelcomeModal />
+      <ShopifyConnectModal />
       <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="afterInteractive" />
     </div>
   );

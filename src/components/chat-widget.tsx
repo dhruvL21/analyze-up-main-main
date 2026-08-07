@@ -1,10 +1,10 @@
-import { useState, useRef, useEffect, useTransition, useCallback } from 'react';
+import { useState, useRef, useEffect, useTransition } from 'react';
 import { useData } from '@/context/data-context';
-import { MessageSquare, X, Send, Bot, Sparkles, Loader2, ChevronRight, HelpCircle, Lock } from 'lucide-react';
+import { X, Send, Bot, Sparkles, Loader2, ChevronRight, HelpCircle, Lock } from 'lucide-react';
 import { askAnalyzeUpChat, ChatMessage } from '@/ai/flows/chat';
 
 export function ChatWidget() {
-  const { products, transactions, activePlan, setShowSubscriptionModal } = useData();
+  const { products, transactions, activePlan, setShowSubscriptionModal, businessProfile } = useData();
   const [isOpen, setIsOpen] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -82,7 +82,8 @@ export function ChatWidget() {
           messageText,
           historySlice,
           simplifiedProducts,
-          simplifiedTransactions
+          simplifiedTransactions,
+          businessProfile
         );
 
         setMessages((prev) => [...prev, { role: 'assistant', content: response }]);
@@ -270,6 +271,8 @@ export function ChatWidget() {
 
       {/* Floating Action Button (Glass Orb design with border glow) */}
       <button
+        data-tour="chat-widget"
+        data-chat-widget-toggle="true"
         onClick={() => setIsOpen(!isOpen)}
         className="group relative flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-tr from-secondary/95 via-card/85 to-secondary/90 hover:from-primary/20 hover:to-primary/30 text-primary shadow-[0_8px_30px_rgb(0,0,0,0.45)] border border-primary/30 hover:border-primary/60 backdrop-blur-md transition-all duration-300 hover:scale-110 active:scale-90 hover:shadow-[0_0_20px_rgba(212,143,56,0.3)]"
         title="Ask AnalyzeUp"

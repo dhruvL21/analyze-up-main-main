@@ -1,7 +1,7 @@
 
 'use client';
 
-import { BarChart3, Boxes, DollarSign, ShoppingCart, Truck, TrendingUp } from "lucide-react";
+import { BarChart3, Boxes, DollarSign, ShoppingCart, RefreshCw, TrendingUp } from "lucide-react";
 import './animated-hero.css';
 
 const featureFaces = [
@@ -16,8 +16,8 @@ const featureFaces = [
         className: "bg-green-500/10 text-green-400 border-green-500/20",
     },
     {
-        icon: <Truck size={48} strokeWidth={1} />,
-        label: "Suppliers",
+        icon: <RefreshCw size={48} strokeWidth={1} />,
+        label: "Returns",
         className: "bg-purple-500/10 text-purple-400 border-purple-500/20",
     },
     {

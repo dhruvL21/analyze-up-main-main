@@ -40,6 +40,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useData } from '@/context/data-context';
+import { AddSupplierModal } from '@/components/add-supplier-modal';
 
 
 export default function SuppliersPage() {
@@ -62,8 +63,7 @@ export default function SuppliersPage() {
         entries.forEach(entry => {
           if (entry.isIntersecting) {
             entry.target.classList.add("revealed");
-          } else {
-            entry.target.classList.remove("revealed");
+            observer.unobserve(entry.target);
           }
         });
       },
@@ -80,22 +80,7 @@ export default function SuppliersPage() {
     return () => items.forEach(el => observer.unobserve(el));
   }, [suppliers, isLoading]);
 
-  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    const newSupplierData = {
-      name: formData.get('name') as string,
-      contactName: (formData.get('name') as string).split(' ')[0] || 'Contact',
-      email: formData.get('email') as string,
-      phone: 'N/A',
-      address: 'N/A',
-    };
 
-    addSupplier(newSupplierData);
-    if (!suppliers.find((s) => s.name === newSupplierData.name)) {
-        setDialogOpen(false);
-    }
-  };
 
   return (
     <>
@@ -184,41 +169,7 @@ export default function SuppliersPage() {
         </div>
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="w-[95vw] sm:max-w-md max-h-[90vh] overflow-y-auto ios-glass">
-          <DialogHeader>
-            <DialogTitle>Add New Supplier</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
-            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-              <Label htmlFor="name" className="sm:text-right">
-                Name
-              </Label>
-              <Input id="name" name="name" className="sm:col-span-3" required />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-              <Label htmlFor="email" className="sm:text-right">
-                Contact Email
-              </Label>
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                className="sm:col-span-3"
-                required
-              />
-            </div>
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button type="button" variant="outline">
-                  Cancel
-                </Button>
-              </DialogClose>
-              <Button type="submit">Add Supplier</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <AddSupplierModal open={dialogOpen} onOpenChange={setDialogOpen} />
     </>
   );
 }

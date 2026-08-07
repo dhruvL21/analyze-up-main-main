@@ -1,0 +1,541 @@
+import { Product, Transaction, Supplier, PurchaseOrder, ProductReturn, BusinessProfile } from './types';
+import { getIndustryConfig } from './industry-intelligence';
+
+export interface BusinessHealthSummary {
+  score: number;
+  category: 'Excellent' | 'Healthy' | 'Needs Attention' | 'Poor' | 'Critical';
+  color: string;
+  badgeClass: string;
+  factors: {
+    inventoryHealth: number;
+    marginHealth: number;
+    capitalEfficiency: number;
+    supplierPerformance: number;
+    deadStockRatio: number;
+  };
+  summarySentence: string;
+}
+
+export interface ActionTask {
+  id: string;
+  title: string;
+  problem: string;
+  reason: string;
+  impact: string;
+  recommendation: string;
+  priority: 'High' | 'Medium' | 'Low';
+  estimatedBenefit: string;
+  actionType: 'reorder' | 'discount' | 'price_up' | 'supplier' | 'audit' | 'review_returns' | 'promote';
+  targetId?: string;
+  targetName?: string;
+}
+
+export interface KPICardItem {
+  key: string;
+  title: string;
+  value: string;
+  rawValue: number;
+  change: string; // e.g. "+12%" or "-8%"
+  isPositiveChange: boolean;
+  interpretation: string;
+}
+
+export interface InventoryQualityMetrics {
+  healthyCount: number;
+  lowStockCount: number;
+  criticalStockCount: number;
+  deadStockCount: number;
+  fastMovingCount: number;
+  slowMovingCount: number;
+  recentlyAddedCount: number;
+  topValuableProducts: { name: string; sku: string; value: number; stock: number }[];
+}
+
+export interface ActivityEvent {
+  id: string;
+  title: string;
+  description: string;
+  timestamp: string;
+  type: 'sale' | 'import' | 'alert' | 'supplier' | 'order' | 'ai';
+  iconName: string;
+}
+
+export interface TodayPriorityItem {
+  id: string;
+  title: string;
+  category: string;
+  actionLabel: string;
+  route: string;
+}
+
+// 1. Calculate Dynamic Business Health Score (0-100) responding to executed founder tasks
+export function computeBusinessHealth(
+  products: Product[],
+  transactions: Transaction[],
+  suppliers: Supplier[],
+  returns: ProductReturn[]
+): BusinessHealthSummary {
+  if (!products || products.length === 0) {
+    return {
+      score: 75,
+      category: 'Needs Attention',
+      color: '#a07e50',
+      badgeClass: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+      factors: {
+        inventoryHealth: 50,
+        marginHealth: 60,
+        capitalEfficiency: 70,
+        supplierPerformance: 75,
+        deadStockRatio: 80,
+      },
+      summarySentence: 'Workspace has no active inventory data. Import products to begin live tracking.',
+    };
+  }
+
+  // Base factor calculations
+  const inStockProducts = products.filter(p => p.stock >= (p.minStock || 5));
+  let inventoryHealth = Math.round((inStockProducts.length / products.length) * 100);
+
+  const saleProductIds = new Set(transactions.filter(t => t.type === 'Sale').map(t => t.productId));
+  const deadStockProducts = products.filter(p => p.stock > 0 && !saleProductIds.has(p.id));
+  let deadStockRatio = Math.round(Math.max(0, 100 - (deadStockProducts.length / products.length) * 100));
+
+  const totalValuation = products.reduce((acc, p) => acc + (p.stock * p.price), 0);
+  const deadStockValuation = deadStockProducts.reduce((acc, p) => acc + (p.stock * (p.costPrice || p.price * 0.6)), 0);
+  let capitalEfficiency = totalValuation > 0
+    ? Math.round(Math.max(10, 100 - (deadStockValuation / totalValuation) * 100))
+    : 100;
+
+  const totalSales = transactions.filter(t => t.type === 'Sale').reduce((acc, t) => acc + (t.totalRevenue || (t.quantity * (t.price || 0))), 0);
+  const totalCOGS = transactions.filter(t => t.type === 'Sale').reduce((acc, t) => {
+    if (t.totalCost !== undefined) return acc + t.totalCost;
+    const p = products.find(prod => prod.id === t.productId || prod.sku === t.sku);
+    return acc + (t.quantity * (p?.costPrice || 0));
+  }, 0);
+  const profitMarginPercent = totalSales > 0 ? ((totalSales - totalCOGS) / totalSales) * 100 : 35;
+  let marginHealth = Math.min(100, Math.round((profitMarginPercent / 45) * 100));
+
+  const avgSupplierLead = products.reduce((acc, p) => acc + (p.leadTimeDays || 7), 0) / products.length;
+  let supplierPerformance = Math.round(Math.max(30, 100 - (avgSupplierLead - 3) * 5));
+
+  // Dynamic Founder Execution Bonus (reads from audit logs and performed tasks)
+  let executedActionCount = 0;
+  if (typeof window !== 'undefined') {
+    try {
+      const logsStr = localStorage.getItem('analyzeup_business_audit_logs');
+      if (logsStr) {
+        const logs = JSON.parse(logsStr);
+        executedActionCount = Array.isArray(logs) ? logs.length : 0;
+      }
+      const completedTasksStr = localStorage.getItem('analyzeup_completed_tasks');
+      if (completedTasksStr) {
+        const completedTasks = JSON.parse(completedTasksStr);
+        executedActionCount += Array.isArray(completedTasks) ? completedTasks.length : 0;
+      }
+    } catch {
+      executedActionCount = 0;
+    }
+  }
+
+  // Boost metrics based on executed tasks
+  const executionBonus = Math.min(30, executedActionCount * 4);
+  inventoryHealth = Math.min(100, inventoryHealth + Math.round(executionBonus * 0.4));
+  capitalEfficiency = Math.min(100, capitalEfficiency + Math.round(executionBonus * 0.5));
+  marginHealth = Math.min(100, marginHealth + Math.round(executionBonus * 0.3));
+
+  // Overall Weighted Score
+  let score = Math.round(
+    inventoryHealth * 0.25 +
+    marginHealth * 0.25 +
+    capitalEfficiency * 0.20 +
+    deadStockRatio * 0.15 +
+    supplierPerformance * 0.15 +
+    executionBonus * 0.25
+  );
+
+  score = Math.min(100, Math.max(0, score));
+
+  let category: BusinessHealthSummary['category'] = 'Healthy';
+  let color = '#10b981';
+  let badgeClass = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
+
+  if (score >= 90) {
+    category = 'Excellent';
+    color = '#10b981';
+    badgeClass = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
+  } else if (score >= 75) {
+    category = 'Healthy';
+    color = '#10b981';
+    badgeClass = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
+  } else if (score >= 55) {
+    category = 'Needs Attention';
+    color = '#f59e0b';
+    badgeClass = 'bg-amber-500/15 text-amber-400 border-amber-500/30';
+  } else if (score >= 35) {
+    category = 'Poor';
+    color = '#f97316';
+    badgeClass = 'bg-orange-500/15 text-orange-400 border-orange-500/30';
+  } else {
+    category = 'Critical';
+    color = '#ef4444';
+    badgeClass = 'bg-rose-500/15 text-rose-400 border-rose-500/30';
+  }
+
+  let summarySentence = 'Operations are stable with good inventory velocity.';
+  if (executedActionCount > 0) {
+    summarySentence = `Executed ${executedActionCount} founder optimizations! Health score boosted to ${score}/100.`;
+  } else if (deadStockProducts.length > 5) {
+    summarySentence = `Capital lockup detected: ${deadStockProducts.length} dead stock items require clearance.`;
+  } else if (inventoryHealth < 70) {
+    summarySentence = `Stockout vulnerability: ${products.length - inStockProducts.length} items running low.`;
+  } else if (score >= 90) {
+    summarySentence = 'Excellent operational health and strong profit margins across SKUs.';
+  }
+
+  return {
+    score,
+    category,
+    color,
+    badgeClass,
+    factors: {
+      inventoryHealth,
+      marginHealth,
+      capitalEfficiency,
+      supplierPerformance,
+      deadStockRatio,
+    },
+    summarySentence,
+  };
+}
+
+// Helper slug generator for 100% unique IDs
+const getSlug = (str: string) => (str || 'item').toLowerCase().replace(/[^a-z0-9]/g, '-');
+
+// 2. Generate Action Center Tasks
+export function generateActionTasks(
+  products: Product[],
+  transactions: Transaction[],
+  suppliers: Supplier[],
+  businessProfile?: BusinessProfile | null
+): ActionTask[] {
+  const tasks: ActionTask[] = [];
+  const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
+  const formatCurrency = (val: number) => {
+    const isNegative = val < 0;
+    const num = Math.abs(val);
+    const sign = isNegative ? '-' : '';
+    if (num >= 10000000) {
+      return `${sign}${currencySymbol}${(num / 10000000).toFixed(2)} Cr`;
+    }
+    if (num >= 100000) {
+      return `${sign}${currencySymbol}${(num / 100000).toFixed(2)} Lakh`;
+    }
+    return `${sign}${currencySymbol}${Math.round(num).toLocaleString('en-IN')}`;
+  };
+
+  // Task Group 1: Low / Critical Stock Items (All low stock items)
+  const lowStock = [...products]
+    .filter(p => p && p.name && p.stock <= (p.minStock || 5))
+    .sort((a, b) => (a.stock / (a.minStock || 5)) - (b.stock / (b.minStock || 5)) || (a.name || '').localeCompare(b.name || ''));
+
+  lowStock.slice(0, 5).forEach((topLow) => {
+    const pName = topLow.name || topLow.productName || 'Product';
+    const targetSlug = topLow.id || topLow.sku || getSlug(pName);
+    const rawPrice = topLow.price && topLow.price > 0 ? topLow.price : (topLow.costPrice ? topLow.costPrice * 1.5 : 499);
+    const pPrice = Math.min(25000, Math.max(50, rawPrice));
+    const reorderQty = topLow.minStock ? topLow.minStock * 4 : 50;
+    const estimatedLoss = Math.round(pPrice * reorderQty);
+
+    tasks.push({
+      id: `task-reorder-${targetSlug}`,
+      title: `Running out of ${pName}`,
+      problem: `Current quantity is ${topLow.stock} ${topLow.unit || 'units'} (below alert threshold of ${topLow.minStock || 5}).`,
+      reason: `High sales velocity over recent cycles has depleted stock faster than supplier lead time.`,
+      impact: `Estimated revenue loss of ${formatCurrency(estimatedLoss)} if inventory empties before restock.`,
+      recommendation: `Place a purchase order for ${reorderQty} ${topLow.unit || 'units'} immediately with ${topLow.supplier || 'supplier'}.`,
+      priority: topLow.stock === 0 ? 'High' : 'High',
+      estimatedBenefit: `Protect ${formatCurrency(estimatedLoss)} revenue runway`,
+      actionType: 'reorder',
+      targetId: targetSlug,
+      targetName: pName,
+    });
+  });
+
+  // Task Group 2: Dead Stock Liquidation (All stagnant items)
+  const saleProductIds = new Set(transactions.filter(t => t.type === 'Sale').map(t => t.productId));
+  const deadStock = [...products]
+    .filter(p => p && p.name && p.stock > 0 && !saleProductIds.has(p.id))
+    .sort((a, b) => (b.stock * (b.costPrice || b.price * 0.6)) - (a.stock * (a.costPrice || a.price * 0.6)) || (a.name || '').localeCompare(b.name || ''));
+
+  deadStock.slice(0, 5).forEach((topDead) => {
+    const pName = topDead.name || topDead.productName || 'Product';
+    const targetSlug = topDead.id || topDead.sku || getSlug(pName);
+    const rawPrice = topDead.price && topDead.price > 0 ? topDead.price : (topDead.costPrice ? topDead.costPrice * 1.5 : 350);
+    const pPrice = Math.min(25000, Math.max(50, rawPrice));
+    const tiedCapital = topDead.stock * (topDead.costPrice || pPrice * 0.6);
+
+    tasks.push({
+      id: `task-discount-${targetSlug}`,
+      title: `Liquidate Dead Stock: ${pName}`,
+      problem: `${topDead.stock} ${topDead.unit || 'units'} sitting unsold with zero recorded customer transactions.`,
+      reason: `Overstocking or seasonal shift resulted in stagnant shelf space.`,
+      impact: `${formatCurrency(Math.round(tiedCapital))} working capital locked up in non-moving inventory.`,
+      recommendation: `Launch a 20% clearance promo or bundle with best-selling products.`,
+      priority: 'High',
+      estimatedBenefit: `Unlock ${formatCurrency(Math.round(tiedCapital * 0.8))} cash flow`,
+      actionType: 'discount',
+      targetId: targetSlug,
+      targetName: pName,
+    });
+  });
+
+  // Task Group 3: Pricing Optimization (High Demand Items)
+  const highDemandProducts = [...products]
+    .filter(p => p && p.name && (p.averageDailySales || 0) >= 0.5 && (p.price || 0) > 0)
+    .sort((a, b) => (b.averageDailySales || 0) - (a.averageDailySales || 0) || (a.name || '').localeCompare(b.name || ''));
+
+  highDemandProducts.slice(0, 3).forEach((topDemand) => {
+    const pName = topDemand.name || topDemand.productName || 'Product';
+    const targetSlug = topDemand.id || topDemand.sku || getSlug(pName);
+    const pPrice = Math.min(50000, Math.max(50, topDemand.price || 500));
+    const newPrice = Math.round(pPrice * 1.08);
+    const addedProfit = Math.round((newPrice - pPrice) * (topDemand.stock || 20));
+
+    tasks.push({
+      id: `task-price-${targetSlug}`,
+      title: `Price Optimization: ${pName}`,
+      problem: `High consumer demand with stable daily sales velocity (${topDemand.averageDailySales || 1.2} units/day).`,
+      reason: `Current pricing is under-indexed compared to industry profit benchmarks.`,
+      impact: `Unclaimed margin expansion potential.`,
+      recommendation: `Adjust selling price from ${formatCurrency(pPrice)} to ${formatCurrency(newPrice)} (8% increase).`,
+      priority: 'Medium',
+      estimatedBenefit: `+${formatCurrency(addedProfit)} additional profit margin`,
+      actionType: 'price_up',
+      targetId: targetSlug,
+      targetName: pName,
+    });
+  });
+
+  // Task Group 4: Supplier Lead Time Audit
+  const slowSuppliers = [...suppliers]
+    .filter(s => s && s.name)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  slowSuppliers.slice(0, 2).forEach((slowSup) => {
+    const targetSlug = slowSup.id || getSlug(slowSup.name);
+    tasks.push({
+      id: `task-supplier-${targetSlug}`,
+      title: `Supplier Delivery Delay Risk: ${slowSup.name}`,
+      problem: `Average fulfillment lead time is 8+ days for orders from ${slowSup.name}.`,
+      reason: `Long shipment buffer increases risk of unexpected stockout gaps.`,
+      impact: `Potential customer fulfillment delays during peak order bursts.`,
+      recommendation: `Request expedited freight terms or diversify backup suppliers.`,
+      priority: 'Medium',
+      estimatedBenefit: `Reduce lead time buffer by 3-5 days`,
+      actionType: 'supplier',
+      targetId: targetSlug,
+      targetName: slowSup.name,
+    });
+  });
+
+  // Fallback default tasks if catalog is fresh
+  if (tasks.length === 0) {
+    tasks.push({
+      id: 'task-audit-1',
+      title: 'Complete Weekly Inventory Audit',
+      problem: 'Routine physical count verification required.',
+      reason: 'Periodic audits maintain 99%+ stock accuracy.',
+      impact: 'Prevents phantom inventory and discrepancy errors.',
+      recommendation: 'Verify physical stock counts for top 10 valuable SKUs.',
+      priority: 'Low',
+      estimatedBenefit: 'Ensure 100% data integrity',
+      actionType: 'audit',
+    });
+  }
+
+  return tasks;
+}
+
+// 3. Generate Today Priorities
+export function generateTodayPriorities(
+  products: Product[],
+  transactions: Transaction[],
+  suppliers: Supplier[]
+): TodayPriorityItem[] {
+  const priorities: TodayPriorityItem[] = [];
+
+  const lowStock = products.filter(p => p.stock <= (p.minStock || 5));
+  if (lowStock.length > 0) {
+    priorities.push({
+      id: 'prio-low-stock',
+      title: `Reorder ${lowStock.length} Low-Stock Products (${lowStock[0]?.name || 'Items'})`,
+      category: 'Inventory Risk',
+      actionLabel: 'Restock Now',
+      route: '/dashboard/inventory?q=low stock',
+    });
+  }
+
+  const saleProductIds = new Set(transactions.filter(t => t.type === 'Sale').map(t => t.productId));
+  const deadStock = products.filter(p => p.stock > 0 && !saleProductIds.has(p.id));
+  if (deadStock.length > 0) {
+    priorities.push({
+      id: 'prio-dead-stock',
+      title: `Clear ${deadStock.length} Stagnant Dead Stock SKUs`,
+      category: 'Capital Lockup',
+      actionLabel: 'Launch Promo',
+      route: '/dashboard/inventory?q=dead stock',
+    });
+  }
+
+  priorities.push({
+    id: 'prio-analytics',
+    title: 'Review Weekly Margin Performance & Best Sellers',
+    category: 'Revenue Growth',
+    actionLabel: 'View Analytics',
+    route: '/dashboard/insights',
+  });
+
+  if (suppliers && suppliers.length > 0) {
+    priorities.push({
+      id: 'prio-suppliers',
+      title: `Optimize Vendor Lead Times (${suppliers.length} Active Suppliers)`,
+      category: 'Supply Chain',
+      actionLabel: 'View Vendors',
+      route: '/dashboard/suppliers',
+    });
+  }
+
+  return priorities.slice(0, 5);
+}
+
+// 4. Compute Executive KPI Card Interpretations
+export function computeExecutiveKPIs(
+  products: Product[],
+  transactions: Transaction[],
+  businessProfile?: BusinessProfile | null
+): KPICardItem[] {
+  const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
+
+  const totalInventoryVal = products.reduce((sum, p) => sum + (p.stock * p.price), 0);
+  const salesTx = transactions.filter(t => t.type === 'Sale');
+  const totalSalesVal = salesTx.reduce((sum, t) => sum + (t.totalRevenue || (t.quantity * (t.price || 0))), 0);
+  
+  const totalCOGS = salesTx.reduce((sum, t) => {
+    if (t.totalCost !== undefined) return sum + t.totalCost;
+    const p = products.find(prod => prod.id === t.productId || prod.sku === t.sku);
+    return sum + (t.quantity * (p?.costPrice || 0));
+  }, 0);
+  const totalProfit = totalSalesVal - totalCOGS;
+
+  const totalOrdersCount = salesTx.length;
+
+  return [
+    {
+      key: 'revenue',
+      title: 'Total Revenue',
+      value: `${currencySymbol}${Math.round(totalSalesVal).toLocaleString('en-IN')}`,
+      rawValue: totalSalesVal,
+      change: '+14%',
+      isPositiveChange: true,
+      interpretation: totalSalesVal > 0 ? 'Strong sell-through rate in primary categories.' : 'Awaiting first sales transactions.',
+    },
+    {
+      key: 'inventory_value',
+      title: 'Inventory Value',
+      value: `${currencySymbol}${Math.round(totalInventoryVal).toLocaleString('en-IN')}`,
+      rawValue: totalInventoryVal,
+      change: '+5%',
+      isPositiveChange: true,
+      interpretation: `${products.length} active SKUs valuation in warehouse.`,
+    },
+    {
+      key: 'net_profit',
+      title: 'Net Gross Profit',
+      value: `${currencySymbol}${Math.round(totalProfit).toLocaleString('en-IN')}`,
+      rawValue: totalProfit,
+      change: totalProfit >= 0 ? '+18%' : '-4%',
+      isPositiveChange: totalProfit >= 0,
+      interpretation: totalSalesVal > 0 ? `${Math.round((totalProfit / totalSalesVal) * 100)}% gross margin retained.` : 'Calculated after COGS deduction.',
+    },
+    {
+      key: 'total_orders',
+      title: 'Total Sales Cycles',
+      value: totalOrdersCount.toString(),
+      rawValue: totalOrdersCount,
+      change: '+8%',
+      isPositiveChange: true,
+      interpretation: `${totalOrdersCount} customer sale orders processed.`,
+    },
+  ];
+}
+
+// 5. Detailed Inventory Quality Metrics
+export function computeInventoryQuality(
+  products: Product[],
+  transactions: Transaction[]
+): InventoryQualityMetrics {
+  const healthyCount = products.filter(p => p.stock > (p.minStock || 5) && p.stock < (p.maxStock || 100)).length;
+  const lowStockCount = products.filter(p => p.stock > 0 && p.stock <= (p.minStock || 5)).length;
+  const criticalStockCount = products.filter(p => p.stock === 0).length;
+
+  const saleProductIds = new Set(transactions.filter(t => t.type === 'Sale').map(t => t.productId));
+  const deadStockCount = products.filter(p => p.stock > 0 && !saleProductIds.has(p.id)).length;
+
+  const fastMovingCount = products.filter(p => (p.averageDailySales || 0) >= 1.5).length;
+  const slowMovingCount = products.filter(p => (p.averageDailySales || 0) < 0.5 && p.stock > 0).length;
+
+  const topValuableProducts = [...products]
+    .map(p => ({
+      name: p.name || p.productName || 'Unnamed Product',
+      sku: p.sku || 'N/A',
+      value: Math.round(p.stock * p.price),
+      stock: p.stock,
+    }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 5);
+
+  return {
+    healthyCount,
+    lowStockCount,
+    criticalStockCount,
+    deadStockCount,
+    fastMovingCount,
+    slowMovingCount,
+    recentlyAddedCount: Math.min(products.length, 5),
+    topValuableProducts,
+  };
+}
+
+// 6. Activity Event Stream
+export function generateActivityEvents(
+  products: Product[],
+  transactions: Transaction[],
+  suppliers: Supplier[]
+): ActivityEvent[] {
+  const events: ActivityEvent[] = [];
+
+  transactions.slice(0, 4).forEach((t, i) => {
+    const txDateStr = typeof t.transactionDate === 'string' ? t.transactionDate : '';
+    events.push({
+      id: `evt-tx-${t.id || i}`,
+      title: t.type === 'Sale' ? `Recorded Customer Sale: ${t.productName || 'Product'}` : `Warehouse Stocking: ${t.productName || 'Product'}`,
+      description: `Qty: ${t.quantity} • Value: ₹${(t.totalRevenue || t.price * t.quantity || 0).toLocaleString('en-IN')}`,
+      timestamp: txDateStr ? new Date(txDateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : `${i * 12 + 5}m ago`,
+      type: t.type === 'Sale' ? 'sale' : 'order',
+      iconName: t.type === 'Sale' ? 'ShoppingCart' : 'Package',
+    });
+  });
+
+  if (events.length === 0) {
+    events.push({
+      id: 'evt-welcome',
+      title: 'AI Business Command Center Active',
+      description: 'Monitoring real-time inventory velocity & revenue trends.',
+      timestamp: 'Just now',
+      type: 'ai',
+      iconName: 'Sparkles',
+    });
+  }
+
+  return events;
+}

@@ -48,6 +48,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
+import { OperationsSubNav } from '@/components/operations-sub-nav';
 import { Label } from '@/components/ui/label';
 import type { PurchaseOrder } from '@/lib/types';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -68,8 +69,7 @@ export default function OrdersPage() {
         entries.forEach(entry => {
           if (entry.isIntersecting) {
             entry.target.classList.add("revealed");
-          } else {
-            entry.target.classList.remove("revealed");
+            observer.unobserve(entry.target);
           }
         });
       },
@@ -119,6 +119,7 @@ export default function OrdersPage() {
   return (
     <>
       <div className="flex flex-col gap-6">
+        <OperationsSubNav />
         <div className="flex items-center">
           <h1 className="text-lg font-semibold md:text-2xl">Orders</h1>
           <div className="ml-auto flex items-center gap-2">

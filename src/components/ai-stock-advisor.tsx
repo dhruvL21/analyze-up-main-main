@@ -11,7 +11,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, Bot, Lightbulb, Loader2, CheckCircle, Lock } from 'lucide-react';
+import { AlertCircle, Lightbulb, Loader2, CheckCircle, Lock } from 'lucide-react';
 import { useData } from '@/context/data-context';
 import type { AIStockAdvisorOutput } from '@/ai/flows/low-stock-alerts';
 import { aiStockAdvisor } from '@/ai/flows/low-stock-alerts';
@@ -37,8 +37,10 @@ export function AIStockAdvisor() {
         const prioritizedProducts = [...products]
             .filter(p => p.stock < 20)
             .sort((a, b) => {
-                const urgencyA = a.averageDailySales > 0 ? a.stock / a.averageDailySales : a.stock;
-                const urgencyB = b.averageDailySales > 0 ? b.stock / b.averageDailySales : b.stock;
+                const salesA = a.averageDailySales || 0;
+                const salesB = b.averageDailySales || 0;
+                const urgencyA = salesA > 0 ? a.stock / salesA : a.stock;
+                const urgencyB = salesB > 0 ? b.stock / salesB : b.stock;
                 return urgencyA - urgencyB;
             })
             .slice(0, 10);
@@ -48,8 +50,8 @@ export function AIStockAdvisor() {
         const promises = prioritizedProducts.map(p => aiStockAdvisor({
             productName: p.name,
             currentStockLevel: p.stock,
-            averageDailySales: p.averageDailySales,
-            supplierLeadTimeDays: p.leadTimeDays,
+            averageDailySales: p.averageDailySales || 1.0,
+            supplierLeadTimeDays: p.leadTimeDays || 7,
         }));
 
         const results = await Promise.all(promises);
@@ -71,7 +73,7 @@ export function AIStockAdvisor() {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
         <Card className="relative overflow-hidden flex flex-col h-full">
-            <CardHeader className="relative bg-gradient-to-br from-secondary/50 to-background rounded-t-lg shrink-0">
+            <CardHeader className="relative bg-gradient-to-br from-secondary/50 to-background rounded-t-lg shrink-0 min-h-[115px]">
                 <CardTitle className="flex items-center gap-2">
                 <CheckCircle className="text-primary"/>
                 What Should I Reorder?
@@ -153,7 +155,7 @@ export function AIStockAdvisor() {
         </Card>
 
         <Card className="relative overflow-hidden flex flex-col h-full">
-            <CardHeader className="relative bg-gradient-to-br from-secondary/50 to-background rounded-t-lg shrink-0">
+            <CardHeader className="relative bg-gradient-to-br from-secondary/50 to-background rounded-t-lg shrink-0 min-h-[115px]">
                 <CardTitle className='flex items-center gap-2'>
                     <CheckCircle className='text-primary' />
                     Growth Suggestions

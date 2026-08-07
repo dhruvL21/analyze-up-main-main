@@ -15,9 +15,12 @@ import {
   ShoppingCart,
   Package,
   Download,
+  BarChart3,
+  Activity,
 } from 'lucide-react';
 import { SalesChart } from '@/components/sales-chart';
 import { InventoryValueChart } from '@/components/inventory-value-chart';
+import { DataVisualizer } from '@/components/data-visualizer';
 import { cn } from '@/lib/utils';
 import {
   Table,
@@ -29,7 +32,6 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import Papa from 'papaparse';
-import type { Product, Transaction } from '@/lib/types';
 import {
   Select,
   SelectContent,
@@ -47,32 +49,40 @@ export default function InsightsPage() {
   const { products, transactions, isLoading } = useData();
   const [reportType, setReportType] = useState<ReportType>('inventory_summary');
   const [dateRange, setDateRange] = useState<DateRange>('30');
+  const [activeTab, setActiveTab] = useState<'insights' | 'health'>('insights');
 
   useEffect(() => {
     if (isLoading) return;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("revealed");
-          } else {
-            entry.target.classList.remove("revealed");
-          }
-        });
-      },
-      {
-        root: null,
-        threshold: 0.1,
-        rootMargin: "0px 0px -10% 0px"
-      }
-    );
+    const timer = setTimeout(() => {
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add('revealed');
+              observer.unobserve(entry.target);
+            }
+          });
+        },
+        {
+          root: null,
+          threshold: 0.05,
+        }
+      );
 
-    const items = document.querySelectorAll(".scroll-reveal-item");
-    items.forEach(el => observer.observe(el));
+      const items = document.querySelectorAll('.scroll-reveal-item');
+      items.forEach((el) => {
+        const rect = el.getBoundingClientRect();
+        if (rect.top < window.innerHeight + 100 && rect.bottom > -100) {
+          el.classList.add('revealed');
+        } else {
+          observer.observe(el);
+        }
+      });
+    }, 50);
 
-    return () => items.forEach(el => observer.unobserve(el));
-  }, [isLoading, reportType, dateRange]);
+    return () => clearTimeout(timer);
+  }, [isLoading, reportType, dateRange, activeTab]);
 
   const getFilteredTransactions = () => {
     if (dateRange === 'all') return transactions;
@@ -220,38 +230,72 @@ export default function InsightsPage() {
   
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-        <h1 className="text-lg font-semibold md:text-2xl">Insights</h1>
-        <div className="sm:ml-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-           <Select value={dateRange} onValueChange={(v) => setDateRange(v as DateRange)}>
-            <SelectTrigger className="w-full sm:w-[140px]">
-              <SelectValue placeholder="Select date range" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="7">Last 7 Days</SelectItem>
-              <SelectItem value="30">Last 30 Days</SelectItem>
-              <SelectItem value="90">Last 90 Days</SelectItem>
-              <SelectItem value="all">All Time</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={reportType} onValueChange={(v) => setReportType(v as ReportType)}>
-            <SelectTrigger className="w-full sm:w-[180px]">
-              <SelectValue placeholder="Select report type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="inventory_summary">Inventory Summary</SelectItem>
-              <SelectItem value="sales_report">Sales Report</SelectItem>
-              <SelectItem value="transaction_log">Transaction Log</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button size="sm" onClick={handleDownloadCsv}>
-            <Download className="mr-2 h-4 w-4" />
-            Export Report
-          </Button>
+      {/* Unified Tab Bar combining Insights & Business Health */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-secondary/50 border border-border/40 w-fit">
+          <button
+            onClick={() => setActiveTab('insights')}
+            className={cn(
+              'flex items-center gap-2 px-5 py-2 rounded-xl text-xs md:text-sm font-semibold transition-all shrink-0',
+              activeTab === 'insights'
+                ? 'bg-primary/15 text-primary border border-primary/30 shadow-sm'
+                : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60'
+            )}
+          >
+            <BarChart3 className="w-4 h-4" />
+            <span>Insights</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('health')}
+            className={cn(
+              'flex items-center gap-2 px-5 py-2 rounded-xl text-xs md:text-sm font-semibold transition-all shrink-0',
+              activeTab === 'health'
+                ? 'bg-primary/15 text-primary border border-primary/30 shadow-sm'
+                : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60'
+            )}
+          >
+            <Activity className="w-4 h-4" />
+            <span>Business Health</span>
+          </button>
         </div>
+
+        {activeTab === 'insights' && (
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <Select value={dateRange} onValueChange={(v) => setDateRange(v as DateRange)}>
+              <SelectTrigger className="w-full sm:w-[140px]">
+                <SelectValue placeholder="Select date range" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7">Last 7 Days</SelectItem>
+                <SelectItem value="30">Last 30 Days</SelectItem>
+                <SelectItem value="90">Last 90 Days</SelectItem>
+                <SelectItem value="all">All Time</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={reportType} onValueChange={(v) => setReportType(v as ReportType)}>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Select report type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="inventory_summary">Inventory Summary</SelectItem>
+                <SelectItem value="sales_report">Sales Report</SelectItem>
+                <SelectItem value="transaction_log">Transaction Log</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button size="sm" onClick={handleDownloadCsv}>
+              <Download className="mr-2 h-4 w-4" />
+              Export Report
+            </Button>
+          </div>
+        )}
       </div>
 
-      {reportType === 'inventory_summary' && (
+      {activeTab === 'health' ? (
+        <DataVisualizer />
+      ) : (
+        <>
+          {reportType === 'inventory_summary' && (
          <>
            {/* Inventory Cards */}
            <div className="grid gap-4 md:grid-cols-3">
@@ -603,8 +647,10 @@ export default function InsightsPage() {
                </div>
              </CardContent>
            </Card>
-         </>
+          </>
+       )}
+        </>
       )}
-    </div>
+     </div>
   );
 }

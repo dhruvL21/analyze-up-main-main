@@ -2,10 +2,7 @@
 'use client';
 
 import {
-  collection,
   onSnapshot,
-  query,
-  where,
   type CollectionReference,
   type Query,
 } from 'firebase/firestore';

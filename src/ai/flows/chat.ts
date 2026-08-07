@@ -1,6 +1,7 @@
 'use server';
 
 import { openai } from '@/ai/openai';
+import { getIndustryConfig } from '@/lib/industry-intelligence';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -11,13 +12,17 @@ export async function askAnalyzeUpChat(
   userMessage: string,
   chatHistory: ChatMessage[],
   products: any[],
-  transactions: any[]
+  transactions: any[],
+  businessProfile?: any
 ): Promise<string> {
-  const systemPrompt = `
-You are "Ask AnalyzeUp", a smart, expert AI business intelligence copilot integrated into the AnalyzeUp dashboard.
-Your job is to answer questions about the user's business, sales performance, inventory levels, and general strategic growth.
+  const industry = getIndustryConfig(businessProfile?.businessType);
 
-You have access to the real-time business data below:
+  const systemPrompt = `
+You are "AnalyzeUp AI Business Copilot", an intelligent, expert AI advisor for "${businessProfile?.businessName || 'the business'}" in the ${industry.label} industry.
+Business Size: ${businessProfile?.businessSize || 'SMB'}, Base Currency: ${businessProfile?.currency || 'INR (₹)'}.
+Industry Priority Focus: ${industry.aiPriority}
+
+You have access to real-time business data:
 
 1. Current Products in Stock:
 ${JSON.stringify(products, null, 2)}
@@ -26,12 +31,11 @@ ${JSON.stringify(products, null, 2)}
 ${JSON.stringify(transactions, null, 2)}
 
 INSTRUCTIONS:
-1. Answer the user's question clearly, concisely, and professionally.
-2. Ground all your answers strictly in the provided data. Do not make up facts or figures.
-3. If the user asks a question about why profit dropped or what to reorder, look at the transactions and products to calculate and provide specific recommendations (like products that are out of stock or have low stock runway).
-4. If there is no data in the database (i.e. products list is empty), explain that they haven't uploaded or added any inventory items yet, but provide high-level educational guidance and encourage them to import sample datasets.
-5. Format your response nicely using markdown (bullet points, bold text, etc.) where appropriate.
-6. Support Indian Rupee (₹) symbol for currency values.
+1. Answer the founder's questions with actionable business decisions rather than just raw facts.
+2. Ground all answers strictly in the provided inventory and transaction data.
+3. Tailor strategic suggestions specifically for a ${industry.label} business.
+4. Format responses cleanly using markdown (bullet points, bold text, step-by-step decision points).
+5. Always use the business's selected currency format (${businessProfile?.currency || '₹'}).
 `;
 
   try {

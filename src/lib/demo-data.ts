@@ -1,0 +1,210 @@
+import { Product, Supplier, Category, Transaction, PurchaseOrder, ProductReturn } from './types';
+
+export function generateDemoBusinessData() {
+  const categories: Category[] = [
+    { id: 'cat-fashion-1', name: 'Apparel & Wearables', description: 'T-Shirts, Hoodies, Jackets & Denim' },
+    { id: 'cat-fashion-2', name: 'Footwear', description: 'Sneakers, Formal Shoes & Boots' },
+    { id: 'cat-electronics-1', name: 'Smartphones & Audio', description: 'Headphones, Earbuds & Accessories' },
+    { id: 'cat-electronics-2', name: 'Computers & Peripherals', description: 'Laptops, Keyboards & Cables' },
+    { id: 'cat-beauty-1', name: 'Skincare & Cosmetics', description: 'Serums, Moisturizers & Cleansers' },
+    { id: 'cat-home-1', name: 'Home & Kitchen', description: 'Cookware, Decor & Organizers' },
+    { id: 'cat-sports-1', name: 'Fitness & Outdoors', description: 'Yoga Mats, Dumbbells & Gear' },
+    { id: 'cat-food-1', name: 'Specialty Gourmet & Coffee', description: 'Artisanal Coffee Beans & Organic Teas' },
+  ];
+
+  const nowIso = new Date().toISOString();
+
+  const suppliers: Supplier[] = [
+    { id: 'sup-1', name: 'Apex Apparel Global', contactName: 'Rajesh Sharma', email: 'orders@apexapparel.com', phone: '+91 98765 43210', address: 'Tirupur, Tamil Nadu, India', createdAt: nowIso, updatedAt: nowIso },
+    { id: 'sup-2', name: 'Vanguard Footwear Ltd', contactName: 'Elena Rostova', email: 'sales@vanguardfootwear.com', phone: '+1 555 019 2831', address: 'Portland, OR, USA', createdAt: nowIso, updatedAt: nowIso },
+    { id: 'sup-3', name: 'Zenith Electronics Corp', contactName: 'Kenji Sato', email: 'b2b@zenithelec.jp', phone: '+81 3 5555 0142', address: 'Akihabara, Tokyo, Japan', createdAt: nowIso, updatedAt: nowIso },
+    { id: 'sup-4', name: 'PureBotanica Labs', contactName: 'Dr. Sarah Lin', email: 'wholesale@purebotanica.com', phone: '+1 800 555 9182', address: 'San Francisco, CA, USA', createdAt: nowIso, updatedAt: nowIso },
+    { id: 'sup-5', name: 'MasterCraft Homeware', contactName: 'Vikram Mehta', email: 'supply@mastercrafthome.in', phone: '+91 98200 11223', address: 'Moradabad, UP, India', createdAt: nowIso, updatedAt: nowIso },
+    { id: 'sup-6', name: 'Titanium Athletics', contactName: 'Marcus Vance', email: 'orders@titaniumfit.com', phone: '+44 20 7946 0912', address: 'Manchester, UK', createdAt: nowIso, updatedAt: nowIso },
+    { id: 'sup-7', name: 'Himalayan Coffee Estate', contactName: 'Anil Coorg', email: 'beans@himalayancoffee.in', phone: '+91 94480 33445', address: 'Chikmagalur, Karnataka, India', createdAt: nowIso, updatedAt: nowIso },
+    { id: 'sup-8', name: 'SiliconValley Tech Components', contactName: 'David Miller', email: 'sales@svtechcomp.com', phone: '+1 408 555 4910', address: 'San Jose, CA, USA', createdAt: nowIso, updatedAt: nowIso },
+    { id: 'sup-9', name: 'Velvet Thread Textiles', contactName: 'Priya Sundaram', email: 'orders@velvetthread.in', phone: '+91 97110 88990', address: 'Surat, Gujarat, India', createdAt: nowIso, updatedAt: nowIso },
+    { id: 'sup-10', name: 'Nordic Minimalist Living', contactName: 'Astrid Lindgren', email: 'b2b@nordicliving.se', phone: '+46 8 123 4567', address: 'Stockholm, Sweden', createdAt: nowIso, updatedAt: nowIso },
+    { id: 'sup-11', name: 'Gourmet Spice Route', contactName: 'Zubair Ahmed', email: 'wholesale@spiceroute.in', phone: '+91 99000 77665', address: 'Kochi, Kerala, India', createdAt: nowIso, updatedAt: nowIso },
+    { id: 'sup-12', name: 'Urban Leather Craft', contactName: 'Gabriel Fernandez', email: 'orders@urbanleather.es', phone: '+34 91 555 8920', address: 'Ubrique, Spain', createdAt: nowIso, updatedAt: nowIso },
+    { id: 'sup-13', name: 'Solaris Eco Packaging', contactName: 'Neha Gupta', email: 'eco@solarispack.com', phone: '+91 98100 44332', address: 'Bhiwadi, Rajasthan, India', createdAt: nowIso, updatedAt: nowIso },
+    { id: 'sup-14', name: 'ProFit Gym Equipment', contactName: 'Hans Gruber', email: 'sales@profitgym.de', phone: '+49 30 9876 5432', address: 'Frankfurt, Germany', createdAt: nowIso, updatedAt: nowIso },
+    { id: 'sup-15', name: 'Aura Fragrances Co', contactName: 'Sophie Dubois', email: 'contact@aurafragrances.fr', phone: '+33 1 42 68 55 00', address: 'Grasse, France', createdAt: nowIso, updatedAt: nowIso },
+  ];
+
+  // Helper for random choices
+  const now = new Date();
+
+  // Create 205 realistic products across categories
+  const productTemplates = [
+    { name: 'Organic Cotton Crewneck T-Shirt', catId: 'cat-fashion-1', basePrice: 1299, cost: 450, unit: 'Piece', brand: 'AnalyzeUp Apparel', sup: 'Apex Apparel Global' },
+    { name: 'Heavyweight Fleece Oversized Hoodie', catId: 'cat-fashion-1', basePrice: 2999, cost: 1100, unit: 'Piece', brand: 'Urban Thread', sup: 'Apex Apparel Global' },
+    { name: 'Slim-Fit Stretch Denim Jeans', catId: 'cat-fashion-1', basePrice: 3499, cost: 1250, unit: 'Piece', brand: 'DenimCo', sup: 'Velvet Thread Textiles' },
+    { name: 'Water-Resistant Windbreaker Jacket', catId: 'cat-fashion-1', basePrice: 4999, cost: 1950, unit: 'Piece', brand: 'Titanium Outdoors', sup: 'Titanium Athletics' },
+    { name: 'Breathable Running Mesh Sneakers', catId: 'cat-fashion-2', basePrice: 4499, cost: 1600, unit: 'Pair', brand: 'Vanguard Kicks', sup: 'Vanguard Footwear Ltd' },
+    { name: 'Handcrafted Italian Leather Loafers', catId: 'cat-fashion-2', basePrice: 7999, cost: 3200, unit: 'Pair', brand: 'Urban Leather', sup: 'Urban Leather Craft' },
+    { name: 'Active Performance Cross-Trainers', catId: 'cat-fashion-2', basePrice: 5299, cost: 2100, unit: 'Pair', brand: 'Vanguard Kicks', sup: 'Vanguard Footwear Ltd' },
+    { name: 'ANC Wireless Noise Cancelling Headphones', catId: 'cat-electronics-1', basePrice: 8999, cost: 3800, unit: 'Piece', brand: 'Zenith Audio', sup: 'Zenith Electronics Corp' },
+    { name: 'True Wireless Stereo Earbuds Pro', catId: 'cat-electronics-1', basePrice: 3999, cost: 1400, unit: 'Piece', brand: 'Zenith Audio', sup: 'Zenith Electronics Corp' },
+    { name: 'Ergonomic Mechanical Keyboard (RGB)', catId: 'cat-electronics-2', basePrice: 5499, cost: 2300, unit: 'Piece', brand: 'SV Tech', sup: 'SiliconValley Tech Components' },
+    { name: 'Ultra-Slim 4K USB-C Hub (7-in-1)', catId: 'cat-electronics-2', basePrice: 2499, cost: 850, unit: 'Piece', brand: 'SV Tech', sup: 'SiliconValley Tech Components' },
+    { name: 'Hyaluronic Acid Hydrating Serum (50ml)', catId: 'cat-beauty-1', basePrice: 1499, cost: 320, unit: 'Bottle', brand: 'PureBotanica', sup: 'PureBotanica Labs' },
+    { name: 'Niacinamide Glow Brightening Cream', catId: 'cat-beauty-1', basePrice: 1299, cost: 280, unit: 'Bottle', brand: 'PureBotanica', sup: 'PureBotanica Labs' },
+    { name: 'Elysium Eau De Parfum (100ml)', catId: 'cat-beauty-1', basePrice: 4999, cost: 1350, unit: 'Bottle', brand: 'Aura Fragrances', sup: 'Aura Fragrances Co' },
+    { name: 'Cast Iron Dutch Oven (4.5L)', catId: 'cat-home-1', basePrice: 6499, cost: 2600, unit: 'Piece', brand: 'MasterCraft', sup: 'MasterCraft Homeware' },
+    { name: 'Hand-Poured Soy Wax Scented Candle', catId: 'cat-home-1', basePrice: 999, cost: 220, unit: 'Piece', brand: 'Nordic Living', sup: 'Nordic Minimalist Living' },
+    { name: 'High-Density Non-Slip Yoga Mat (6mm)', catId: 'cat-sports-1', basePrice: 1899, cost: 550, unit: 'Piece', brand: 'Titanium Athletics', sup: 'Titanium Athletics' },
+    { name: 'Adjustable Quick-Lock Dumbbell Set', catId: 'cat-sports-1', basePrice: 12999, cost: 5200, unit: 'Set', brand: 'ProFit Gym', sup: 'ProFit Gym Equipment' },
+    { name: 'Dark Roast Arabica Whole Bean Coffee (1kg)', catId: 'cat-food-1', basePrice: 1499, cost: 480, unit: 'Kg', brand: 'Himalayan Estate', sup: 'Himalayan Coffee Estate' },
+    { name: 'Organic Matcha Green Tea Powder (250g)', catId: 'cat-food-1', basePrice: 1199, cost: 350, unit: 'Pack', brand: 'Gourmet Route', sup: 'Gourmet Spice Route' },
+  ];
+
+  const products: Product[] = [];
+  let productIndex = 1;
+
+  // Generate 205 items by creating variants/colors/sizes
+  const colors = ['Black', 'Navy', 'White', 'Charcoal', 'Olive', 'Beige', 'Crimson'];
+  const sizes = ['S', 'M', 'L', 'XL', 'Standard', 'Pro'];
+
+  for (let i = 0; i < 205; i++) {
+    const template = productTemplates[i % productTemplates.length];
+    const color = colors[i % colors.length];
+    const size = sizes[Math.floor(i / 2) % sizes.length];
+    const isVariantName = `${template.name} - ${color} (${size})`;
+    const sku = `ANUP-${1000 + productIndex}`;
+    const barcode = `89012345${10000 + productIndex}`;
+    
+    // Vary stock to create fast movers, slow movers, and dead stock
+    let stock = 45;
+    let minStock = 10;
+    if (i % 7 === 0) {
+      stock = 3; // Low stock alert
+    } else if (i % 9 === 0) {
+      stock = 140; // High inventory / slow moving
+    } else if (i % 13 === 0) {
+      stock = 85; // Dead stock (zero sales)
+    } else {
+      stock = Math.floor(Math.random() * 60) + 15;
+    }
+
+    const supObj = suppliers.find(s => s.name === template.sup) || suppliers[0];
+
+    products.push({
+      id: `prod-${productIndex}`,
+      name: isVariantName,
+      description: `Premium grade ${template.name.toLowerCase()} designed for modern performance and durability.`,
+      sku: sku,
+      barcode: barcode,
+      categoryId: template.catId,
+      brand: template.brand,
+      supplier: supObj.name,
+      supplierId: supObj.id,
+      stock: stock,
+      minStock: minStock,
+      maxStock: minStock * 5,
+      unit: template.unit,
+      price: template.basePrice + ((i % 5) * 100),
+      costPrice: template.cost + ((i % 5) * 30),
+      status: 'Active',
+      imageUrl: '',
+      averageDailySales: parseFloat(((Math.random() * 3) + 0.2).toFixed(1)),
+      leadTimeDays: Math.floor(Math.random() * 10) + 5,
+      createdAt: new Date(now.getTime() - (90 * 24 * 60 * 60 * 1000)).toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    productIndex++;
+  }
+
+  // Generate 520 Sales & Purchase Transactions spanning the last 90 days
+  const transactions: Transaction[] = [];
+  const paymentMethods = ['UPI', 'Credit Card', 'Debit Card', 'Cash on Delivery', 'Net Banking'];
+
+  for (let t = 1; t <= 520; t++) {
+    // Pick product (prefer non-dead stock for realistic velocity)
+    const product = products[t % 180]; // leave last 25 products with 0 sales for Dead Stock!
+    const isSale = t % 5 !== 0; // 80% sales, 20% purchases
+    const daysAgo = Math.floor((t / 520) * 90); // spread across 90 days
+    const txDate = new Date(now.getTime() - (daysAgo * 24 * 60 * 60 * 1000) - (Math.random() * 3600000 * 12)).toISOString();
+    
+    const qty = isSale ? (Math.floor(Math.random() * 3) + 1) : (Math.floor(Math.random() * 30) + 20);
+    const unitPrice = isSale ? product.price : product.costPrice;
+    const catObj = categories.find(c => c.id === product.categoryId);
+
+    transactions.push({
+      id: `tx-${t}`,
+      transactionId: `TXN-2026-${10000 + t}`,
+      productId: product.id,
+      productName: product.name,
+      sku: product.sku,
+      category: catObj ? catObj.name : 'General',
+      type: isSale ? 'Sale' : 'Purchase',
+      quantity: qty,
+      price: unitPrice,
+      totalRevenue: isSale ? unitPrice * qty : 0,
+      costPerUnit: product.costPrice,
+      totalCost: product.costPrice * qty,
+      supplier: product.supplier,
+      customerName: isSale ? `Customer #${1000 + (t % 150)}` : undefined,
+      paymentMethod: isSale ? paymentMethods[t % paymentMethods.length] : 'Bank Transfer',
+      status: 'Completed',
+      transactionDate: txDate,
+      createdAt: txDate,
+      updatedAt: txDate,
+    });
+  }
+
+  // Generate 25 Purchase Orders
+  const purchaseOrders: PurchaseOrder[] = [];
+  for (let po = 1; po <= 25; po++) {
+    const product = products[po * 7 % products.length];
+    const supObj = suppliers.find(s => s.name === product.supplier) || suppliers[0];
+    const poDate = new Date(now.getTime() - ((25 - po) * 3 * 24 * 60 * 60 * 1000)).toISOString();
+    const deliveryDate = new Date(now.getTime() + (po * 24 * 60 * 60 * 1000)).toISOString();
+
+    purchaseOrders.push({
+      id: `po-${po}`,
+      supplierId: supObj.id,
+      productId: product.id,
+      quantity: Math.floor(Math.random() * 50) + 20,
+      orderDate: poDate,
+      expectedDeliveryDate: deliveryDate,
+      status: po % 3 === 0 ? 'Pending' : 'Fulfilled',
+      createdAt: poDate,
+      updatedAt: poDate,
+    });
+  }
+
+  // Generate 12 Returns
+  const returns: ProductReturn[] = [];
+  const returnReasons = ['Defective', 'Wrong Item', 'Unopened / Buyer Remorse', 'Damaged in Transit'];
+  for (let r = 1; r <= 12; r++) {
+    const product = products[r * 12 % products.length];
+    const retDate = new Date(now.getTime() - (r * 5 * 24 * 60 * 60 * 1000)).toISOString();
+
+    returns.push({
+      id: `ret-${r}`,
+      productId: product.id,
+      productName: product.name,
+      quantity: 1,
+      customerName: `Customer #${1050 + r}`,
+      reason: returnReasons[r % returnReasons.length] as any,
+      actionTaken: r % 2 === 0 ? 'Restocked' : 'Disposed / Written Off',
+      refundStatus: r % 3 === 0 ? 'Pending' : 'Refunded',
+      refundAmount: product.price,
+      returnDate: retDate,
+      notes: 'Customer requested quick inspection and refund processing.',
+      createdAt: retDate,
+      updatedAt: retDate,
+    });
+  }
+
+  return {
+    products,
+    suppliers,
+    categories,
+    transactions,
+    orders: purchaseOrders,
+    returns,
+  };
+}
