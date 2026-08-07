@@ -17,8 +17,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
-import { PlusCircle, Sparkles, Loader2 } from 'lucide-react';
+import { PlusCircle, Sparkles, Loader2, AlertTriangle, Layers, ArrowRight } from 'lucide-react';
 import { generateProductDescription } from '@/ai/flows/product-descriptor';
+import type { Product } from '@/lib/types';
+import { Badge } from '@/components/ui/badge';
 
 interface AddProductModalProps {
   open: boolean;
@@ -26,12 +28,25 @@ interface AddProductModalProps {
 }
 
 export function AddProductModal({ open, onOpenChange }: AddProductModalProps) {
-  const { addProduct, categories, suppliers } = useData();
+  const { products, addProduct, updateProduct, categories, suppliers } = useData();
   const { toast } = useToast();
 
   const [description, setDescription] = useState('');
   const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
   const [name, setName] = useState('');
+
+  // Duplicate Detection States
+  const [duplicateProduct, setDuplicateProduct] = useState<Product | null>(null);
+  const [pendingProductData, setPendingProductData] = useState<any>(null);
+  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
+
+  const resetForm = () => {
+    setName('');
+    setDescription('');
+    setDuplicateProduct(null);
+    setPendingProductData(null);
+    setShowDuplicateDialog(false);
+  };
 
   const handleAIDescription = async () => {
     if (!name) {
@@ -59,8 +74,8 @@ export function AddProductModal({ open, onOpenChange }: AddProductModalProps) {
     const formData = new FormData(e.currentTarget);
 
     const productData = {
-      name: formData.get('name') as string,
-      sku: (formData.get('sku') as string) || ('SKU-' + Date.now().toString(36).toUpperCase()),
+      name: (formData.get('name') as string).trim(),
+      sku: ((formData.get('sku') as string) || ('SKU-' + Date.now().toString(36).toUpperCase())).trim(),
       barcode: (formData.get('barcode') as string) || '',
       brand: (formData.get('brand') as string) || '',
       stock: Number(formData.get('stock')) || 0,
@@ -79,136 +94,255 @@ export function AddProductModal({ open, onOpenChange }: AddProductModalProps) {
       description: description,
     };
 
+    // Duplicate Check by SKU or Name
+    const targetSku = productData.sku.toLowerCase();
+    const targetName = productData.name.toLowerCase();
+
+    const existing = products.find(p => 
+      (p.sku && p.sku.trim().toLowerCase() === targetSku) ||
+      (p.name && p.name.trim().toLowerCase() === targetName)
+    );
+
+    if (existing) {
+      setDuplicateProduct(existing);
+      setPendingProductData(productData);
+      setShowDuplicateDialog(true);
+      return;
+    }
+
+    // Save product if no duplicate
     addProduct(productData);
     toast({ title: 'Product Created', description: `"${productData.name}" added to inventory.` });
     onOpenChange(false);
-    setName('');
-    setDescription('');
+    resetForm();
+  };
+
+  const handleMergeStock = async () => {
+    if (!duplicateProduct || !pendingProductData) return;
+
+    const updated: Product = {
+      ...duplicateProduct,
+      stock: duplicateProduct.stock + pendingProductData.stock,
+      price: pendingProductData.price || duplicateProduct.price,
+      costPrice: pendingProductData.costPrice || duplicateProduct.costPrice,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await updateProduct(updated);
+    toast({
+      title: 'Duplicate Resolved: Stock Merged',
+      description: `Added +${pendingProductData.stock} units to existing product "${duplicateProduct.name}". Total stock: ${updated.stock}.`,
+    });
+
+    setShowDuplicateDialog(false);
+    setDuplicateProduct(null);
+    setPendingProductData(null);
+    onOpenChange(false);
+    resetForm();
+  };
+
+  const handleCreateSeparate = async () => {
+    if (!pendingProductData) return;
+
+    const newProduct = {
+      ...pendingProductData,
+      sku: `${pendingProductData.sku}-NEW`,
+    };
+
+    await addProduct(newProduct);
+    toast({
+      title: 'New Entry Created',
+      description: `Saved separate entry with unique SKU "${newProduct.sku}".`,
+    });
+
+    setShowDuplicateDialog(false);
+    setDuplicateProduct(null);
+    setPendingProductData(null);
+    onOpenChange(false);
+    resetForm();
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[95vw] sm:max-w-xl max-h-[90vh] overflow-y-auto ios-glass p-6">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg font-bold">
-            <PlusCircle className="w-5 h-5 text-primary" />
-            Quick Add Product
-          </DialogTitle>
-          <DialogDescription className="text-xs">
-            Add a new product directly from your Command Center.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={(val) => { onOpenChange(val); if (!val) resetForm(); }}>
+        <DialogContent className="w-[95vw] sm:max-w-xl max-h-[90vh] overflow-y-auto ios-glass p-6">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg font-bold">
+              <PlusCircle className="w-5 h-5 text-primary" />
+              Quick Add Product
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Add a new product directly from your AI Business Copilot.
+            </DialogDescription>
+          </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="grid gap-4 py-3 text-xs">
-          <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2">
-            <Label htmlFor="qp-name" className="text-left sm:text-right font-medium">Product Name *</Label>
-            <Input
-              id="qp-name"
-              name="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Premium Cotton Shirt"
-              required
-              className="sm:col-span-3 rounded-xl"
-            />
-          </div>
+          <form onSubmit={handleSubmit} className="space-y-3.5 py-2 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="qp-name" className="font-semibold text-foreground text-xs block text-left">Product Name *</Label>
+                <Input
+                  id="qp-name"
+                  name="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Premium Cotton Shirt"
+                  required
+                  className="rounded-xl h-10 text-xs w-full"
+                />
+              </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2">
-            <Label htmlFor="qp-sku" className="text-left sm:text-right font-medium">SKU Code</Label>
-            <Input
-              id="qp-sku"
-              name="sku"
-              placeholder="Auto-generated if blank"
-              className="sm:col-span-3 rounded-xl font-mono text-xs"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2">
-            <Label htmlFor="qp-price" className="text-left sm:text-right font-medium">Selling Price *</Label>
-            <Input
-              id="qp-price"
-              name="price"
-              type="number"
-              step="0.01"
-              placeholder="0.00"
-              required
-              className="sm:col-span-3 rounded-xl"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2">
-            <Label htmlFor="qp-cost" className="text-left sm:text-right font-medium">Cost Price *</Label>
-            <Input
-              id="qp-cost"
-              name="costPrice"
-              type="number"
-              step="0.01"
-              placeholder="0.00"
-              required
-              className="sm:col-span-3 rounded-xl"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2">
-            <Label htmlFor="qp-stock" className="text-left sm:text-right font-medium">Stock Qty *</Label>
-            <Input
-              id="qp-stock"
-              name="stock"
-              type="number"
-              defaultValue="10"
-              required
-              className="sm:col-span-3 rounded-xl"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2">
-            <Label htmlFor="qp-unit" className="text-left sm:text-right font-medium">Unit</Label>
-            <Select name="unit" defaultValue="Piece">
-              <SelectTrigger className="sm:col-span-3 rounded-xl">
-                <SelectValue placeholder="Select unit" />
-              </SelectTrigger>
-              <SelectContent>
-                {['Piece', 'Kg', 'Gram', 'Liter', 'Milliliter', 'Meter', 'Box', 'Pack', 'Bottle', 'Pair', 'Set', 'Custom'].map((u) => (
-                  <SelectItem key={u} value={u}>
-                    {u}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-4 items-start gap-2">
-            <div className="sm:text-right pt-2 flex flex-col items-end gap-1">
-              <Label htmlFor="qp-desc" className="font-medium">Description</Label>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={handleAIDescription}
-                disabled={isGeneratingDescription}
-                className="h-6 px-2 text-[10px] text-primary gap-1"
-              >
-                {isGeneratingDescription ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                AI
-              </Button>
+              <div className="space-y-1.5">
+                <Label htmlFor="qp-sku" className="font-semibold text-foreground text-xs block text-left">SKU Code</Label>
+                <Input
+                  id="qp-sku"
+                  name="sku"
+                  placeholder="Auto-generated if blank"
+                  className="rounded-xl h-10 font-mono text-xs w-full"
+                />
+              </div>
             </div>
-            <Textarea
-              id="qp-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Product summary..."
-              className="sm:col-span-3 rounded-xl min-h-[80px]"
-            />
-          </div>
 
-          <DialogFooter className="pt-3">
-            <DialogClose asChild>
-              <Button type="button" variant="secondary" className="rounded-xl">Cancel</Button>
-            </DialogClose>
-            <Button type="submit" className="rounded-xl bg-primary text-primary-foreground">Save Product</Button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="qp-price" className="font-semibold text-foreground text-xs block text-left">Selling Price *</Label>
+                <Input
+                  id="qp-price"
+                  name="price"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  required
+                  className="rounded-xl h-10 text-xs w-full"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="qp-cost" className="font-semibold text-foreground text-xs block text-left">Cost Price *</Label>
+                <Input
+                  id="qp-cost"
+                  name="costPrice"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  required
+                  className="rounded-xl h-10 text-xs w-full"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="qp-stock" className="font-semibold text-foreground text-xs block text-left">Stock Qty *</Label>
+                <Input
+                  id="qp-stock"
+                  name="stock"
+                  type="number"
+                  defaultValue="10"
+                  required
+                  className="rounded-xl h-10 text-xs w-full"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="qp-unit" className="font-semibold text-foreground text-xs block text-left">Unit</Label>
+                <Select name="unit" defaultValue="Piece">
+                  <SelectTrigger className="rounded-xl h-10 text-xs w-full">
+                    <SelectValue placeholder="Select unit" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {['Piece', 'Kg', 'Gram', 'Liter', 'Milliliter', 'Meter', 'Box', 'Pack', 'Bottle', 'Pair', 'Set', 'Custom'].map((u) => (
+                      <SelectItem key={u} value={u}>
+                        {u}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="qp-desc" className="font-semibold text-foreground text-xs block text-left">Description</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleAIDescription}
+                  disabled={isGeneratingDescription}
+                  className="h-6 px-2 text-[10px] text-primary gap-1"
+                >
+                  {isGeneratingDescription ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                  AI Assist
+                </Button>
+              </div>
+              <Textarea
+                id="qp-desc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Product summary..."
+                className="rounded-xl min-h-[70px] text-xs w-full"
+              />
+            </div>
+
+            <DialogFooter className="pt-3">
+              <DialogClose asChild>
+                <Button type="button" variant="secondary" className="rounded-xl">Cancel</Button>
+              </DialogClose>
+              <Button type="submit" className="rounded-xl bg-primary text-primary-foreground">Save Product</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Duplicate Product Confirmation Modal */}
+      <Dialog open={showDuplicateDialog} onOpenChange={setShowDuplicateDialog}>
+        <DialogContent className="sm:max-w-lg ios-glass p-6 border-amber-500/30">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-amber-400">
+              <AlertTriangle className="w-5 h-5 text-amber-400" />
+              Duplicate Product Detected
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              A product matching <span className="font-bold text-foreground">"{duplicateProduct?.name}"</span> (SKU: <span className="font-mono text-emerald-400 font-bold">{duplicateProduct?.sku}</span>) already exists in your inventory.
+            </DialogDescription>
+          </DialogHeader>
+
+          {duplicateProduct && pendingProductData && (
+            <div className="space-y-3 py-2 text-xs">
+              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 space-y-2">
+                <div className="flex justify-between items-center text-foreground font-semibold">
+                  <span>Current Inventory Stock:</span>
+                  <span className="font-bold text-amber-400 text-sm">{duplicateProduct.stock} {duplicateProduct.unit}</span>
+                </div>
+                <div className="flex justify-between items-center text-muted-foreground">
+                  <span>New Qty to Add:</span>
+                  <span className="font-bold text-emerald-400 text-sm">+{pendingProductData.stock} {pendingProductData.unit}</span>
+                </div>
+                <div className="pt-1 border-t border-amber-500/20 flex justify-between items-center font-bold text-foreground">
+                  <span>Merged Total Stock:</span>
+                  <span className="text-emerald-400 text-sm">{duplicateProduct.stock + pendingProductData.stock} {duplicateProduct.unit}</span>
+                </div>
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                How would you like to handle this duplicate entry?
+              </p>
+            </div>
+          )}
+
+          <DialogFooter className="flex-col sm:flex-row gap-2 pt-2">
+            <Button variant="secondary" onClick={() => setShowDuplicateDialog(false)} className="rounded-xl text-xs">
+              Cancel
+            </Button>
+            <Button variant="outline" onClick={handleCreateSeparate} className="rounded-xl text-xs border-amber-500/30 text-amber-400 hover:bg-amber-500/10">
+              Create Separate Entry ({pendingProductData?.sku}-NEW)
+            </Button>
+            <Button onClick={handleMergeStock} className="rounded-xl text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold gap-1 shadow-md">
+              Merge & Update Stock (+{pendingProductData?.stock})
+            </Button>
           </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

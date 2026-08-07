@@ -52,6 +52,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
+import { OperationsSubNav } from '@/components/operations-sub-nav';
 
 export default function ReturnsPage() {
   const { returns, products, transactions, addReturn, deleteReturn, updateReturnStatus, isLoading } = useData();
@@ -271,6 +272,7 @@ export default function ReturnsPage() {
   return (
     <>
       <div className="flex flex-col gap-8">
+        <OperationsSubNav />
         {/* Header Section */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>

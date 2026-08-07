@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
@@ -29,15 +28,8 @@ import {
   PackagePlus,
   FileSpreadsheet,
   ShoppingBag,
-  Sparkle,
   ArrowRight,
   ArrowLeft,
-  CheckCircle2,
-  Layers,
-  Globe,
-  DollarSign,
-  Clock,
-  UserCheck,
   Zap,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -96,41 +88,36 @@ export function SmartOnboardingWizard() {
   // Form State
   const [businessName, setBusinessName] = useState(businessProfile?.businessName || '');
   const [businessType, setBusinessType] = useState<BusinessType>(businessProfile?.businessType || 'Retail');
-  const [industry, setIndustry] = useState(businessProfile?.industry || 'General Retail');
+  const [industry] = useState(businessProfile?.industry || 'General Retail');
   const [businessSize, setBusinessSize] = useState<BusinessSize>(businessProfile?.businessSize || '2-10 Employees');
   const [currency, setCurrency] = useState(businessProfile?.currency || 'INR (₹)');
-  const [timezone, setTimezone] = useState(businessProfile?.timezone || 'Asia/Kolkata (GMT+5:30)');
+  const [timezone] = useState(businessProfile?.timezone || 'Asia/Kolkata');
   const [country, setCountry] = useState(businessProfile?.country || 'India');
-  const [language, setLanguage] = useState(businessProfile?.language || 'English');
+  const [language] = useState(businessProfile?.language || 'English');
   const [logoUrl, setLogoUrl] = useState(businessProfile?.logoUrl || '');
 
-  // Auto update industry description when businessType changes
-  useEffect(() => {
-    if (INDUSTRY_CONFIGS[businessType]) {
-      setIndustry(INDUSTRY_CONFIGS[businessType].label);
+  const handleAutoSave = async () => {
+    try {
+      await updateBusinessProfile({
+        businessName: businessName || 'My Business',
+        businessType,
+        industry,
+        businessSize,
+        currency,
+        timezone,
+        country,
+        language,
+        logoUrl,
+      });
+    } catch (err) {
+      console.error(err);
     }
-  }, [businessType]);
-
-  // Auto-save form fields locally as user types
-  const handleAutoSave = () => {
-    updateBusinessProfile({
-      businessName: businessName || 'My Business',
-      businessType,
-      industry,
-      businessSize,
-      currency,
-      timezone,
-      country,
-      language,
-      logoUrl,
-      onboardingStep: step,
-    });
   };
 
-  const handleNextStep1 = async (e: React.FormEvent) => {
+  const handleNextStep1 = (e: React.FormEvent) => {
     e.preventDefault();
     if (!businessName.trim()) {
-      toast({ variant: 'destructive', title: 'Business Name Required', description: 'Please enter your business or store name.' });
+      toast({ variant: 'destructive', title: 'Business Name Required', description: 'Please enter your business name to continue.' });
       return;
     }
     handleAutoSave();
@@ -188,18 +175,18 @@ export function SmartOnboardingWizard() {
 
   return (
     <Dialog open={showOnboardingWizard} onOpenChange={setShowOnboardingWizard}>
-      <DialogContent className="sm:max-w-xl ios-glass rounded-3xl border border-primary/20 p-6 md:p-8 shadow-2xl overflow-hidden">
+      <DialogContent className="w-[95vw] sm:max-w-xl max-h-[85vh] overflow-y-auto ios-glass rounded-3xl border border-primary/20 p-5 sm:p-6 md:p-8 shadow-2xl">
         {/* Glow backdrop */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-96 h-48 bg-primary/10 rounded-full blur-3xl -z-10 pointer-events-none" />
 
         {/* Progress Header */}
-        <div className="flex items-center justify-between border-b border-border/40 pb-4 mb-4">
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-primary/10 text-primary border border-primary/20">
+        <div className="flex items-center justify-between border-b border-border/40 pb-3.5 mb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-primary/15 text-primary border border-primary/25">
               <Building2 className="w-5 h-5" />
             </div>
             <div>
-              <DialogTitle className="text-lg font-bold tracking-tight">
+              <DialogTitle className="text-base sm:text-lg font-bold tracking-tight">
                 {step === 1 ? 'Smart Business Setup' : 'Choose Inventory Setup Method'}
               </DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground">
@@ -208,7 +195,7 @@ export function SmartOnboardingWizard() {
             </div>
           </div>
 
-          <Badge variant="outline" className="bg-secondary/60 text-xs px-3 py-1 font-medium">
+          <Badge variant="outline" className="bg-primary/15 text-primary border-primary/30 text-xs px-3 py-1 font-bold">
             Step {step} / 2
           </Badge>
         </div>
@@ -223,9 +210,7 @@ export function SmartOnboardingWizard() {
                   id="biz-name"
                   placeholder="e.g. Apex Apparel & Accessories"
                   value={businessName}
-                  onChange={(e) => {
-                    setBusinessName(e.target.value);
-                  }}
+                  onChange={(e) => setBusinessName(e.target.value)}
                   onBlur={handleAutoSave}
                   className="rounded-xl text-sm"
                   required
@@ -329,22 +314,22 @@ export function SmartOnboardingWizard() {
             </div>
 
             {/* Industry AI Intelligence Info Box */}
-            <div className="p-3 rounded-2xl bg-primary/5 border border-primary/15 flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-primary/10 text-primary shrink-0">
-                <Sparkles className="w-4 h-4" />
+            <div className="p-3.5 rounded-2xl bg-primary/10 border border-primary/25 flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-primary/15 text-primary shrink-0 border border-primary/20">
+                <Sparkles className="w-4 h-4 text-primary animate-pulse" />
               </div>
               <div className="text-xs">
-                <p className="font-semibold text-primary">Tailored AI Insights Active</p>
-                <p className="text-muted-foreground">{INDUSTRY_CONFIGS[businessType]?.aiPriority}</p>
+                <p className="font-bold text-primary">Tailored AI Insights Active</p>
+                <p className="text-muted-foreground leading-relaxed mt-0.5">{INDUSTRY_CONFIGS[businessType]?.aiPriority}</p>
               </div>
             </div>
 
             {/* Footer Buttons */}
-            <div className="flex items-center justify-between pt-2">
-              <Button type="button" variant="ghost" onClick={handleSkip} className="rounded-xl text-xs text-muted-foreground">
+            <div className="flex items-center justify-between pt-2 border-t border-border/40 mt-3">
+              <Button type="button" variant="ghost" onClick={handleSkip} className="rounded-xl text-xs text-muted-foreground hover:text-foreground">
                 Skip for now
               </Button>
-              <Button type="submit" className="rounded-xl text-xs gap-1.5 bg-primary text-primary-foreground shadow-md">
+              <Button type="submit" className="rounded-xl text-xs gap-1.5 bg-primary text-primary-foreground shadow-md font-bold px-5 h-10">
                 Next: Inventory Setup
                 <ArrowRight className="w-3.5 h-3.5" />
               </Button>
@@ -352,99 +337,89 @@ export function SmartOnboardingWizard() {
           </form>
         ) : (
           <div className="space-y-4">
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground leading-relaxed">
               Select how you want to initialize your products. You can always import or create more products anytime.
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {/* Option 1: Manual Entry */}
-              <button
-                type="button"
+              <div
                 onClick={() => handleSelectSetupMethod('manual')}
-                disabled={loading}
-                className="p-4 rounded-2xl bg-secondary/40 hover:bg-secondary/80 border border-border/50 text-left transition-all hover:scale-[1.02] flex flex-col justify-between space-y-3 group"
+                className="p-4 rounded-2xl bg-secondary/40 border border-border/50 hover:border-primary/40 transition-all cursor-pointer space-y-2 flex flex-col justify-between"
               >
-                <div className="flex items-center justify-between w-full">
-                  <div className="p-2.5 rounded-xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-                    <PackagePlus className="w-5 h-5" />
-                  </div>
-                  <Badge variant="outline" className="text-[10px] text-muted-foreground">Startup / &lt;100 SKUs</Badge>
+                <div className="flex items-center justify-between">
+                  <PackagePlus className="w-5 h-5 text-primary" />
+                  <Badge variant="outline" className="text-[10px] text-primary border-primary/30 font-semibold">Manual</Badge>
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-foreground">Manual Entry</h4>
-                  <p className="text-xs text-muted-foreground mt-0.5">Add products step-by-step with enhanced SKU, unit & supplier fields.</p>
+                  <h4 className="text-sm font-bold text-foreground">Create Single Product</h4>
+                  <p className="text-xs text-muted-foreground mt-1">Add your products one-by-one with price, cost, and stock parameters.</p>
                 </div>
-              </button>
+              </div>
 
-              {/* Option 2: Excel / CSV Import */}
-              <button
-                type="button"
+              {/* Option 2: CSV / Excel Import */}
+              <div
                 onClick={() => handleSelectSetupMethod('csv')}
-                disabled={loading}
-                className="p-4 rounded-2xl bg-secondary/40 hover:bg-secondary/80 border border-border/50 text-left transition-all hover:scale-[1.02] flex flex-col justify-between space-y-3 group"
+                className="p-4 rounded-2xl bg-secondary/40 border border-border/50 hover:border-primary/40 transition-all cursor-pointer space-y-2 flex flex-col justify-between"
               >
-                <div className="flex items-center justify-between w-full">
-                  <div className="p-2.5 rounded-xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-                    <FileSpreadsheet className="w-5 h-5" />
-                  </div>
-                  <Badge variant="outline" className="text-[10px] text-primary border-primary/30">Most Popular</Badge>
+                <div className="flex items-center justify-between">
+                  <FileSpreadsheet className="w-5 h-5 text-primary" />
+                  <Badge variant="outline" className="text-[10px] text-primary border-primary/30 font-semibold">Bulk</Badge>
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-foreground">Import CSV / Excel</h4>
-                  <p className="text-xs text-muted-foreground mt-0.5">Download our official template & bulk import products in seconds.</p>
+                  <h4 className="text-sm font-bold text-foreground">Bulk CSV / Excel Import</h4>
+                  <p className="text-xs text-muted-foreground mt-1">Upload your existing spreadsheet to automatically map catalog fields.</p>
                 </div>
-              </button>
+              </div>
 
-              {/* Option 3: Shopify Connection */}
-              <button
-                type="button"
+              {/* Option 3: Shopify Sync */}
+              <div
                 onClick={() => handleSelectSetupMethod('shopify')}
-                disabled={loading}
-                className="p-4 rounded-2xl bg-secondary/40 hover:bg-secondary/80 border border-border/50 text-left transition-all hover:scale-[1.02] flex flex-col justify-between space-y-3 group"
+                className="p-4 rounded-2xl bg-secondary/40 border border-border/50 hover:border-primary/40 transition-all cursor-pointer space-y-2 flex flex-col justify-between"
               >
-                <div className="flex items-center justify-between w-full">
-                  <div className="p-2.5 rounded-xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-                    <ShoppingBag className="w-5 h-5" />
-                  </div>
-                  <Badge variant="outline" className="text-[10px] text-primary border-primary/30">Shopify Sync</Badge>
+                <div className="flex items-center justify-between">
+                  <ShoppingBag className="w-5 h-5 text-primary" />
+                  <Badge variant="outline" className="text-[10px] text-primary border-primary/30 font-semibold">Shopify</Badge>
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-foreground">Connect Shopify</h4>
-                  <p className="text-xs text-muted-foreground mt-0.5">Automatically sync products, orders, categories & live stock levels.</p>
+                  <h4 className="text-sm font-bold text-foreground">Connect Shopify Store</h4>
+                  <p className="text-xs text-muted-foreground mt-1">Sync products & inventory levels live from your e-commerce storefront.</p>
                 </div>
-              </button>
+              </div>
 
               {/* Option 4: Explore Demo Business */}
-              <button
-                type="button"
+              <div
                 onClick={() => handleSelectSetupMethod('demo')}
-                disabled={loading}
-                className="p-4 rounded-2xl bg-gradient-to-br from-primary/20 via-accent/15 to-primary/10 hover:brightness-110 border border-primary/30 text-left transition-all hover:scale-[1.02] flex flex-col justify-between space-y-3 group shadow-md"
+                className="p-4 rounded-2xl bg-primary/10 border border-primary/30 hover:border-primary/50 transition-all cursor-pointer space-y-2 flex flex-col justify-between"
               >
-                <div className="flex items-center justify-between w-full">
-                  <div className="p-2.5 rounded-xl bg-primary text-primary-foreground shadow-sm">
-                    <Zap className="w-5 h-5" />
-                  </div>
-                  <Badge className="bg-primary text-primary-foreground text-[10px]">Instant Evaluation</Badge>
+                <div className="flex items-center justify-between">
+                  <Zap className="w-5 h-5 text-primary" />
+                  <Badge className="bg-primary/20 text-primary border border-primary/30 text-[10px] font-bold">1-Click Demo</Badge>
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-foreground flex items-center gap-1">
-                    Explore Demo Business
-                    <Sparkles className="w-3.5 h-3.5 text-primary" />
-                  </h4>
-                  <p className="text-xs text-muted-foreground mt-0.5">Pre-load 200+ realistic products, 15+ suppliers & 500+ orders to test AI features.</p>
+                  <h4 className="text-sm font-bold text-foreground">Load Demo Business Data</h4>
+                  <p className="text-xs text-muted-foreground mt-1">Pre-load 200+ products, suppliers & sales orders to test AI diagnostics.</p>
                 </div>
-              </button>
+              </div>
             </div>
 
-            {/* Back & Skip Actions */}
-            <div className="flex items-center justify-between pt-3 border-t border-border/40">
-              <Button type="button" variant="outline" onClick={() => setStep(1)} className="rounded-xl text-xs gap-1">
+            {/* Footer Buttons */}
+            <div className="flex items-center justify-between pt-2 border-t border-border/40 mt-3">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setStep(1)}
+                className="rounded-xl text-xs gap-1.5 text-muted-foreground"
+              >
                 <ArrowLeft className="w-3.5 h-3.5" />
-                Back to Profile
+                Back to Business Setup
               </Button>
-              <Button type="button" variant="ghost" onClick={handleSkip} className="rounded-xl text-xs text-muted-foreground">
-                Explore Empty Workspace
+              <Button
+                type="button"
+                onClick={handleSkip}
+                className="rounded-xl text-xs bg-secondary hover:bg-secondary/80 text-foreground font-semibold"
+              >
+                Skip & Open Dashboard
               </Button>
             </div>
           </div>

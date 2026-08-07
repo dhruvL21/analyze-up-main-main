@@ -122,24 +122,18 @@ export function ProductIntelligenceDrawer({ product, open, onOpenChange }: Produ
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto ios-glass p-6 space-y-4">
         <DialogHeader className="p-0 pb-3 border-b border-border/40">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <span className="w-10 h-10 rounded-2xl bg-primary text-primary-foreground font-black text-lg flex items-center justify-center shadow-md">
-                {report.performanceGrade}
-              </span>
-              <div>
-                <DialogTitle className="text-lg font-extrabold text-foreground leading-tight">
-                  {product.name}
-                </DialogTitle>
-                <DialogDescription className="text-xs font-mono">
-                  SKU: {product.sku || 'N/A'} • {product.category || 'General Category'} • {product.brand || 'Brand'}
-                </DialogDescription>
-              </div>
+          <div className="flex items-center gap-2.5">
+            <span className="w-10 h-10 rounded-2xl bg-primary text-primary-foreground font-black text-lg flex items-center justify-center shadow-md shrink-0">
+              {report.performanceGrade}
+            </span>
+            <div>
+              <DialogTitle className="text-lg font-extrabold text-foreground leading-tight">
+                {product.name}
+              </DialogTitle>
+              <DialogDescription className="text-xs font-mono">
+                SKU: {product.sku || 'N/A'} • {product.category || 'General Category'} • {product.brand || 'Brand'}
+              </DialogDescription>
             </div>
-
-            <Badge className={`${report.badgeClass} text-xs px-3 py-1 font-semibold`}>
-              {report.healthStatus}
-            </Badge>
           </div>
         </DialogHeader>
 
@@ -172,7 +166,7 @@ export function ProductIntelligenceDrawer({ product, open, onOpenChange }: Produ
 
           <div className="p-3 rounded-2xl bg-secondary/40 border border-border/40 space-y-0.5">
             <span className="text-[10px] text-muted-foreground font-medium block">Profit Margin</span>
-            <p className="text-lg font-bold text-emerald-400">{report.profitMarginPercent}%</p>
+            <p className={`text-lg font-bold ${report.profitMarginPercent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{report.profitMarginPercent}%</p>
           </div>
         </div>
 

@@ -74,14 +74,14 @@ export function ShopifyConnectModal() {
 
   return (
     <Dialog open={showShopifyModal} onOpenChange={setShowShopifyModal}>
-      <DialogContent className="sm:max-w-md ios-glass rounded-2xl border border-border/50">
-        <DialogHeader>
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2.5 rounded-xl bg-primary/10 text-primary border border-primary/20">
+      <DialogContent className="w-[95vw] sm:max-w-md max-h-[90vh] overflow-y-auto ios-glass rounded-3xl border border-border/50 p-6 shadow-2xl">
+        <DialogHeader className="text-left pb-1">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-primary/10 text-primary border border-primary/20 shrink-0">
               <ShoppingBag className="w-6 h-6" />
             </div>
             <div>
-              <DialogTitle className="text-xl font-semibold">Connect Shopify Store</DialogTitle>
+              <DialogTitle className="text-lg font-bold text-foreground">Connect Shopify Store</DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground">
                 Sync catalog, live stock levels, sales orders & variants automatically.
               </DialogDescription>
@@ -89,38 +89,38 @@ export function ShopifyConnectModal() {
           </div>
         </DialogHeader>
 
-        <form onSubmit={handleConnect} className="space-y-4 py-2">
+        <form onSubmit={handleConnect} className="space-y-4 pt-1">
           <div className="flex items-center justify-between p-3 rounded-xl bg-secondary/50 border border-border/40">
             <span className="text-xs font-medium text-muted-foreground">Integration Status</span>
             {getStatusBadge(currentStatus)}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="store-url" className="text-xs font-medium">Shopify Store URL</Label>
+          <div className="space-y-1.5 text-left">
+            <Label htmlFor="store-url" className="text-xs font-semibold text-foreground">Shopify Store URL</Label>
             <div className="relative">
               <Input
                 id="store-url"
                 placeholder="my-brand-store.myshopify.com"
                 value={storeUrl}
                 onChange={(e) => setStoreUrl(e.target.value)}
-                className="pl-9 text-sm rounded-xl"
+                className="pl-9 text-xs rounded-xl h-10 bg-secondary/30 border-border/50 focus:border-primary/50"
               />
               <Store className="w-4 h-4 text-muted-foreground absolute left-3 top-3" />
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="store-name" className="text-xs font-medium">Store Display Name (Optional)</Label>
+          <div className="space-y-1.5 text-left">
+            <Label htmlFor="store-name" className="text-xs font-semibold text-foreground">Store Display Name (Optional)</Label>
             <Input
               id="store-name"
               placeholder="My Apparel Brand"
               value={storeName}
               onChange={(e) => setStoreName(e.target.value)}
-              className="text-sm rounded-xl"
+              className="text-xs rounded-xl h-10 bg-secondary/30 border-border/50 focus:border-primary/50"
             />
           </div>
 
-          <div className="p-3 rounded-xl bg-primary/5 border border-primary/10 text-xs space-y-2">
+          <div className="p-3 rounded-2xl bg-primary/5 border border-primary/15 text-xs space-y-2">
             <div className="flex items-center gap-1.5 font-semibold text-primary">
               <Sparkles className="w-3.5 h-3.5" /> What gets imported automatically?
             </div>
@@ -134,19 +134,19 @@ export function ShopifyConnectModal() {
             </ul>
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0 pt-2">
+          <DialogFooter className="flex flex-row items-center justify-end gap-2.5 pt-3 border-t border-border/30">
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               onClick={() => setShowShopifyModal(false)}
-              className="rounded-xl text-xs"
+              className="rounded-xl text-xs px-4 h-9 border border-border/40 hover:bg-secondary"
             >
               Cancel
             </Button>
             <Button
               type="submit"
               disabled={isConnecting}
-              className="rounded-xl text-xs gap-1.5 bg-primary text-primary-foreground shadow-md hover:brightness-110"
+              className="rounded-xl text-xs h-9 px-5 font-bold gap-1.5 bg-primary text-primary-foreground shadow-md hover:brightness-110 shrink-0"
             >
               {isConnecting ? (
                 <>

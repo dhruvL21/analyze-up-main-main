@@ -104,26 +104,34 @@ export function DataVisualizer() {
   }, [transactions, products, categories, metric, chartType, isLoading]);
 
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("revealed");
-            observer.unobserve(entry.target);
-          }
-        });
-      },
-      {
-        root: null,
-        threshold: 0.1,
-        rootMargin: "0px 0px -10% 0px"
-      }
-    );
+    const timer = setTimeout(() => {
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add('revealed');
+              observer.unobserve(entry.target);
+            }
+          });
+        },
+        {
+          root: null,
+          threshold: 0.05,
+        }
+      );
 
-    const items = document.querySelectorAll(".scroll-reveal-item");
-    items.forEach(el => observer.observe(el));
+      const items = document.querySelectorAll('.scroll-reveal-item');
+      items.forEach((el) => {
+        const rect = el.getBoundingClientRect();
+        if (rect.top < window.innerHeight + 100 && rect.bottom > -100) {
+          el.classList.add('revealed');
+        } else {
+          observer.observe(el);
+        }
+      });
+    }, 50);
 
-    return () => items.forEach(el => observer.unobserve(el));
+    return () => clearTimeout(timer);
   }, [data]); // Re-observe when data changes
 
   const handleExport = useCallback(async (action: 'download' | 'share') => {
@@ -307,16 +315,33 @@ export function DataVisualizer() {
         const filename = `AnalyzeUp-${metric}-Report.pdf`;
         const file = new File([pdfBlob], filename, { type: 'application/pdf' });
         
+        let shareHandled = false;
         if (canShare && (navigator as any).canShare && (navigator as any).canShare({ files: [file] })) {
-          await (navigator as any).share({
-            files: [file],
-            title: 'AnalyzeUp Report',
-            text: `Here is the generated ${metric} report from AnalyzeUp.`,
-          });
-        } else {
-          // Fallback for browsers that don't support file sharing or HTTP context
-          const blobUrl = URL.createObjectURL(pdfBlob);
-          window.open(blobUrl, '_blank');
+          try {
+            await (navigator as any).share({
+              files: [file],
+              title: 'AnalyzeUp Report',
+              text: `Here is the generated ${metric} report from AnalyzeUp.`,
+            });
+            shareHandled = true;
+          } catch (shareErr: any) {
+            if (shareErr?.name === 'AbortError') {
+              // User cancelled the share sheet explicitly
+              shareHandled = true;
+            } else {
+              console.warn('Web Share API failed (e.g., lost user gesture), falling back:', shareErr);
+            }
+          }
+        }
+        
+        if (!shareHandled) {
+          // Fallback for browsers where Web Share fails or is unsupported
+          if (isMobile) {
+            const blobUrl = URL.createObjectURL(pdfBlob);
+            window.open(blobUrl, '_blank');
+          } else {
+            pdf.save(filename);
+          }
         }
       } else {
         // On mobile, pdf.save() is often blocked or fails. Open in new tab instead to view/save/share natively.

@@ -3,7 +3,8 @@
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { useRouter, usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { computeBusinessHealth } from '@/lib/command-center-engine';
 import { LogOut, Settings, Menu, Sun, Moon, X, LayoutDashboard, Boxes, ShoppingCart, Truck, BarChart3, Sparkles, Activity, RefreshCw, Compass } from 'lucide-react';
 import {
   Tooltip,
@@ -35,8 +36,7 @@ const mobileNavItems = [
   { href: '/dashboard/orders', label: 'Order', icon: ShoppingCart },
   { href: '/dashboard/suppliers', label: 'Suppliers', icon: Truck },
   { href: '/dashboard/ai-advisor', label: 'AI Advisor', icon: Sparkles },
-  { href: '/dashboard/insights', label: 'Insights', icon: BarChart3 },
-  { href: '/dashboard/business-health', label: 'Business Health', icon: Activity },
+  { href: '/dashboard/insights', label: 'Insights & Health', icon: BarChart3 },
 ];
 
 const containerVariants = {
@@ -71,7 +71,26 @@ export function Header() {
   const auth = useAuth();
   const { theme, setTheme } = useTheme();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { isLimitExceeded, activePlan, setShowSubscriptionModal, setIsTourOpen } = useData();
+  const { products, transactions, suppliers, returns, isLimitExceeded, activePlan, setShowSubscriptionModal, setIsTourOpen } = useData();
+  const [healthTick, setHealthTick] = useState(0);
+
+  useEffect(() => {
+    const handleUpdate = () => setHealthTick(t => t + 1);
+    window.addEventListener('analyzeup_audit_logged', handleUpdate);
+    window.addEventListener('analyzeup_tasks_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('analyzeup_audit_logged', handleUpdate);
+      window.removeEventListener('analyzeup_tasks_updated', handleUpdate);
+    };
+  }, []);
+
+  const healthSummary = useMemo(() => {
+    return computeBusinessHealth(products, transactions, suppliers, returns);
+  }, [products, transactions, suppliers, returns, healthTick]);
+
+  const healthLogoColor = useMemo(() => {
+    return healthSummary.color;
+  }, [healthSummary.color]);
 
   const handleLogout = async () => {
     if (auth) {
@@ -84,8 +103,8 @@ export function Header() {
   return (
     <header className="sticky top-0 z-20 flex h-16 w-full items-center justify-between gap-2 px-4 lg:px-6 navbar">
       <div className="flex flex-shrink-0 items-center gap-2 font-semibold">
-        <Link href="/dashboard" data-tour="header-logo" className="flex items-center gap-2">
-          <AnalyzeUpIcon className="h-6 w-6 text-primary" />
+        <Link href="/dashboard" data-tour="header-logo" className="flex items-center gap-2 group">
+          <AnalyzeUpIcon className="h-6 w-6 transition-transform duration-300 group-hover:scale-110" healthColor={healthLogoColor} />
           <span className="text-xl font-semibold">AnalyzeUp</span>
         </Link>
       </div>

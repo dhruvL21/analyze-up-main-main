@@ -52,40 +52,37 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6 pb-8">
-      {/* Top Header & Quick Actions Bar */}
-      <div className="space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-extrabold tracking-tight md:text-3xl flex items-center gap-2 text-foreground">
-              AI Command Center
-              <Badge className="bg-primary/15 text-primary border-primary/30 text-xs px-2.5 py-0.5">
-                {industry.label}
-              </Badge>
-            </h1>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Welcome back, <span className="font-semibold text-foreground">{businessProfile?.businessName || 'Founder'}</span>. Here is your 5-minute morning decision briefing.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-xs gap-1 bg-secondary/50 px-3 py-1 font-mono">
-              <Zap className="w-3.5 h-3.5 text-amber-500" />
-              Focus Mode Active
+      {/* Top Welcome Title */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-extrabold tracking-tight md:text-3xl flex items-center gap-2 text-foreground">
+            AI Business Copilot
+            <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 text-xs px-2.5 py-0.5 font-bold">
+              {industry.label}
             </Badge>
-          </div>
+          </h1>
+          <p className="text-xs md:text-sm text-muted-foreground mt-1 font-medium">
+            Welcome back, <span className="font-semibold text-foreground">{businessProfile?.businessName || 'Founder'}</span> — Know what&apos;s happening. Decide what matters.
+          </p>
         </div>
-
-        {/* FEATURE 14: Quick Actions Bar */}
-        <QuickActionsBar />
       </div>
 
-      {/* FEATURE 1 & 2: Business Health Score & AI Morning Briefing */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <AIBrief />
-        </div>
-        <div>
-          <BusinessHealthCard />
+      {/* SINGLE UNIFIED EXECUTIVE COMMAND CONTAINER */}
+      <div className="p-5 md:p-6 rounded-3xl ios-glass border border-emerald-500/20 shadow-2xl space-y-6">
+        {/* Top Options / Quick Actions Bar */}
+        <QuickActionsBar />
+
+        {/* Subtle Separator */}
+        <div className="border-t border-border/40" />
+
+        {/* Today's AI Brief & Business Health Score Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+          <div className="lg:col-span-7">
+            <AIBrief />
+          </div>
+          <div className="lg:col-span-5">
+            <BusinessHealthCard />
+          </div>
         </div>
       </div>
 
@@ -96,11 +93,11 @@ export default function DashboardPage() {
       <ExecutiveKPIGrid />
 
       {/* FEATURE 5 & 12: Business Priorities & Industry Personalization */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+        <div className="lg:col-span-2 flex flex-col">
           <RevenueProfitIntelligence />
         </div>
-        <div>
+        <div className="flex flex-col">
           <BusinessPrioritiesCard />
         </div>
       </div>
@@ -109,11 +106,11 @@ export default function DashboardPage() {
       <InventoryRiskOpportunities />
 
       {/* FEATURE 6 & 11: Inventory Quality Snapshot & Activity Timeline */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+        <div className="lg:col-span-2 flex flex-col">
           <InventoryQualitySnapshot />
         </div>
-        <div>
+        <div className="flex flex-col">
           <BusinessActivityTimeline />
         </div>
       </div>

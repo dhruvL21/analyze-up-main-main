@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
-import { PackageX, Tag, ArrowRight, Check } from 'lucide-react';
+import { PackageX, Tag, Check } from 'lucide-react';
 
 interface DeadStockModalProps {
   open: boolean;
@@ -47,58 +47,58 @@ export function DeadStockModal({ open, onOpenChange }: DeadStockModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto ios-glass p-6">
+      <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto ios-glass p-6 md:p-8">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg font-bold text-destructive">
-            <PackageX className="w-5 h-5 text-destructive" />
+          <DialogTitle className="flex items-center gap-2.5 text-xl font-bold text-destructive">
+            <PackageX className="w-6 h-6 text-destructive" />
             Dead Stock & Locked Capital Inspector
           </DialogTitle>
-          <DialogDescription className="text-xs">
+          <DialogDescription className="text-sm text-muted-foreground mt-1">
             Identify stagnant inventory items with zero customer sales and clear locked working capital.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-2 text-xs">
+        <div className="space-y-5 py-3 text-sm">
           {/* Summary Box */}
-          <div className="p-4 rounded-2xl bg-destructive/10 border border-destructive/20 flex items-center justify-between">
+          <div className="p-5 rounded-2xl bg-destructive/10 border border-destructive/20 flex items-center justify-between">
             <div>
-              <span className="text-[11px] font-semibold text-destructive uppercase tracking-wider block">Locked Working Capital</span>
-              <span className="text-2xl font-bold text-foreground">{currencySymbol}{Math.round(totalDeadCapital).toLocaleString('en-IN')}</span>
+              <span className="text-xs font-bold text-destructive uppercase tracking-wider block">Locked Working Capital</span>
+              <span className="text-3xl font-extrabold text-foreground font-mono">{currencySymbol}{Math.round(totalDeadCapital).toLocaleString('en-IN')}</span>
             </div>
-            <Badge className="bg-destructive text-destructive-foreground text-xs px-3 py-1 font-semibold">
+            <Badge className="bg-destructive text-destructive-foreground text-sm px-4 py-1.5 font-bold">
               {deadStockItems.length} Stagnant SKUs
             </Badge>
           </div>
 
           {/* List of items */}
           {deadStockItems.length === 0 ? (
-            <div className="p-6 text-center rounded-2xl bg-secondary/30 border border-border/40 space-y-1">
-              <Check className="w-6 h-6 text-primary mx-auto" />
-              <p className="font-semibold text-foreground">No Dead Stock Detected!</p>
-              <p className="text-muted-foreground text-xs">All products in your inventory have active customer sales history.</p>
+            <div className="p-8 text-center rounded-2xl bg-secondary/30 border border-border/40 space-y-2">
+              <Check className="w-8 h-8 text-emerald-400 mx-auto" />
+              <p className="font-bold text-base text-foreground">No Dead Stock Detected!</p>
+              <p className="text-muted-foreground text-sm">All products in your inventory have active customer sales history.</p>
             </div>
           ) : (
-            <div className="divide-y divide-border/40 rounded-2xl border border-border/40 overflow-hidden bg-secondary/20 max-h-[320px] overflow-y-auto">
+            <div className="divide-y divide-border/40 rounded-2xl border border-border/40 overflow-hidden bg-secondary/20 max-h-[400px] overflow-y-auto">
               {deadStockItems.map((item) => {
                 const tied = item.stock * (item.costPrice || item.price * 0.6);
                 return (
-                  <div key={item.id} className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-secondary/40 transition-colors">
-                    <div className="space-y-0.5">
-                      <p className="font-bold text-foreground">{item.name}</p>
-                      <p className="text-[11px] text-muted-foreground font-mono">
+                  <div key={item.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-secondary/40 transition-colors">
+                    <div className="space-y-1">
+                      <p className="font-bold text-base text-foreground">{item.name}</p>
+                      <p className="text-xs text-muted-foreground font-mono font-medium">
                         SKU: {item.sku || 'N/A'} • Stock: {item.stock} {item.unit || 'units'} • Price: {currencySymbol}{item.price}
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="font-semibold text-destructive text-xs pr-2">{currencySymbol}{Math.round(tied).toLocaleString('en-IN')} tied</span>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="font-bold text-destructive text-sm pr-1">{currencySymbol}{Math.round(tied).toLocaleString('en-IN')} tied</span>
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => handleApplyDiscount(item, 20)}
-                        className="rounded-xl text-xs gap-1 h-7 border-primary/30 text-primary hover:bg-primary/10"
+                        className="rounded-xl text-xs gap-1.5 h-8 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 font-semibold px-3"
                       >
-                        <Tag className="w-3 h-3" />
+                        <Tag className="w-3.5 h-3.5" />
                         Apply 20% Off
                       </Button>
                     </div>
@@ -111,7 +111,7 @@ export function DeadStockModal({ open, onOpenChange }: DeadStockModalProps) {
 
         <DialogFooter className="pt-2">
           <DialogClose asChild>
-            <Button variant="secondary" className="rounded-xl">Close</Button>
+            <Button variant="secondary" className="rounded-xl px-5 text-sm font-semibold">Close</Button>
           </DialogClose>
         </DialogFooter>
       </DialogContent>

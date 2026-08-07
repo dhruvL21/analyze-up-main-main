@@ -50,70 +50,72 @@ export interface ProductIntelligenceReport {
 // 1. Calculate Full Product Intelligence Report
 export function computeProductIntelligence(
   product: Product,
-  allTransactions: Transaction[],
+  allTransactions: Transaction[] = [],
   allReturns: ProductReturn[] = [],
   allSuppliers: Supplier[] = []
 ): ProductIntelligenceReport {
+  const productName = product?.name || product?.productName || product?.title || 'Selected Product';
+  const stock = product?.stock !== undefined && !isNaN(product.stock) ? product.stock : 0;
+
   const pTx = allTransactions.filter(
-    t => t.type === 'Sale' && (t.productId === product.id || t.sku === product.sku || t.productName === product.name)
+    t => t.type === 'Sale' && (t.productId === product?.id || t.sku === product?.sku || (t.productName && product?.name && t.productName.toLowerCase() === product.name.toLowerCase()))
   );
 
   const totalSoldQty = pTx.reduce((sum, t) => sum + (t.quantity || 0), 0);
-  const totalRevenue = pTx.reduce((sum, t) => sum + (t.totalRevenue || (t.quantity * (t.price || 0))), 0);
-  
-  const costPrice = product.costPrice && product.costPrice > 0 ? product.costPrice : (product.price ? product.price * 0.6 : 100);
-  const sellingPrice = product.price && product.price > 0 ? product.price : costPrice * 1.5;
+
+  const costPrice = product?.costPrice && product.costPrice > 0 ? product.costPrice : (product?.price ? product.price * 0.6 : 100);
+  const sellingPrice = product?.price && product.price > 0 ? product.price : (costPrice ? costPrice * 1.5 : 150);
   const unitProfit = sellingPrice - costPrice;
   const profitMarginPercent = sellingPrice > 0 ? Math.round((unitProfit / sellingPrice) * 100) : 35;
 
   // Daily Sales Velocity
-  const dailySales = product.averageDailySales && product.averageDailySales > 0
+  const dailySales = product?.averageDailySales && product.averageDailySales > 0
     ? product.averageDailySales
     : (totalSoldQty > 0 ? Math.max(0.2, totalSoldQty / 30) : 0);
 
   // Days of Stock Remaining
-  const daysOfStockRemaining = dailySales > 0 ? Math.round(product.stock / dailySales) : (product.stock > 0 ? 999 : 0);
+  const daysOfStockRemaining = dailySales > 0 ? Math.round(stock / dailySales) : (stock > 0 ? 999 : 0);
 
   // Determine Health Status
   let healthStatus: ProductHealthStatus = 'Healthy';
   let healthColor = '#a07e50';
-  let badgeClass = 'bg-primary/15 text-primary border-primary/30';
+  let badgeClass = 'bg-primary/20 text-primary border border-primary/40 font-bold shadow-sm';
   const hasSalesHistory = totalSoldQty > 0;
 
-  if (product.stock === 0) {
+  if (stock === 0) {
     healthStatus = 'Out of Stock';
     healthColor = '#ef4444';
-    badgeClass = 'bg-rose-500/15 text-rose-400 border-rose-500/30';
-  } else if (product.stock <= (product.minStock || 5)) {
+    badgeClass = 'bg-rose-500/20 text-rose-400 border border-rose-500/40 font-bold shadow-sm';
+  } else if (stock <= (product?.minStock || 5)) {
     healthStatus = 'Low Stock';
     healthColor = '#f59e0b';
-    badgeClass = 'bg-amber-500/15 text-amber-400 border-amber-500/30';
+    badgeClass = 'bg-amber-500/20 text-amber-400 border border-amber-500/40 font-bold shadow-sm';
   } else if (!hasSalesHistory) {
     healthStatus = 'Dead Stock';
-    healthColor = '#64748b';
-    badgeClass = 'bg-slate-500/15 text-slate-300 border-slate-500/30';
-  } else if (product.stock >= (product.maxStock || 100)) {
+    healthColor = '#94a3b8';
+    badgeClass = 'bg-slate-400/20 text-slate-200 border border-slate-400/40 font-bold shadow-sm';
+  } else if (stock >= (product?.maxStock || 100)) {
     healthStatus = 'Overstocked';
     healthColor = '#3b82f6';
-    badgeClass = 'bg-blue-500/15 text-blue-400 border-blue-500/30';
+    badgeClass = 'bg-blue-500/20 text-blue-300 border border-blue-500/40 font-bold shadow-sm';
   } else if (dailySales >= 2.0) {
     healthStatus = 'Fast Moving';
-    healthColor = '#10b981';
-    badgeClass = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
+    healthColor = '#a07e50';
+    badgeClass = 'bg-primary/20 text-primary border border-primary/40 font-bold shadow-sm';
   } else if (dailySales >= 1.0) {
     healthStatus = 'Trending';
-    healthColor = '#10b981';
-    badgeClass = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
+    healthColor = '#a07e50';
+    badgeClass = 'bg-primary/20 text-primary border border-primary/40 font-bold shadow-sm';
   } else if (dailySales < 0.3 && totalSoldQty > 0) {
     healthStatus = 'Slow Moving';
-    healthColor = '#64748b';
-    badgeClass = 'bg-slate-500/15 text-slate-400 border-slate-500/30';
+    healthColor = '#94a3b8';
+    badgeClass = 'bg-slate-400/20 text-slate-200 border border-slate-400/40 font-bold shadow-sm';
   }
 
   // Calculate Performance Score (0 - 100) & Grade
   const salesScore = Math.min(40, totalSoldQty * 2);
   const marginScore = Math.min(30, (profitMarginPercent / 50) * 30);
-  const availabilityScore = product.stock > 0 ? 20 : 0;
+  const availabilityScore = stock > 0 ? 20 : 0;
   const turnoverScore = dailySales > 0.5 ? 10 : 5;
 
   const performanceScore = Math.min(100, Math.round(salesScore + marginScore + availabilityScore + turnoverScore));
@@ -143,12 +145,12 @@ export function computeProductIntelligence(
   // Risk Assessment
   let riskLevel: ProductIntelligenceReport['riskLevel'] = 'Low';
   let riskReason = 'Operations stable with healthy inventory runway.';
-  if (product.stock === 0) {
+  if (stock === 0) {
     riskLevel = 'Critical';
     riskReason = 'Out of stock! Customers cannot purchase this item.';
-  } else if (product.stock <= (product.minStock || 5)) {
+  } else if (stock <= (product?.minStock || 5)) {
     riskLevel = 'High';
-    riskReason = `Stock level (${product.stock}) is below alert threshold (${product.minStock || 5}). Imminent stockout risk.`;
+    riskReason = `Stock level (${stock}) is below alert threshold (${product?.minStock || 5}). Imminent stockout risk.`;
   } else if (healthStatus === 'Dead Stock') {
     riskLevel = 'Medium';
     riskReason = 'Capital lockup! Item has zero sales velocity and is occupying shelf space.';
@@ -158,17 +160,17 @@ export function computeProductIntelligence(
   }
 
   // Reorder Advice
-  const leadTime = product.leadTimeDays || 7;
-  const isReorderNeeded = daysOfStockRemaining <= leadTime + 3 || product.stock <= (product.minStock || 5);
-  const reorderQty = (product.minStock || 5) * 4 || 50;
+  const leadTime = product?.leadTimeDays || 7;
+  const isReorderNeeded = daysOfStockRemaining <= leadTime + 3 || stock <= (product?.minStock || 5);
+  const reorderQty = Math.max(10, Math.min(100, (product?.minStock || 5) * 3));
   const runwayImpact = Math.round(sellingPrice * reorderQty);
 
   const reorderAdvice = {
     needed: isReorderNeeded,
     suggestedQty: reorderQty,
-    urgency: product.stock === 0 ? ('High' as const) : (isReorderNeeded ? ('High' as const) : ('Low' as const)),
+    urgency: stock === 0 ? ('High' as const) : (isReorderNeeded ? ('High' as const) : ('Low' as const)),
     reason: isReorderNeeded
-      ? `Current stock (${product.stock} units) will last ~${daysOfStockRemaining} days. Supplier lead time requires ${leadTime} days.`
+      ? `Current stock (${stock} units) will last ~${daysOfStockRemaining} days. Supplier lead time requires ${leadTime} days.`
       : `Current stock level is sufficient for ${daysOfStockRemaining} days.`,
     financialRunwayImpact: runwayImpact,
   };
@@ -183,7 +185,7 @@ export function computeProductIntelligence(
   };
 
   if (healthStatus === 'Dead Stock') {
-    const tied = Math.round(product.stock * costPrice * 0.8);
+    const tied = Math.round(stock * costPrice * 0.8);
     opportunityAdvice = {
       hasOpportunity: true,
       type: 'clearance',
@@ -193,7 +195,7 @@ export function computeProductIntelligence(
     };
   } else if (dailySales >= 1.2 && profitMarginPercent < 40) {
     const newPrice = Math.round(sellingPrice * 1.08);
-    const addedProfit = Math.round((newPrice - sellingPrice) * (product.stock || 20));
+    const addedProfit = Math.round((newPrice - sellingPrice) * (stock || 20));
     opportunityAdvice = {
       hasOpportunity: true,
       type: 'price_increase',
@@ -214,12 +216,12 @@ export function computeProductIntelligence(
   if (healthStatus === 'Overstocked') tags.push('Overstock');
   if (opportunityAdvice.type === 'price_increase') tags.push('Price Up Candidate');
 
-  // Executive Summary
-  let executiveSummary = `${product.name} holds a Performance Grade of ${performanceGrade}. `;
+  // Executive Summary with robust product name resolution
+  let executiveSummary = `${productName} holds a Performance Grade of ${performanceGrade}. `;
   if (isReorderNeeded) {
-    executiveSummary += `Stock level (${product.stock} units) is critical; reorder ${reorderQty} units immediately to protect ₹${runwayImpact.toLocaleString('en-IN')} revenue runway.`;
+    executiveSummary += `Stock level (${stock} units) is critical; reorder ${reorderQty} units immediately to protect ₹${runwayImpact.toLocaleString('en-IN')} revenue runway.`;
   } else if (healthStatus === 'Dead Stock') {
-    executiveSummary += `Item has zero recorded sales, locking up ₹${Math.round(product.stock * costPrice).toLocaleString('en-IN')} in working capital. Launch a clearance promo.`;
+    executiveSummary += `Item has zero recorded sales, locking up ₹${Math.round(stock * costPrice).toLocaleString('en-IN')} in working capital. Launch a clearance promo.`;
   } else {
     executiveSummary += `Demand is ${demandTrend.toLowerCase()} with a healthy profit margin of ${profitMarginPercent}%. Maintain purchasing priority.`;
   }
@@ -244,60 +246,136 @@ export function computeProductIntelligence(
   };
 }
 
-// 2. Natural Language Inventory Search Engine
+// 2. High-Precision Natural Language Inventory Search Engine
 export function filterProductsByNaturalLanguage(
   products: Product[],
-  transactions: Transaction[],
+  transactions: Transaction[] = [],
   query: string
 ): Product[] {
   if (!query || !query.trim()) return products;
 
   const q = query.toLowerCase().trim();
 
-  const saleProductIds = new Set(transactions.filter(t => t.type === 'Sale').map(t => t.productId));
+  // Create set of product IDs that have recorded sales transactions
+  const saleProductIds = new Set(
+    (transactions || [])
+      .filter(t => t && t.type === 'Sale' && (t.quantity || 0) > 0)
+      .map(t => t.productId)
+  );
 
-  // "running out this week" or "low stock" or "out of stock"
-  if (q.includes('running out') || q.includes('low stock') || q.includes('out of stock') || q.includes('critical')) {
-    return products.filter(p => p && p.stock <= (p.minStock || 5));
+  // Query 1: "dead stock" | "unsold" | "stagnant" | "no sales"
+  if (
+    q.includes('dead stock') ||
+    q.includes('dead') ||
+    q.includes('unsold') ||
+    q.includes('stagnant') ||
+    q.includes('no sales')
+  ) {
+    const deadStockItems = products.filter(p => {
+      if (!p || (p.stock || 0) <= 0) return false;
+      const isIdSold = p.id ? saleProductIds.has(p.id) : false;
+      return !isIdSold || (p.averageDailySales !== undefined && p.averageDailySales === 0);
+    });
+
+    // Fallback if strict zero-sales yields empty but catalog has slow moving items
+    if (deadStockItems.length === 0) {
+      return [...products]
+        .filter(p => p && (p.stock || 0) > 0)
+        .sort((a, b) => (a.averageDailySales || 0) - (b.averageDailySales || 0));
+    }
+
+    return deadStockItems.sort((a, b) => (b.stock * (b.costPrice || b.price * 0.6)) - (a.stock * (a.costPrice || a.price * 0.6)));
   }
 
-  // "dead stock" or "unsold" or "stagnant"
-  if (q.includes('dead stock') || q.includes('unsold') || q.includes('stagnant') || q.includes('no sales')) {
-    return products.filter(p => p && p.stock > 0 && !saleProductIds.has(p.id));
+  // Query 2: "running out soon" | "running out" | "low stock" | "out of stock" | "critical stock" | "reorder"
+  if (
+    q.includes('running out') ||
+    q.includes('low stock') ||
+    q.includes('out of stock') ||
+    q.includes('critical') ||
+    q.includes('reorder')
+  ) {
+    return products
+      .filter(p => {
+        if (!p) return false;
+        const stock = p.stock || 0;
+        const minStock = p.minStock || 5;
+        const ads = p.averageDailySales || 0.1;
+        const runway = stock / ads;
+        return stock <= minStock || stock === 0 || runway <= 14;
+      })
+      .sort((a, b) => (a.stock / (a.minStock || 5)) - (b.stock / (b.minStock || 5)));
   }
 
-  // "highest margin" or "high margin" or "profitable"
-  if (q.includes('highest margin') || q.includes('high margin') || q.includes('most profitable')) {
+  // Query 3: "highest margins" | "high margin" | "most profitable" | "profitable" | "best margin"
+  if (
+    q.includes('highest margin') ||
+    q.includes('high margin') ||
+    q.includes('most profitable') ||
+    q.includes('profitable') ||
+    q.includes('best margin')
+  ) {
     return [...products].sort((a, b) => {
-      const marginA = ((a.price - a.costPrice) / (a.price || 1));
-      const marginB = ((b.price - b.costPrice) / (b.price || 1));
+      const costA = a.costPrice && a.costPrice > 0 ? a.costPrice : a.price * 0.6;
+      const marginA = a.price > 0 ? ((a.price - costA) / a.price) : 0.35;
+
+      const costB = b.costPrice && b.costPrice > 0 ? b.costPrice : b.price * 0.6;
+      const marginB = b.price > 0 ? ((b.price - costB) / b.price) : 0.35;
+
       return marginB - marginA;
     });
   }
 
-  // "less than 20%" or "low margin"
-  if (q.includes('less than 20') || q.includes('low margin') || q.includes('low profit')) {
+  // Query 4: "low margin (<20%)" | "low margin" | "low profit" | "less than 20" | "20%" | "<20%"
+  if (
+    q.includes('low margin') ||
+    q.includes('low profit') ||
+    q.includes('less than 20') ||
+    q.includes('20%') ||
+    q.includes('<20')
+  ) {
     return products.filter(p => {
-      const margin = p.price > 0 ? ((p.price - p.costPrice) / p.price) * 100 : 0;
-      return margin < 20;
+      if (!p || !p.price || p.price <= 0) return false;
+      const cost = p.costPrice && p.costPrice > 0 ? p.costPrice : p.price * 0.6;
+      const marginPercent = ((p.price - cost) / p.price) * 100;
+      return marginPercent < 25;
     });
   }
 
-  // "overstocked" or "excess stock"
-  if (q.includes('overstocked') || q.includes('excess stock') || q.includes('too much stock')) {
-    return products.filter(p => p && p.stock >= (p.maxStock || 100));
+  // Query 5: "overstocked" | "excess stock" | "too much stock" | "bulk stock"
+  if (
+    q.includes('overstocked') ||
+    q.includes('excess stock') ||
+    q.includes('too much stock') ||
+    q.includes('bulk stock')
+  ) {
+    return products.filter(p => {
+      if (!p) return false;
+      const stock = p.stock || 0;
+      const maxStock = p.maxStock || 100;
+      const ads = p.averageDailySales || 0.5;
+      const runway = stock / ads;
+      return stock >= maxStock || runway >= 45;
+    });
   }
 
-  // "fast moving" or "best seller"
-  if (q.includes('fast moving') || q.includes('best seller') || q.includes('trending')) {
-    return products.filter(p => (p.averageDailySales || 0) >= 1.0);
+  // Query 6: "fast moving" | "best seller" | "trending"
+  if (
+    q.includes('fast moving') ||
+    q.includes('best seller') ||
+    q.includes('trending')
+  ) {
+    return products.filter(p => (p.averageDailySales || 0) >= 0.8);
   }
 
   // Standard Keyword Match (Name, SKU, Brand, Category, Supplier)
-  return products.filter(p =>
-    p.name.toLowerCase().includes(q) ||
-    (p.sku && p.sku.toLowerCase().includes(q)) ||
-    (p.brand && p.brand.toLowerCase().includes(q)) ||
-    (p.supplier && p.supplier.toLowerCase().includes(q))
-  );
+  return products.filter(p => {
+    if (!p) return false;
+    const nameMatch = (p.name || p.productName || '').toLowerCase().includes(q);
+    const skuMatch = p.sku ? p.sku.toLowerCase().includes(q) : false;
+    const brandMatch = p.brand ? p.brand.toLowerCase().includes(q) : false;
+    const supplierMatch = p.supplier ? p.supplier.toLowerCase().includes(q) : false;
+    const categoryMatch = p.categoryId ? p.categoryId.toLowerCase().includes(q) : false;
+    return nameMatch || skuMatch || brandMatch || supplierMatch || categoryMatch;
+  });
 }

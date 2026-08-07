@@ -1,98 +1,80 @@
 'use server';
 
 import { openai } from '@/ai/openai';
-
-export type FieldMapping = Record<string, string>;
-
-const PRODUCT_FIELDS_LIST = [
-  // Products
-  'name', 'sku', 'product_id', 'description', 'category_id', 'category', 'brand_id', 'selling_price', 'price', 'cost_price', 'costPrice', 'weight', 'status',
-  // Users
-  'user_id', 'user_name', 'email', 'phone', 'password_hash', 'role', 'user_status', 'user_created_at',
-  // Customers
-  'customer_id', 'gender', 'DOB', 'loyalty_points', 'lifetime_value',
-  // Addresses
-  'address_id', 'address_line1', 'city', 'state', 'country', 'pincode', 'address_type',
-  // Categories & Brands
-  'category_name', 'parent_category_id', 'brand_name', 'brand_description',
-  // Product Variants
-  'variant_id', 'color', 'size', 'material', 'variant_sku', 'variant_price',
-  // Inventory
-  'inventory_id', 'stock_quantity', 'stock', 'reserved_stock', 'reorder_level', 'current_stock', 'reorder_point',
-  // Warehouses
-  'warehouse_id', 'warehouse_name', 'location', 'manager', 'capacity',
-  // Suppliers
-  'supplier_id', 'company_name', 'contact_person', 'supplier_email', 'supplier_phone', 'supplier_name', 'lead_time', 'rating',
-  // Purchase Orders & Items
-  'po_id', 'order_date', 'expected_delivery', 'expected_date', 'po_status', 'po_item_id', 'po_item_quantity', 'unit_cost',
-  // Orders & Items
-  'order_id', 'total_amount', 'payment_status', 'order_status', 'order_item_id', 'order_item_quantity', 'unit_price', 'discount',
-  // Payments
-  'payment_id', 'payment_method', 'amount', 'transaction_id', 'payment_status_details',
-  // Refunds
-  'refund_id', 'refund_amount', 'refund_reason', 'refund_status',
-  // Shipments
-  'shipment_id', 'courier_name', 'tracking_number', 'shipped_date', 'delivered_date',
-  // Returns
-  'return_id', 'return_reason', 'return_status',
-  // Coupons
-  'coupon_id', 'coupon_code', 'discount_type', 'discount_value', 'expiry_date',
-  // Reviews
-  'review_id', 'review_rating', 'review_comment', 'review_created_at',
-  // Wishlist
-  'wishlist_id', 'wishlist_added_at',
-  // Cart
-  'cart_id', 'cart_created_at', 'cart_item_id', 'cart_item_quantity',
-  // Employees & Vendors
-  'employee_id', 'employee_name', 'department', 'employee_role', 'salary', 'vendor_id', 'vendor_name', 'service_type', 'contact_details',
-  // Campaigns & Support
-  'campaign_id', 'campaign_name', 'budget', 'start_date', 'end_date', 'ticket_id', 'issue_type', 'ticket_status', 'assigned_to',
-  // Notifications & Audit Logs
-  'notification_id', 'notification_title', 'notification_message', 'read_status', 'log_id', 'log_action', 'log_timestamp', 'IP_address',
-  // Stock Movements & Forecasts & Alerts
-  'quantity_change', 'movement_type', 'timestamp', 'predicted_sales', 'confidence_score', 'alert_type', 'severity', 'recommendation',
-  // Business Metrics
-  'revenue', 'profit', 'inventory_turnover', 'stockout_rate'
-];
-
-const TRANSACTION_FIELDS_LIST: string[] = [];
+import { INVENTORY_FIELDS, FieldMapping, TargetFieldDef } from './import-mapper-constants';
 
 export async function getSmartMapping(
   externalHeaders: string[],
-  importType: 'products' | 'sales' = 'products'
-): Promise<FieldMapping> {
-  const targetFields = importType === 'products' ? PRODUCT_FIELDS_LIST : TRANSACTION_FIELDS_LIST;
-  
+  sampleRows: Record<string, any>[] = []
+): Promise<{ mapping: FieldMapping; confidence: Record<string, number>; isAiPowered: boolean }> {
+  const mapping: FieldMapping = {};
+  const confidence: Record<string, number> = {};
+  const targetFieldKeys = INVENTORY_FIELDS.map((f: TargetFieldDef) => f.key);
+
+  const sampleSnippet = sampleRows.slice(0, 3).map(row => {
+    const cleaned: Record<string, any> = {};
+    externalHeaders.forEach(h => {
+      cleaned[h] = row[h];
+    });
+    return cleaned;
+  });
+
   const prompt = `
-You are an AI data assistant. Your task is to map columns from an external "brand" database to our "AnalyzeUp" ${importType === 'products' ? 'Inventory' : 'Transaction'} schema.
+You are an expert AI Data Engineering Assistant for AnalyzeUp AI inventory software.
+Map the external CSV columns to the target internal product schema fields.
 
-AVAILABLE TARGET FIELDS:
-${targetFields.join(', ')}
+TARGET INTERNAL SCHEMA FIELDS:
+- "name": Product Name, Item Name, Title (REQUIRED)
+- "price": Selling Price, Retail Price, MRP, Sale Price (REQUIRED)
+- "costPrice": Purchase Price, Unit Cost, Buy Price
+- "stock": Quantity, Qty Sold, Units in Stock, Available Stock
+- "sku": SKU, Item Code, Product Code, Barcode
+- "category": Product Category, Department
+- "brand": Brand, Manufacturer
+- "supplier": Supplier Name, Vendor Name, Supplier/Vendor
+- "minStock": Minimum Stock Threshold, Reorder Level
+- "unit": Measurement Unit (Piece, Kg, Box, etc.)
+- "description": Product Details, Description, Notes
+- "skip": Columns that are irrelevant (e.g. Customer Name, Invoice No, Payment Status, etc.)
 
-EXTERNAL COLUMNS:
+EXTERNAL CSV HEADERS:
 ${externalHeaders.join(', ')}
 
-INSTRUCTIONS:
-1. Map each external column to the MOST RELEVANT target field.
-2. If a column has no clear match, map it to "skip".
-3. Return ONLY a JSON object where keys are the external columns and values are the target fields.
+SAMPLE DATA ROWS:
+${JSON.stringify(sampleSnippet, null, 2)}
 
-Example:
+INSTRUCTIONS:
+1. Return a JSON object where keys are EXACT external CSV headers, and values are target field keys listed above.
+2. Provide a confidence score (0.0 to 1.0) for each mapping.
+
+EXAMPLE RESPONSE FORMAT:
 {
-  "Product_Name": "name",
-  "Qty_Available": "stock",
-  "Selling_Price": "price",
-  "Unknown_Col": "skip"
+  "mappings": {
+    "Item Name": "name",
+    "Retail Price": "price",
+    "Purchase Price (₹)": "costPrice",
+    "Qty Sold": "stock",
+    "Supplier / Vendor": "supplier",
+    "Invoice No": "skip"
+  },
+  "confidence": {
+    "Item Name": 0.98,
+    "Retail Price": 0.95,
+    "Purchase Price (₹)": 0.95,
+    "Qty Sold": 0.92,
+    "Supplier / Vendor": 0.95,
+    "Invoice No": 0.99
+  }
 }
 
-Respond ONLY with the JSON object.
+Respond ONLY with valid JSON.
   `;
 
   try {
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
-        { role: 'system', content: 'You are a helpful data migration assistant.' },
+        { role: 'system', content: 'You are an intelligent data mapping and normalization assistant.' },
         { role: 'user', content: prompt },
       ],
       response_format: { type: 'json_object' },
@@ -101,31 +83,161 @@ Respond ONLY with the JSON object.
     const content = response.choices[0].message.content;
     if (!content) throw new Error('Empty AI response');
 
-    const rawMapping = JSON.parse(content);
-    
-    // Ensure all headers are present in the mapping
-    const mapping: FieldMapping = {};
-    externalHeaders.forEach(header => {
-      const match = rawMapping[header];
-      if (match && (targetFields.includes(match) || match === 'skip')) {
-        mapping[header] = match;
+    const parsed = JSON.parse(content);
+    const aiMap = parsed.mappings || {};
+    const aiConf = parsed.confidence || {};
+
+    externalHeaders.forEach(h => {
+      const target = aiMap[h];
+      if (target && targetFieldKeys.includes(target)) {
+        mapping[h] = target;
+        confidence[h] = Math.round((aiConf[h] || 0.9) * 100);
       } else {
-        mapping[header] = 'skip';
+        const fuzzy = getFuzzySemanticMatch(h);
+        mapping[h] = fuzzy;
+        confidence[h] = fuzzy !== 'skip' ? 85 : 50;
       }
     });
 
-    return mapping;
+    return { mapping, confidence, isAiPowered: true };
   } catch (error) {
-    console.error('Error in getSmartMapping:', error);
-    // Fallback to basic mapping if AI fails
-    const fallback: FieldMapping = {};
-    const normalizedTarget = targetFields.map(f => f.toLowerCase());
-    
-    externalHeaders.forEach(header => {
-      const hLower = header.toLowerCase();
-      const matchIdx = normalizedTarget.findIndex(t => hLower.includes(t) || t.includes(hLower));
-      fallback[header] = matchIdx !== -1 ? targetFields[matchIdx] : 'skip';
+    console.warn('AI Mapping Fallback to Rule Engine:', error);
+
+    externalHeaders.forEach(h => {
+      const match = getFuzzySemanticMatch(h);
+      mapping[h] = match;
+      confidence[h] = match !== 'skip' ? 90 : 60;
     });
-    return fallback;
+
+    return { mapping, confidence, isAiPowered: false };
   }
+}
+
+/**
+ * Intelligent semantic fuzzy matcher for fallback matching
+ */
+function getFuzzySemanticMatch(header: string): string {
+  const h = header.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').trim();
+
+  // Product Name
+  if (
+    h.includes('item name') ||
+    h.includes('product name') ||
+    h.includes('item title') ||
+    h.includes('product title') ||
+    h === 'title' ||
+    h === 'item' ||
+    h === 'product' ||
+    h.includes('product_name') ||
+    h.includes('item_name')
+  ) {
+    return 'name';
+  }
+
+  // Selling Price
+  if (
+    h.includes('retail price') ||
+    h.includes('selling price') ||
+    h.includes('sale price') ||
+    h.includes('mrp') ||
+    h.includes('unit price') ||
+    h === 'price' ||
+    h.includes('retail') ||
+    h.includes('selling_price')
+  ) {
+    return 'price';
+  }
+
+  // Cost Price
+  if (
+    h.includes('purchase price') ||
+    h.includes('cost price') ||
+    h.includes('buy price') ||
+    h.includes('unit cost') ||
+    h === 'cost' ||
+    h.includes('cost_price') ||
+    h.includes('purchase')
+  ) {
+    return 'costPrice';
+  }
+
+  // Stock / Quantity
+  if (
+    h.includes('qty sold') ||
+    h.includes('qty') ||
+    h.includes('quantity') ||
+    h.includes('stock') ||
+    h.includes('units') ||
+    h.includes('current stock') ||
+    h.includes('available') ||
+    h.includes('in stock')
+  ) {
+    return 'stock';
+  }
+
+  // Supplier
+  if (
+    h.includes('supplier') ||
+    h.includes('vendor') ||
+    h.includes('distributor') ||
+    h.includes('manufacturer')
+  ) {
+    return 'supplier';
+  }
+
+  // SKU / Code
+  if (
+    h.includes('sku') ||
+    h.includes('item code') ||
+    h.includes('product code') ||
+    h.includes('barcode') ||
+    h === 'code' ||
+    h.includes('model no') ||
+    h.includes('invoice no')
+  ) {
+    return 'sku';
+  }
+
+  // Category
+  if (
+    h.includes('category') ||
+    h.includes('department') ||
+    h.includes('group') ||
+    h.includes('type')
+  ) {
+    return 'category';
+  }
+
+  // Brand
+  if (h.includes('brand') || h.includes('make')) {
+    return 'brand';
+  }
+
+  // Min Stock
+  if (
+    h.includes('min stock') ||
+    h.includes('minimum stock') ||
+    h.includes('reorder') ||
+    h.includes('threshold')
+  ) {
+    return 'minStock';
+  }
+
+  // Unit
+  if (h.includes('unit') || h.includes('uom') || h.includes('pack')) {
+    return 'unit';
+  }
+
+  // Description
+  if (
+    h.includes('desc') ||
+    h.includes('description') ||
+    h.includes('details') ||
+    h.includes('notes') ||
+    h.includes('remarks')
+  ) {
+    return 'description';
+  }
+
+  return 'skip';
 }

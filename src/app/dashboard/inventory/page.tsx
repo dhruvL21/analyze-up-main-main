@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import React, { useState, useRef, useEffect } from 'react';
-import { PlusCircle, MoreHorizontal, Database, Sparkles, Loader2, ArrowRightLeft, Eye } from 'lucide-react';
+import { PlusCircle, MoreHorizontal, Database, Sparkles, Loader2, ArrowRightLeft, Eye, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -39,21 +39,11 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { useData } from '@/context/data-context';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ImportDialog } from '@/components/import-dialog';
+import { AddProductModal } from '@/components/add-product-modal';
 import { generateProductDescription } from '@/ai/flows/product-descriptor';
 import { useToast } from '@/hooks/use-toast';
 import { computeProductIntelligence, filterProductsByNaturalLanguage } from '@/lib/product-intelligence-engine';
@@ -64,7 +54,11 @@ import { InventoryDistributionCard } from '@/components/inventory-distribution-c
 import { ProductIntelligenceDrawer } from '@/components/product-intelligence-drawer';
 import { ProductComparisonModal } from '@/components/product-comparison-modal';
 
+import { useSearchParams } from 'next/navigation';
+import { OperationsSubNav } from '@/components/operations-sub-nav';
+
 export default function InventoryPage() {
+  const searchParams = useSearchParams();
   const { products, addProduct, updateProduct, deleteProduct, recordSale, isLoading, categories, suppliers, addCategory, addSupplier, transactions, returns, businessProfile } = useData();
 
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
@@ -72,13 +66,11 @@ export default function InventoryPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [sellingProduct, setSellingProduct] = useState<Product | null>(null);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   
   const [description, setDescription] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
 
-  const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
-  const [isSupplierDialogOpen, setIsSupplierDialogOpen] = useState(false);
-  
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(undefined);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | undefined>(undefined);
   const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
@@ -88,6 +80,13 @@ export default function InventoryPage() {
   const [drawerProduct, setDrawerProduct] = useState<Product | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isComparisonOpen, setIsComparisonOpen] = useState(false);
+
+  useEffect(() => {
+    const qParam = searchParams?.get('q') || searchParams?.get('query');
+    if (qParam) {
+      setSearchQuery(qParam);
+    }
+  }, [searchParams]);
 
   const { toast } = useToast();
 
@@ -127,43 +126,6 @@ export default function InventoryPage() {
     setSelectedSupplierId(undefined);
     setIsGeneratingDescription(false);
   };
-  
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-  
-  const handleAIDescription = async () => {
-    const productName = productFormRef.current?.querySelector<HTMLInputElement>('input[name="name"]')?.value;
-    if (!productName) {
-      toast({
-        variant: 'destructive',
-        title: 'Missing Name',
-        description: 'Please enter a product name first to generate a description.',
-      });
-      return;
-    }
-
-    setIsGeneratingDescription(true);
-    try {
-      const result = await generateProductDescription(productName);
-      setDescription(result);
-    } catch (err: any) {
-      toast({
-        variant: 'destructive',
-        title: 'AI Error',
-        description: err.message || 'Failed to generate description.',
-      });
-    } finally {
-      setIsGeneratingDescription(false);
-    }
-  };
 
   const handleSellSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -177,66 +139,6 @@ export default function InventoryPage() {
     setSellingProduct(null);
   };
 
-  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-
-    let imageUrl = editingProduct?.imageUrl || `https://picsum.photos/seed/${Date.now()}/400/400`;
-    if (imagePreview) {
-      imageUrl = imagePreview;
-    }
-
-    const productData = {
-      name: formData.get('name') as string,
-      sku: (formData.get('sku') as string) || ('SKU-' + Date.now().toString(36).toUpperCase()),
-      barcode: (formData.get('barcode') as string) || '',
-      brand: (formData.get('brand') as string) || '',
-      stock: Number(formData.get('stock')),
-      minStock: Number(formData.get('minStock')) || 5,
-      maxStock: Number(formData.get('maxStock')) || 100,
-      unit: (formData.get('unit') as string) || 'Piece',
-      status: (formData.get('status') as any) || 'Active',
-      price: Number(formData.get('price')),
-      costPrice: Number(formData.get('costPrice')),
-      averageDailySales: editingProduct?.averageDailySales || 1.0,
-      leadTimeDays: editingProduct?.leadTimeDays || 7,
-      categoryId: selectedCategoryId || (formData.get('categoryId') as string),
-      supplierId: selectedSupplierId || (formData.get('supplierId') as string),
-      supplier: suppliers.find(s => s.id === (selectedSupplierId || formData.get('supplierId')))?.name || editingProduct?.supplier || '',
-      imageUrl: imageUrl,
-      description: description,
-    };
-
-    if (editingProduct) {
-      const updatedProduct = {
-        ...editingProduct,
-        ...productData,
-        description: description,
-        updatedAt: new Date().toISOString(),
-      };
-      updateProduct(updatedProduct);
-    } else {
-      addProduct(productData);
-    }
-
-    setIsFormDialogOpen(false);
-  };
-
-  const openEditDialog = (product: Product) => {
-    resetFormState();
-    setEditingProduct(product);
-    setDescription(product.description || '');
-    setImagePreview(product.imageUrl || null);
-    setSelectedCategoryId(product.categoryId);
-    setSelectedSupplierId(product.supplierId);
-    setIsFormDialogOpen(true);
-  };
-
-  const openAddDialog = () => {
-    resetFormState();
-    setIsFormDialogOpen(true);
-  };
-
   const openProductReport = (product: Product) => {
     setDrawerProduct(product);
     setIsDrawerOpen(true);
@@ -245,6 +147,8 @@ export default function InventoryPage() {
   return (
     <>
       <div className="flex flex-col gap-6">
+        <OperationsSubNav />
+
         {/* Header Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
@@ -260,15 +164,15 @@ export default function InventoryPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={() => setIsComparisonOpen(true)} className="rounded-xl text-xs gap-1.5 border-purple-500/30 text-purple-500">
-              <ArrowRightLeft className="h-4 w-4" />
+            <Button size="sm" variant="outline" onClick={() => setIsComparisonOpen(true)} className="rounded-xl text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/10 font-medium">
+              <ArrowRightLeft className="h-4 w-4 text-primary" />
               Compare Products
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setIsImportDialogOpen(true)} className="rounded-xl text-xs gap-1.5">
-              <Database className="h-4 w-4" />
+            <Button size="sm" variant="outline" onClick={() => setIsImportDialogOpen(true)} className="rounded-xl text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/10 font-medium">
+              <Database className="h-4 w-4 text-primary" />
               Import Database
             </Button>
-            <Button size="sm" onClick={openAddDialog} className="rounded-xl text-xs gap-1.5 bg-primary text-primary-foreground">
+            <Button size="sm" onClick={() => setIsAddProductOpen(true)} className="rounded-xl text-xs gap-1.5 bg-primary text-primary-foreground font-semibold shadow-md">
               <PlusCircle className="h-4 w-4" />
               Add Product
             </Button>
@@ -300,11 +204,7 @@ export default function InventoryPage() {
                 Click any row to open full AI Product Business Report
               </CardDescription>
             </div>
-            {searchQuery && (
-              <Badge variant="outline" className="text-xs text-primary border-primary/30">
-                Filtered: {filteredProducts.length} items
-              </Badge>
-            )}
+
           </CardHeader>
           <CardContent className="p-0">
             {/* Desktop Table View */}
@@ -352,7 +252,7 @@ export default function InventoryPage() {
                           onClick={() => openProductReport(product)}
                         >
                           <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
-                            <span className="w-8 h-8 rounded-xl bg-primary/10 text-primary font-black text-xs inline-flex items-center justify-center border border-primary/20">
+                            <span className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-400 font-black text-xs inline-flex items-center justify-center border border-emerald-500/20">
                               {report.performanceGrade}
                             </span>
                           </TableCell>
@@ -370,7 +270,7 @@ export default function InventoryPage() {
 
                           <TableCell>
                             <div className="space-y-0.5">
-                              <p className="font-bold text-foreground hover:text-primary transition-colors text-xs">{product.name}</p>
+                              <p className="font-bold text-foreground hover:text-emerald-400 transition-colors text-xs">{product.name || product.productName}</p>
                               <p className="font-mono text-[10px] text-muted-foreground">{product.sku || 'N/A'}</p>
                             </div>
                           </TableCell>
@@ -384,7 +284,7 @@ export default function InventoryPage() {
                           <TableCell>
                             <div className="flex flex-wrap gap-1">
                               {report.tags.slice(0, 2).map(t => (
-                                <Badge key={t} variant="outline" className="text-[9px] bg-background/60">
+                                <Badge key={t} variant="outline" className="text-[9px] px-2 py-0.5 font-semibold bg-primary/15 text-primary border-primary/30">
                                   {t}
                                 </Badge>
                               ))}
@@ -405,7 +305,7 @@ export default function InventoryPage() {
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => openProductReport(product)}
-                                className="h-8 px-2 rounded-xl text-xs text-primary gap-1"
+                                className="h-8 px-2 rounded-xl text-xs text-emerald-400 gap-1 hover:bg-emerald-500/10"
                               >
                                 <Eye className="w-3.5 h-3.5" />
                                 Report
@@ -418,9 +318,8 @@ export default function InventoryPage() {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => openEditDialog(product)}>Edit Details</DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => { setSellingProduct(product); setIsSellDialogOpen(true); }} className="text-primary font-medium">Record Sale</DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => deleteProduct(product.id)} className="text-destructive">Delete</DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => { setSellingProduct(product); setIsSellDialogOpen(true); }} className="text-emerald-400 font-medium">Record Sale</DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => deleteProduct(product.id)} className="text-destructive">Delete Product</DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </div>
@@ -436,6 +335,44 @@ export default function InventoryPage() {
         </Card>
       </div>
 
+      {/* Record Sale Dialog */}
+      <Dialog open={isSellDialogOpen} onOpenChange={setIsSellDialogOpen}>
+        <DialogContent className="sm:max-w-md rounded-2xl ios-glass">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-foreground">Record Product Sale</DialogTitle>
+            <DialogDescription className="text-xs">
+              Record customer units sold for {sellingProduct?.name || sellingProduct?.productName}
+            </DialogDescription>
+          </DialogHeader>
+          {sellingProduct && (
+            <form onSubmit={handleSellSubmit} className="space-y-4 text-xs pt-2">
+              <div className="space-y-1">
+                <Label htmlFor="sale-qty">Quantity Sold</Label>
+                <Input
+                  id="sale-qty"
+                  name="quantity"
+                  type="number"
+                  min="1"
+                  max={sellingProduct.stock}
+                  defaultValue="1"
+                  required
+                  className="rounded-xl"
+                />
+                <span className="text-[10px] text-muted-foreground">Available Stock: {sellingProduct.stock} units</span>
+              </div>
+              <DialogFooter className="pt-2">
+                <Button type="button" variant="secondary" onClick={() => setIsSellDialogOpen(false)} className="rounded-xl text-xs">
+                  Cancel
+                </Button>
+                <Button type="submit" className="rounded-xl text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-semibold">
+                  Confirm Sale
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Product Intelligence Drawer */}
       <ProductIntelligenceDrawer
         product={drawerProduct}
@@ -447,6 +384,18 @@ export default function InventoryPage() {
       <ProductComparisonModal
         open={isComparisonOpen}
         onOpenChange={setIsComparisonOpen}
+      />
+
+      {/* Import Database Modal */}
+      <ImportDialog
+        open={isImportDialogOpen}
+        onOpenChange={setIsImportDialogOpen}
+      />
+
+      {/* Quick Add Product Modal */}
+      <AddProductModal
+        open={isAddProductOpen}
+        onOpenChange={setIsAddProductOpen}
       />
     </>
   );

@@ -15,14 +15,9 @@ import { useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
 import {
   ShoppingBag,
-  Store,
-  Boxes,
-  Layers,
   Search,
   CheckCircle2,
   Bell,
-  Sparkles,
-  ExternalLink,
   Lock,
   ArrowRight,
   Zap,
@@ -140,10 +135,7 @@ export default function IntegrationsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl flex items-center gap-2">
-            Integrations & Channels
-            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs px-2.5 py-0.5">
-              AnalyzeUp 2.0
-            </Badge>
+            Connect & Channels
           </h1>
           <p className="text-xs md:text-sm text-muted-foreground mt-1">
             Connect your storefronts, market channels, accounting software & POS systems to power AI predictions.
@@ -155,7 +147,7 @@ export default function IntegrationsPage() {
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 rounded-2xl bg-secondary/50 border border-border/40">
         <div className="relative w-full sm:w-72">
           <Input
-            placeholder="Search integrations..."
+            placeholder="Search channels..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-9 text-xs rounded-xl"
@@ -182,7 +174,7 @@ export default function IntegrationsPage() {
       <div className="space-y-3">
         <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
           <Zap className="w-4 h-4 text-emerald-500" />
-          Available Integrations
+          Available Connections
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -44,11 +44,9 @@ export function AIBrief() {
         }));
 
         const simplifiedTransactions = (transactions || []).slice(0, 30).map((t) => {
-          // Format date safely as a string
           let dateStr = 'Recent';
           if (t.transactionDate) {
             if (typeof t.transactionDate === 'object' && t.transactionDate !== null && 'seconds' in t.transactionDate) {
-              // It's a Firestore Timestamp
               dateStr = new Date((t.transactionDate as any).seconds * 1000).toLocaleDateString();
             } else if (t.transactionDate instanceof Date) {
               dateStr = t.transactionDate.toLocaleDateString();
@@ -75,7 +73,6 @@ export function AIBrief() {
     });
   }, [products, transactions, isPaid]);
 
-  // Re-fetch AI brief when products or transactions change and plan is paid
   useEffect(() => {
     if (isPaid) {
       fetchBrief();
@@ -84,7 +81,6 @@ export function AIBrief() {
     }
   }, [isPaid, fetchBrief]);
 
-  // Determine health color based on score
   const getHealthColor = (score: number) => {
     if (score >= 80) return 'bg-emerald-500';
     if (score >= 50) return 'bg-amber-500';
@@ -99,8 +95,8 @@ export function AIBrief() {
 
   if (!brief && isPending && isPaid) {
     return (
-      <div className="relative overflow-hidden rounded-2xl border border-border/80 bg-card/60 p-6 shadow-xl backdrop-blur-md">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-border/40 pb-4 mb-5">
+      <div className="relative overflow-hidden rounded-2xl border border-border/80 bg-card/60 p-5 shadow-xl backdrop-blur-md h-full flex flex-col justify-between">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between border-b border-border/40 pb-4 mb-4">
           <div className="flex items-center gap-2.5">
             <Skeleton className="h-9 w-9 rounded-xl animate-pulse bg-muted" />
             <div className="space-y-2">
@@ -116,54 +112,29 @@ export function AIBrief() {
             <Skeleton className="h-1.5 w-full md:w-[180px] animate-pulse bg-muted" />
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="flex gap-3.5 p-4 rounded-xl border border-border/30 bg-secondary/10">
-            <Skeleton className="h-10 w-10 shrink-0 rounded-lg animate-pulse bg-muted" />
-            <div className="space-y-2 w-full">
-              <Skeleton className="h-3 w-16 animate-pulse bg-muted" />
-              <Skeleton className="h-4 w-1/2 animate-pulse bg-muted" />
-              <Skeleton className="h-3.5 w-3/4 animate-pulse bg-muted" />
-            </div>
-          </div>
-          <div className="flex gap-3.5 p-4 rounded-xl border border-border/30 bg-secondary/10">
-            <Skeleton className="h-10 w-10 shrink-0 rounded-lg animate-pulse bg-muted" />
-            <div className="space-y-2 w-full">
-              <Skeleton className="h-3 w-24 animate-pulse bg-muted" />
-              <Skeleton className="h-4 w-1/2 animate-pulse bg-muted" />
-              <Skeleton className="h-3.5 w-3/4 animate-pulse bg-muted" />
-            </div>
-          </div>
-          <div className="flex gap-3.5 p-4 rounded-xl border border-border/30 bg-secondary/10">
-            <Skeleton className="h-10 w-10 shrink-0 rounded-lg animate-pulse bg-muted" />
-            <div className="space-y-2 w-full">
-              <Skeleton className="h-3 w-24 animate-pulse bg-muted" />
-              <Skeleton className="h-4 w-1/2 animate-pulse bg-muted" />
-              <Skeleton className="h-3.5 w-3/4 animate-pulse bg-muted" />
-            </div>
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Skeleton className="h-32 rounded-xl animate-pulse bg-muted" />
+          <Skeleton className="h-32 rounded-xl animate-pulse bg-muted" />
+          <Skeleton className="h-32 rounded-xl animate-pulse bg-muted" />
         </div>
-        <Skeleton className="h-12 w-full mt-5 rounded-xl animate-pulse bg-muted" />
+        <Skeleton className="h-10 w-full mt-4 rounded-xl animate-pulse bg-muted" />
       </div>
     );
   }
 
   if (products.length === 0 && !isLoading) {
     return (
-      <div className="relative overflow-hidden rounded-2xl border border-border/80 bg-card/60 p-8 shadow-xl backdrop-blur-md text-center flex flex-col items-center justify-center min-h-[220px]">
-        {/* Decorative top gradient glow */}
-        <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
-        <div className="absolute -top-24 -left-24 h-48 w-48 rounded-full bg-primary/10 blur-[80px]" />
-        
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20 text-primary shadow-sm mb-4">
-          <Sparkles className="h-6 w-6 text-primary animate-pulse" />
+      <div className="relative overflow-hidden rounded-2xl border border-border/80 bg-card/60 p-6 shadow-xl backdrop-blur-md text-center flex flex-col items-center justify-center h-full min-h-[260px]">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shadow-sm mb-3">
+          <Sparkles className="h-6 w-6 text-emerald-400 animate-pulse" />
         </div>
         <h3 className="font-bold text-lg text-foreground mb-1.5">Welcome to AnalyzeUp!</h3>
-        <p className="text-sm text-muted-foreground max-w-md mb-5">
+        <p className="text-xs md:text-sm text-muted-foreground max-w-md mb-4">
           Your real-time AI diagnostics, stockout risks, customer returns analytics, and savings insights will appear here once you add products and transaction data.
         </p>
         <a
           href="/dashboard/inventory"
-          className="inline-flex h-9 items-center justify-center rounded-xl bg-primary px-5 font-semibold text-xs text-primary-foreground shadow-sm transition-all hover:bg-primary/90"
+          className="inline-flex h-9 items-center justify-center rounded-xl bg-emerald-600 px-5 font-semibold text-xs text-white shadow-md hover:bg-emerald-500 transition-all"
         >
           Add Your First Product
         </a>
@@ -171,24 +142,18 @@ export function AIBrief() {
     );
   }
 
-  // Fallback if data loading failed completely or while loading initial state
   const activeBrief = brief || calculateDynamicBrief(products, transactions);
 
   return (
-    <div data-tour="ai-brief" className="relative overflow-hidden rounded-2xl border border-border/80 bg-card/60 p-6 shadow-xl backdrop-blur-md transition-all duration-300 hover:border-primary/40 scroll-reveal-item revealed">
-      {/* Decorative top gradient glow */}
-      <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
-      <div className="absolute -top-24 -left-24 h-48 w-48 rounded-full bg-primary/10 blur-[80px]" />
-      <div className="absolute -bottom-24 -right-24 h-48 w-48 rounded-full bg-primary/5 blur-[80px]" />
-
+    <div data-tour="ai-brief" className="relative overflow-hidden rounded-2xl border border-emerald-500/20 bg-card/60 p-5 shadow-xl backdrop-blur-md transition-all duration-300 hover:border-emerald-500/40 h-full flex flex-col justify-between">
       {/* Header section */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-border/40 pb-4 mb-5">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between border-b border-border/40 pb-3 mb-4">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary shadow-inner">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-400 shadow-inner border border-emerald-500/20">
             {isPending && isPaid ? (
               <Loader2 className="h-5 w-5 animate-spin" />
             ) : (
-              <Sparkles className="h-5 w-5 text-primary animate-pulse" />
+              <Sparkles className="h-5 w-5 text-emerald-400 animate-pulse" />
             )}
           </div>
           <div>
@@ -200,23 +165,23 @@ export function AIBrief() {
         </div>
 
         {/* Inventory Health Score and Refresh */}
-        <div className="flex flex-col md:items-end gap-2.5 w-full md:w-auto">
+        <div className="flex flex-col md:items-end gap-2 w-full md:w-auto">
           <div className="flex flex-wrap items-center justify-between md:justify-end gap-3 w-full">
             <button
               onClick={isPaid ? fetchBrief : () => setShowSubscriptionModal(true)}
               disabled={isPending && isPaid}
-              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-2.5 py-1 rounded-md border border-border/30 bg-secondary/20 transition-all active:scale-95 disabled:opacity-50"
+              className="text-xs text-muted-foreground hover:text-emerald-400 flex items-center gap-1.5 px-3 py-1 rounded-xl border border-border/40 bg-secondary/30 transition-all active:scale-95 disabled:opacity-50 font-semibold"
               title={isPaid ? "Refresh Brief" : "Upgrade to Unlock"}
             >
               {isPaid ? (
-                <RefreshCw className={`h-3 w-3 ${isPending ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`h-3.5 w-3.5 ${isPending ? 'animate-spin' : ''}`} />
               ) : (
-                <Lock className="h-3 w-3 text-primary" />
+                <Lock className="h-3.5 w-3.5 text-emerald-400" />
               )}
               <span>{isPaid ? 'Analyze' : 'Unlock'}</span>
             </button>
             <div className="flex items-center gap-1.5 text-sm">
-              <span className="font-medium text-muted-foreground">Inventory Health</span>
+              <span className="font-semibold text-muted-foreground">Inventory Health</span>
               <span className={`font-bold ${isPaid ? getHealthTextColor(activeBrief.healthScore) : 'text-muted-foreground/60'}`}>
                 {isPaid ? `${activeBrief.healthScore}/100` : '--/100'}
               </span>
@@ -227,69 +192,75 @@ export function AIBrief() {
       </div>
 
       {/* Main Content Area with conditional blur */}
-      <div className="relative">
+      <div className="relative flex-1 flex flex-col justify-between gap-4">
         {/* Content grid */}
-        <div className={`grid grid-cols-1 md:grid-cols-3 gap-6 transition-all duration-300 ${!isPaid ? 'blur-[5px] select-none pointer-events-none opacity-40' : (isPending ? 'opacity-60' : 'opacity-100')}`}>
+        <div className={`grid grid-cols-1 sm:grid-cols-3 gap-3.5 flex-1 transition-all duration-300 ${!isPaid ? 'blur-[5px] select-none pointer-events-none opacity-40' : (isPending ? 'opacity-60' : 'opacity-100')}`}>
           {/* Left Column: Stockout Risk */}
-          <div className="relative group flex gap-3.5 p-4 rounded-xl border border-rose-500/25 bg-rose-500/10 hover:bg-rose-500/15 transition-all duration-200 min-h-[140px]">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-rose-500/15 text-rose-400">
-              <AlertTriangle className="h-5 w-5" />
-            </div>
-            <div className="flex flex-col gap-1 min-w-0">
-              <span className="text-xs font-semibold uppercase tracking-wider text-rose-400">Stockout Risk</span>
-              <h4 className="font-bold text-base text-foreground truncate">{activeBrief.stockoutItem.name}</h4>
-              <div className="space-y-1 mt-1 text-sm">
-                <p className="text-rose-400 font-medium">{activeBrief.stockoutItem.riskText}</p>
+          <div className="relative group flex gap-3 p-3.5 rounded-2xl border border-rose-500/25 bg-rose-500/10 hover:bg-rose-500/15 transition-all duration-200 flex-1 flex-col justify-between">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-rose-500/20 text-rose-400">
+                  <AlertTriangle className="h-4 w-4" />
+                </div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-rose-400">Stockout Risk</span>
+              </div>
+              <h4 className="font-bold text-sm text-foreground leading-snug line-clamp-2">{activeBrief.stockoutItem.name}</h4>
+              <div className="space-y-0.5 text-xs">
+                <p className="text-rose-400 font-semibold">{activeBrief.stockoutItem.riskText}</p>
                 <p className="text-muted-foreground">{activeBrief.stockoutItem.reorderText}</p>
-                <p className="text-muted-foreground font-semibold">{activeBrief.stockoutItem.costText}</p>
               </div>
             </div>
+            <p className="text-xs text-foreground font-bold pt-1 border-t border-rose-500/20">{activeBrief.stockoutItem.costText}</p>
           </div>
 
           {/* Middle Column: Dead Stock / Slow Sales */}
-          <div className="relative group flex gap-3.5 p-4 rounded-xl border border-amber-500/25 bg-amber-500/10 hover:bg-amber-500/15 transition-all duration-200 min-h-[140px]">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400">
-              <Coins className="h-5 w-5" />
-            </div>
-            <div className="flex flex-col gap-1 min-w-0">
-              <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Slow-Moving Inventory</span>
-              <h4 className="font-bold text-base text-foreground truncate">{activeBrief.slowMovingItem.name}</h4>
-              <div className="space-y-1 mt-1 text-sm">
+          <div className="relative group flex gap-3 p-3.5 rounded-2xl border border-amber-500/25 bg-amber-500/10 hover:bg-amber-500/15 transition-all duration-200 flex-1 flex-col justify-between">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-500/20 text-amber-400">
+                  <Coins className="h-4 w-4" />
+                </div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400">Slow-Moving</span>
+              </div>
+              <h4 className="font-bold text-sm text-foreground leading-snug line-clamp-2">{activeBrief.slowMovingItem.name}</h4>
+              <div className="space-y-0.5 text-xs">
                 <p className="text-muted-foreground">{activeBrief.slowMovingItem.riskText}</p>
-                <p className="text-amber-400 font-semibold">{activeBrief.slowMovingItem.costText}</p>
-                <p className="text-amber-400 font-medium">{activeBrief.slowMovingItem.actionText}</p>
+                <p className="text-amber-400 font-bold">{activeBrief.slowMovingItem.costText}</p>
               </div>
             </div>
+            <p className="text-xs text-amber-300 font-semibold pt-1 border-t border-amber-500/20">{activeBrief.slowMovingItem.actionText}</p>
           </div>
 
           {/* Right Column: Customer Returns */}
-          <div className="relative group flex gap-3.5 p-4 rounded-xl border border-border/30 bg-secondary/20 hover:bg-secondary/30 transition-all duration-200 min-h-[140px]">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <RefreshCw className="h-5 w-5 text-primary" />
-            </div>
-            <div className="flex flex-col gap-1 min-w-0 w-full">
-              <span className="text-xs font-semibold uppercase tracking-wider text-primary">Customer Returns</span>
-              <h4 className="font-bold text-base text-foreground truncate">
+          <div className="relative group flex gap-3 p-3.5 rounded-2xl border border-border/40 bg-secondary/30 hover:bg-secondary/40 transition-all duration-200 flex-1 flex-col justify-between">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
+                  <RefreshCw className="h-4 w-4 text-emerald-400" />
+                </div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">Returns</span>
+              </div>
+              <h4 className="font-bold text-sm text-foreground leading-snug line-clamp-2">
                 {returnedQty > 0 ? `${returnedQty} Items Returned` : 'No Recent Returns'}
               </h4>
-              <div className="space-y-1 mt-1 text-sm">
-                <p className="text-primary font-medium">Return Rate: {returnRate.toFixed(1)}%</p>
-                <p className="text-muted-foreground truncate">
+              <div className="space-y-0.5 text-xs">
+                <p className="text-emerald-400 font-bold">Return Rate: {returnRate.toFixed(1)}%</p>
+                <p className="text-muted-foreground line-clamp-2">
                   {topReturnedQty > 0 ? `Highest: ${topReturnedProduct} (${topReturnedQty} units)` : '0 return transactions logged.'}
                 </p>
-                <a 
-                  href="/dashboard/returns"
-                  className="text-primary hover:underline font-semibold block pt-0.5 text-xs"
-                >
-                  Manage Returns Hub &rarr;
-                </a>
               </div>
             </div>
+            <a 
+              href="/dashboard/returns"
+              className="text-emerald-400 hover:underline font-bold block text-xs pt-1 border-t border-border/30"
+            >
+              Manage Returns Hub &rarr;
+            </a>
           </div>
         </div>
 
         {/* Footer Banner */}
-        <div data-tour="ai-suggestions" className={`mt-5 flex items-center justify-between p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-sm font-semibold transition-all duration-300 ${!isPaid ? 'blur-[5px] select-none pointer-events-none opacity-40' : (isPending ? 'opacity-60' : 'opacity-100')}`}>
+        <div data-tour="ai-suggestions" className={`flex items-center justify-between p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-xs md:text-sm font-bold transition-all duration-300 ${!isPaid ? 'blur-[5px] select-none pointer-events-none opacity-40' : (isPending ? 'opacity-60' : 'opacity-100')}`}>
           <div className="flex items-center gap-2">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
@@ -297,13 +268,13 @@ export function AIBrief() {
             </span>
             <span>{activeBrief.savingsText}</span>
           </div>
-          <span className="text-xs font-medium text-emerald-400/80 hidden sm:inline">Optimized via AI Copilot</span>
+          <span className="text-xs font-semibold text-emerald-400/80 hidden sm:inline">Optimized via AI Copilot</span>
         </div>
 
         {/* Paywall Overlay */}
         {!isPaid && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 z-10 bg-card/20 rounded-xl backdrop-blur-[2px]">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20 text-primary shadow-lg mb-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shadow-lg mb-3">
               <Lock className="h-6 w-6 animate-pulse" />
             </div>
             <h4 className="font-bold text-lg text-foreground mb-1.5 flex items-center gap-2">
@@ -314,7 +285,7 @@ export function AIBrief() {
             </p>
             <button
               onClick={() => setShowSubscriptionModal(true)}
-              className="inline-flex h-10 items-center justify-center rounded-xl bg-primary px-6 font-semibold text-primary-foreground shadow-md transition-all hover:bg-primary/90 hover:scale-[1.02] active:scale-[0.98]"
+              className="inline-flex h-10 items-center justify-center rounded-xl bg-emerald-600 px-6 font-semibold text-white shadow-md transition-all hover:bg-emerald-500 hover:scale-[1.02] active:scale-[0.98]"
             >
               Upgrade Plan
             </button>
@@ -345,7 +316,6 @@ function calculateDynamicBrief(products: any[], transactions: any[]): any {
     };
   }
 
-  // 1. Calculate Health Score
   let score = 100;
   let stockoutCount = 0;
   let lowStockCount = 0;
@@ -366,7 +336,6 @@ function calculateDynamicBrief(products: any[], transactions: any[]): any {
   score -= Math.round(lowStockPercentage * 20);
   score = Math.max(30, Math.min(100, score));
 
-  // 2. Identify Stockout Risk Item
   let highestRiskItem: any = null;
   let lowestRunway = Infinity;
 
@@ -407,7 +376,6 @@ function calculateDynamicBrief(products: any[], transactions: any[]): any {
     };
   }
 
-  // 3. Identify Slow-Moving Item
   let worstSlowMovingItem: any = null;
   let highestBlockedCapital = -1;
 
@@ -457,13 +425,12 @@ function calculateDynamicBrief(products: any[], transactions: any[]): any {
       name: worstSlowMovingItem.name || 'Unnamed Product',
       riskText: `No sales in ${daysSinceLastSale} days.`,
       costText: `₹${blockedCapital.toLocaleString('en-IN')} blocked.`,
-      actionText: 'Suggested action: 15% discount.'
+      actionText: 'Suggested action: 20% discount.'
     };
   }
 
-  // 4. Savings Text
-  const savings = worstSlowMovingItem ? Math.round((Number(worstSlowMovingItem.stock) * (Number(worstSlowMovingItem.costPrice) || Number(worstSlowMovingItem.price) * 0.6 || 0)) * 0.15) : 0;
-  const savingsText = `Potential monthly savings: ₹${(savings || 1500).toLocaleString('en-IN')}`;
+  const totalLockedCapital = products.reduce((sum, p) => sum + (Number(p.stock) * (Number(p.costPrice) || Number(p.price) * 0.6 || 0)), 0);
+  const savingsText = `Cash Locked in Inventory: ₹${Math.round(totalLockedCapital).toLocaleString('en-IN')}`;
 
   return {
     healthScore: score,
