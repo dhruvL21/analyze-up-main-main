@@ -53,13 +53,13 @@ export function BusinessActivityTimeline() {
   const getIcon = (type: string) => {
     switch (type) {
       case 'sale':
-        return <ShoppingCart className="w-3.5 h-3.5 text-emerald-500" />;
+        return <ShoppingCart className="w-3.5 h-3.5 text-primary" />;
       case 'order':
-        return <PackagePlus className="w-3.5 h-3.5 text-blue-500" />;
+        return <PackagePlus className="w-3.5 h-3.5 text-primary" />;
       case 'alert':
-        return <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />;
+        return <AlertTriangle className="w-3.5 h-3.5 text-destructive" />;
       case 'supplier':
-        return <Truck className="w-3.5 h-3.5 text-amber-500" />;
+        return <Truck className="w-3.5 h-3.5 text-primary" />;
       default:
         return <Sparkles className="w-3.5 h-3.5 text-primary" />;
     }

@@ -88,13 +88,13 @@ export function AIBrief() {
   const getHealthColor = (score: number) => {
     if (score >= 80) return 'bg-emerald-500';
     if (score >= 50) return 'bg-amber-500';
-    return 'bg-destructive';
+    return 'bg-rose-500';
   };
 
   const getHealthTextColor = (score: number) => {
     if (score >= 80) return 'text-emerald-400';
     if (score >= 50) return 'text-amber-400';
-    return 'text-destructive';
+    return 'text-rose-400';
   };
 
   if (!brief && isPending && isPaid) {
@@ -179,7 +179,7 @@ export function AIBrief() {
       {/* Decorative top gradient glow */}
       <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
       <div className="absolute -top-24 -left-24 h-48 w-48 rounded-full bg-primary/10 blur-[80px]" />
-      <div className="absolute -bottom-24 -right-24 h-48 w-48 rounded-full bg-emerald-500/5 blur-[80px]" />
+      <div className="absolute -bottom-24 -right-24 h-48 w-48 rounded-full bg-primary/5 blur-[80px]" />
 
       {/* Header section */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-border/40 pb-4 mb-5">
@@ -231,15 +231,15 @@ export function AIBrief() {
         {/* Content grid */}
         <div className={`grid grid-cols-1 md:grid-cols-3 gap-6 transition-all duration-300 ${!isPaid ? 'blur-[5px] select-none pointer-events-none opacity-40' : (isPending ? 'opacity-60' : 'opacity-100')}`}>
           {/* Left Column: Stockout Risk */}
-          <div className="relative group flex gap-3.5 p-4 rounded-xl border border-border/30 bg-secondary/20 hover:bg-secondary/30 transition-all duration-200 min-h-[140px]">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-500">
+          <div className="relative group flex gap-3.5 p-4 rounded-xl border border-rose-500/25 bg-rose-500/10 hover:bg-rose-500/15 transition-all duration-200 min-h-[140px]">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-rose-500/15 text-rose-400">
               <AlertTriangle className="h-5 w-5" />
             </div>
             <div className="flex flex-col gap-1 min-w-0">
-              <span className="text-xs font-semibold uppercase tracking-wider text-amber-500/80">Stockout Risk</span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-rose-400">Stockout Risk</span>
               <h4 className="font-bold text-base text-foreground truncate">{activeBrief.stockoutItem.name}</h4>
               <div className="space-y-1 mt-1 text-sm">
-                <p className="text-amber-400 font-medium">{activeBrief.stockoutItem.riskText}</p>
+                <p className="text-rose-400 font-medium">{activeBrief.stockoutItem.riskText}</p>
                 <p className="text-muted-foreground">{activeBrief.stockoutItem.reorderText}</p>
                 <p className="text-muted-foreground font-semibold">{activeBrief.stockoutItem.costText}</p>
               </div>
@@ -247,17 +247,17 @@ export function AIBrief() {
           </div>
 
           {/* Middle Column: Dead Stock / Slow Sales */}
-          <div className="relative group flex gap-3.5 p-4 rounded-xl border border-border/30 bg-secondary/20 hover:bg-secondary/30 transition-all duration-200 min-h-[140px]">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
+          <div className="relative group flex gap-3.5 p-4 rounded-xl border border-amber-500/25 bg-amber-500/10 hover:bg-amber-500/15 transition-all duration-200 min-h-[140px]">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400">
               <Coins className="h-5 w-5" />
             </div>
             <div className="flex flex-col gap-1 min-w-0">
-              <span className="text-xs font-semibold uppercase tracking-wider text-emerald-400">Slow-Moving Inventory</span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Slow-Moving Inventory</span>
               <h4 className="font-bold text-base text-foreground truncate">{activeBrief.slowMovingItem.name}</h4>
               <div className="space-y-1 mt-1 text-sm">
                 <p className="text-muted-foreground">{activeBrief.slowMovingItem.riskText}</p>
-                <p className="text-emerald-400 font-semibold">{activeBrief.slowMovingItem.costText}</p>
-                <p className="text-primary font-medium">{activeBrief.slowMovingItem.actionText}</p>
+                <p className="text-amber-400 font-semibold">{activeBrief.slowMovingItem.costText}</p>
+                <p className="text-amber-400 font-medium">{activeBrief.slowMovingItem.actionText}</p>
               </div>
             </div>
           </div>
@@ -289,15 +289,15 @@ export function AIBrief() {
         </div>
 
         {/* Footer Banner */}
-        <div data-tour="ai-suggestions" className={`mt-5 flex items-center justify-between p-3.5 rounded-xl border border-emerald-500/20 bg-emerald-500/5 text-emerald-400 text-sm font-semibold transition-all duration-300 ${!isPaid ? 'blur-[5px] select-none pointer-events-none opacity-40' : (isPending ? 'opacity-60' : 'opacity-100')}`}>
+        <div data-tour="ai-suggestions" className={`mt-5 flex items-center justify-between p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-sm font-semibold transition-all duration-300 ${!isPaid ? 'blur-[5px] select-none pointer-events-none opacity-40' : (isPending ? 'opacity-60' : 'opacity-100')}`}>
           <div className="flex items-center gap-2">
             <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
             <span>{activeBrief.savingsText}</span>
           </div>
-          <span className="text-xs font-medium text-emerald-500/70 hidden sm:inline">Optimized via AI Copilot</span>
+          <span className="text-xs font-medium text-emerald-400/80 hidden sm:inline">Optimized via AI Copilot</span>
         </div>
 
         {/* Paywall Overlay */}

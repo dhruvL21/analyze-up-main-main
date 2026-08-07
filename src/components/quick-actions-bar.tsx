@@ -54,7 +54,7 @@ export function QuickActionsBar() {
       <div className="p-3 rounded-2xl bg-secondary/40 border border-border/40 backdrop-blur-md space-y-2">
         <div className="flex items-center justify-between px-1">
           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-            <Zap className="w-3.5 h-3.5 text-amber-500" />
+            <Zap className="w-3.5 h-3.5 text-primary" />
             Founder Quick Actions
           </span>
           <span className="text-[11px] text-muted-foreground hidden sm:inline">Direct Modals & Shortcuts</span>
@@ -63,8 +63,9 @@ export function QuickActionsBar() {
         <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none text-xs">
           <Button
             size="sm"
+            variant="outline"
             onClick={() => setIsAddProductOpen(true)}
-            className="rounded-xl text-xs gap-1.5 shrink-0 bg-primary text-primary-foreground shadow-sm hover:brightness-110"
+            className="rounded-xl text-xs gap-1.5 shrink-0 border-primary/30 text-primary hover:bg-primary/10 font-medium"
           >
             <PlusCircle className="w-3.5 h-3.5" />
             Add Product
@@ -74,7 +75,7 @@ export function QuickActionsBar() {
             size="sm"
             variant="outline"
             onClick={() => setIsImportOpen(true)}
-            className="rounded-xl text-xs gap-1.5 shrink-0 border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/10"
+            className="rounded-xl text-xs gap-1.5 shrink-0 border-primary/30 text-primary hover:bg-primary/10 font-medium"
           >
             <FileSpreadsheet className="w-3.5 h-3.5" />
             Import CSV / Excel
@@ -84,7 +85,7 @@ export function QuickActionsBar() {
             size="sm"
             variant="outline"
             onClick={() => setShowShopifyModal(true)}
-            className="rounded-xl text-xs gap-1.5 shrink-0 border-purple-500/30 text-purple-500 hover:bg-purple-500/10"
+            className="rounded-xl text-xs gap-1.5 shrink-0 border-primary/30 text-primary hover:bg-primary/10 font-medium"
           >
             <ShoppingBag className="w-3.5 h-3.5" />
             Connect Shopify
@@ -94,7 +95,7 @@ export function QuickActionsBar() {
             size="sm"
             variant="outline"
             onClick={() => setIsDeadStockOpen(true)}
-            className="rounded-xl text-xs gap-1.5 shrink-0 border-rose-500/30 text-rose-500 hover:bg-rose-500/10"
+            className="rounded-xl text-xs gap-1.5 shrink-0 border-primary/30 text-primary hover:bg-primary/10 font-medium"
           >
             <PackageX className="w-3.5 h-3.5" />
             View Dead Stock
@@ -104,7 +105,7 @@ export function QuickActionsBar() {
             size="sm"
             variant="outline"
             onClick={() => setIsAddSupplierOpen(true)}
-            className="rounded-xl text-xs gap-1.5 shrink-0"
+            className="rounded-xl text-xs gap-1.5 shrink-0 border-primary/30 text-primary hover:bg-primary/10 font-medium"
           >
             <Truck className="w-3.5 h-3.5" />
             Add Supplier
@@ -114,7 +115,7 @@ export function QuickActionsBar() {
             size="sm"
             variant="outline"
             onClick={handleLaunchCopilot}
-            className="rounded-xl text-xs gap-1.5 shrink-0 border-blue-500/30 text-blue-500 hover:bg-blue-500/10"
+            className="rounded-xl text-xs gap-1.5 shrink-0 border-primary/30 text-primary hover:bg-primary/10 font-medium"
           >
             <Sparkles className="w-3.5 h-3.5" />
             Launch AI Copilot
@@ -124,7 +125,7 @@ export function QuickActionsBar() {
             size="sm"
             variant="outline"
             onClick={handleLoadDemo}
-            className="rounded-xl text-xs gap-1.5 shrink-0 border-amber-500/30 text-amber-500 hover:bg-amber-500/10"
+            className="rounded-xl text-xs gap-1.5 shrink-0 border-primary/30 text-primary hover:bg-primary/10 font-medium"
           >
             <Zap className="w-3.5 h-3.5" />
             Load Demo Business

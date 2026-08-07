@@ -114,13 +114,13 @@ export function InventoryRecommendationsPanel() {
       <CardContent className="p-0 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs pt-1">
         {/* Recommendation 1: Reorder */}
         {lowStockProd && (
-          <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex flex-col justify-between space-y-2">
+          <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex flex-col justify-between space-y-2">
             <div className="space-y-1">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-foreground flex items-center gap-1 text-xs">
-                  <PackagePlus className="w-3.5 h-3.5 text-amber-500" /> Restock Urgently
+                  <PackagePlus className="w-3.5 h-3.5 text-amber-400" /> Restock Urgently
                 </span>
-                <Badge variant="outline" className="text-amber-500 border-amber-500/30 text-[10px]">High Priority</Badge>
+                <Badge variant="outline" className="text-amber-400 border-amber-500/30 text-[10px]">High Priority</Badge>
               </div>
               <p className="font-semibold text-foreground text-xs">{lowStockProd.name}</p>
               <p className="text-muted-foreground text-[11px]">Current stock: {lowStockProd.stock} units. Reorder 50 units immediately to avoid stockout.</p>
@@ -138,13 +138,13 @@ export function InventoryRecommendationsPanel() {
 
         {/* Recommendation 2: Clearance */}
         {deadStockProd && (
-          <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex flex-col justify-between space-y-2">
+          <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/25 flex flex-col justify-between space-y-2">
             <div className="space-y-1">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-foreground flex items-center gap-1 text-xs">
-                  <Tag className="w-3.5 h-3.5 text-rose-500" /> Liquidate Dead Stock
+                  <Tag className="w-3.5 h-3.5 text-rose-400" /> Liquidate Dead Stock
                 </span>
-                <Badge variant="outline" className="text-rose-500 border-rose-500/30 text-[10px]">Clear Capital</Badge>
+                <Badge variant="outline" className="text-rose-400 border-rose-500/30 text-[10px]">Clear Capital</Badge>
               </div>
               <p className="font-semibold text-foreground text-xs">{deadStockProd.name}</p>
               <p className="text-muted-foreground text-[11px]">{deadStockProd.stock} units sitting unsold. Launch 20% discount to unlock cash flow.</p>
@@ -162,13 +162,13 @@ export function InventoryRecommendationsPanel() {
 
         {/* Recommendation 3: Price Up */}
         {priceUpProd && (
-          <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex flex-col justify-between space-y-2">
+          <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex flex-col justify-between space-y-2">
             <div className="space-y-1">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-foreground flex items-center gap-1 text-xs">
-                  <TrendingUp className="w-3.5 h-3.5 text-emerald-500" /> Optimize Margin (+8%)
+                  <TrendingUp className="w-3.5 h-3.5 text-emerald-400" /> Optimize Margin (+8%)
                 </span>
-                <Badge variant="outline" className="text-emerald-500 border-emerald-500/30 text-[10px]">High Demand</Badge>
+                <Badge variant="outline" className="text-emerald-400 border-emerald-500/30 text-[10px]">High Demand</Badge>
               </div>
               <p className="font-semibold text-foreground text-xs">{priceUpProd.name}</p>
               <p className="text-muted-foreground text-[11px]">Strong velocity. Increase selling price to {currencySymbol}{Math.round((priceUpProd.price || 500) * 1.08)} for margin expansion.</p>

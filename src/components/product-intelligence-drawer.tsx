@@ -172,7 +172,7 @@ export function ProductIntelligenceDrawer({ product, open, onOpenChange }: Produ
 
           <div className="p-3 rounded-2xl bg-secondary/40 border border-border/40 space-y-0.5">
             <span className="text-[10px] text-muted-foreground font-medium block">Profit Margin</span>
-            <p className="text-lg font-bold text-emerald-500">{report.profitMarginPercent}%</p>
+            <p className="text-lg font-bold text-emerald-400">{report.profitMarginPercent}%</p>
           </div>
         </div>
 
@@ -180,7 +180,7 @@ export function ProductIntelligenceDrawer({ product, open, onOpenChange }: Produ
         {report.reorderAdvice.needed && (
           <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
             <div className="space-y-0.5">
-              <span className="font-bold text-amber-500 flex items-center gap-1">
+              <span className="font-bold text-amber-400 flex items-center gap-1">
                 <PackagePlus className="w-4 h-4" /> Restock Recommendation
               </span>
               <p className="text-muted-foreground">{report.reorderAdvice.reason}</p>
@@ -199,7 +199,7 @@ export function ProductIntelligenceDrawer({ product, open, onOpenChange }: Produ
         {report.opportunityAdvice.hasOpportunity && (
           <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
             <div className="space-y-0.5">
-              <span className="font-bold text-emerald-500 flex items-center gap-1">
+              <span className="font-bold text-emerald-400 flex items-center gap-1">
                 <TrendingUp className="w-4 h-4" /> {report.opportunityAdvice.title}
               </span>
               <p className="text-muted-foreground">{report.opportunityAdvice.description}</p>

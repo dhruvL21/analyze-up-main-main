@@ -71,7 +71,7 @@ export function SmartWelcomeModal() {
           <div className="grid grid-cols-2 gap-2.5">
             <div className="p-3.5 rounded-2xl bg-secondary/40 border border-border/40 space-y-1">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Package className="w-3.5 h-3.5 text-blue-500" />
+                <Package className="w-3.5 h-3.5 text-primary" />
                 Products Catalog
               </div>
               <p className="text-xl font-bold">{products.length}</p>
@@ -79,7 +79,7 @@ export function SmartWelcomeModal() {
 
             <div className="p-3.5 rounded-2xl bg-secondary/40 border border-border/40 space-y-1">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Truck className="w-3.5 h-3.5 text-amber-500" />
+                <Truck className="w-3.5 h-3.5 text-primary" />
                 Active Suppliers
               </div>
               <p className="text-xl font-bold">{suppliers.length}</p>
@@ -87,18 +87,18 @@ export function SmartWelcomeModal() {
 
             <div className="p-3.5 rounded-2xl bg-secondary/40 border border-border/40 space-y-1">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <IndianRupee className="w-3.5 h-3.5 text-emerald-500" />
+                <IndianRupee className="w-3.5 h-3.5 text-primary" />
                 Inventory Valuation
               </div>
-              <p className="text-lg font-bold text-emerald-500">{formattedVal}</p>
+              <p className="text-lg font-bold text-primary">{formattedVal}</p>
             </div>
 
             <div className="p-3.5 rounded-2xl bg-secondary/40 border border-border/40 space-y-1">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />
+                <AlertTriangle className="w-3.5 h-3.5 text-destructive" />
                 Low Stock Alerts
               </div>
-              <p className="text-lg font-bold text-rose-500">{lowStockCount} Items</p>
+              <p className="text-lg font-bold text-destructive">{lowStockCount} Items</p>
             </div>
           </div>
 

@@ -27,10 +27,10 @@ export function InventoryRiskOpportunities() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       {/* Risk Panel */}
-      <Card className="ios-glass rounded-3xl border-rose-500/20 p-5 shadow-xl space-y-3">
+      <Card className="ios-glass rounded-3xl border-border/50 p-5 shadow-xl space-y-3">
         <CardHeader className="p-0 pb-3 border-b border-border/40 flex flex-row items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-rose-500/10 text-rose-500 border border-rose-500/20">
+            <div className="p-2 rounded-xl bg-destructive/10 text-destructive border border-destructive/20">
               <ShieldAlert className="w-5 h-5" />
             </div>
             <div>
@@ -39,7 +39,7 @@ export function InventoryRiskOpportunities() {
             </div>
           </div>
 
-          <Badge className="bg-rose-500/15 text-rose-500 border-rose-500/30 text-xs">
+          <Badge className="bg-destructive/15 text-destructive border-destructive/30 text-xs">
             {stockoutRisk.length + deadStock.length} Issues
           </Badge>
         </CardHeader>
@@ -48,10 +48,10 @@ export function InventoryRiskOpportunities() {
           {stockoutRisk.length > 0 && (
             <div className="p-3 rounded-2xl bg-secondary/40 border border-border/40 space-y-1">
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-rose-500 flex items-center gap-1">
+                <span className="font-semibold text-destructive flex items-center gap-1">
                   <AlertTriangle className="w-3.5 h-3.5" /> Stockout Risk: {stockoutRisk[0].name}
                 </span>
-                <Badge variant="outline" className="text-rose-500 border-rose-500/30 text-[10px]">High Impact</Badge>
+                <Badge variant="outline" className="text-destructive border-destructive/30 text-[10px]">High Impact</Badge>
               </div>
               <p className="text-muted-foreground">Only {stockoutRisk[0].stock} units remaining. Expected stockout in 3 days.</p>
               <p className="font-bold text-foreground">Est. Loss: {currencySymbol}{Math.round(stockoutRisk[0].price * 25).toLocaleString('en-IN')}</p>
@@ -61,10 +61,10 @@ export function InventoryRiskOpportunities() {
           {deadStock.length > 0 && (
             <div className="p-3 rounded-2xl bg-secondary/40 border border-border/40 space-y-1">
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-amber-500 flex items-center gap-1">
+                <span className="font-semibold text-primary flex items-center gap-1">
                   <AlertTriangle className="w-3.5 h-3.5" /> Dead Capital Lockup
                 </span>
-                <Badge variant="outline" className="text-amber-500 border-amber-500/30 text-[10px]">{deadStock.length} SKUs</Badge>
+                <Badge variant="outline" className="text-primary border-primary/30 text-[10px]">{deadStock.length} SKUs</Badge>
               </div>
               <p className="text-muted-foreground">{deadStock[0].name} ({deadStock[0].stock} units) has zero sales history.</p>
               <p className="font-bold text-foreground">Tied Capital: {currencySymbol}{Math.round(deadStock[0].stock * (deadStock[0].costPrice || deadStock[0].price * 0.6)).toLocaleString('en-IN')}</p>
@@ -75,7 +75,7 @@ export function InventoryRiskOpportunities() {
             size="sm"
             variant="outline"
             onClick={() => router.push('/dashboard/inventory')}
-            className="w-full rounded-xl text-xs gap-1 border-rose-500/30 text-rose-500 hover:bg-rose-500/10 mt-1"
+            className="w-full rounded-xl text-xs gap-1 border-border text-foreground hover:bg-secondary mt-1"
           >
             Resolve All Inventory Risks
             <ArrowRight className="w-3.5 h-3.5" />
@@ -105,26 +105,26 @@ export function InventoryRiskOpportunities() {
           {priceIncreaseCandidates.length > 0 && (
             <div className="p-3 rounded-2xl bg-secondary/40 border border-border/40 space-y-1">
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-primary flex items-center gap-1">
+                <span className="font-semibold text-emerald-400 flex items-center gap-1">
                   <TrendingUp className="w-3.5 h-3.5" /> Price Optimization
                 </span>
-                <Badge variant="outline" className="text-primary border-primary/30 text-[10px]">+8% Margin</Badge>
+                <Badge variant="outline" className="text-emerald-400 border-emerald-500/30 text-[10px]">+8% Margin</Badge>
               </div>
               <p className="text-muted-foreground">Increase price of {priceIncreaseCandidates[0].name} from {currencySymbol}{priceIncreaseCandidates[0].price} to {currencySymbol}{Math.round(priceIncreaseCandidates[0].price * 1.08)}.</p>
-              <p className="font-bold text-emerald-500">Unlocks +{currencySymbol}{Math.round(priceIncreaseCandidates[0].price * 0.08 * priceIncreaseCandidates[0].stock).toLocaleString('en-IN')} Profit</p>
+              <p className="font-bold text-emerald-400">Unlocks +{currencySymbol}{Math.round(priceIncreaseCandidates[0].price * 0.08 * priceIncreaseCandidates[0].stock).toLocaleString('en-IN')} Profit</p>
             </div>
           )}
 
           {bundleCandidates.length > 0 && (
             <div className="p-3 rounded-2xl bg-secondary/40 border border-border/40 space-y-1">
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-purple-500 flex items-center gap-1">
+                <span className="font-semibold text-emerald-400 flex items-center gap-1">
                   <Layers className="w-3.5 h-3.5" /> Bundle & Cross-Sell Opportunity
                 </span>
-                <Badge variant="outline" className="text-purple-500 border-purple-500/30 text-[10px]">Bundle Deal</Badge>
+                <Badge variant="outline" className="text-emerald-400 border-emerald-500/30 text-[10px]">Bundle Deal</Badge>
               </div>
               <p className="text-muted-foreground">Bundle {bundleCandidates[0].name} with high-margin accessories for a 12% combo discount.</p>
-              <p className="font-bold text-purple-500">Estimated AOV Lift: +{currencySymbol}350</p>
+              <p className="font-bold text-emerald-400">Estimated AOV Lift: +{currencySymbol}350</p>
             </div>
           )}
 

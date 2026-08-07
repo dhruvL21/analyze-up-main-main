@@ -202,7 +202,7 @@ export function AIActionCenter() {
         </div>
 
         {completedTaskIds.length > 0 && (
-          <Badge variant="outline" className="text-emerald-500 border-emerald-500/30 text-xs gap-1">
+          <Badge variant="outline" className="text-primary border-primary/30 text-xs gap-1">
             <Check className="w-3 h-3" /> {completedTaskIds.length} Completed
           </Badge>
         )}
@@ -211,7 +211,7 @@ export function AIActionCenter() {
       <CardContent className="p-0 space-y-3">
         {activeTasks.length === 0 ? (
           <div className="p-6 text-center rounded-2xl bg-secondary/30 border border-border/40 space-y-2">
-            <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
+            <CheckCircle2 className="w-8 h-8 text-primary mx-auto" />
             <h4 className="text-sm font-semibold">All Priority Actions Clear!</h4>
             <p className="text-xs text-muted-foreground">Great job. Your business operations are running smoothly without critical bottlenecks.</p>
           </div>
@@ -227,10 +227,10 @@ export function AIActionCenter() {
                     <Badge
                       className={
                         task.priority === 'High'
-                          ? 'bg-rose-500/15 text-rose-500 border-rose-500/30'
+                          ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
                           : task.priority === 'Medium'
-                          ? 'bg-amber-500/15 text-amber-500 border-amber-500/30'
-                          : 'bg-blue-500/15 text-blue-500 border-blue-500/30'
+                          ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                          : 'bg-muted text-muted-foreground border-border'
                       }
                     >
                       {task.priority} Priority
@@ -259,9 +259,9 @@ export function AIActionCenter() {
                   <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">Root Cause</span>
                   <p className="text-foreground">{task.reason}</p>
                 </div>
-                <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 space-y-0.5">
-                  <span className="text-[10px] font-semibold text-emerald-500 uppercase tracking-wider block">Estimated Benefit</span>
-                  <p className="font-bold text-emerald-500">{task.estimatedBenefit}</p>
+                <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 space-y-0.5">
+                  <span className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider block">Estimated Benefit</span>
+                  <p className="font-bold text-emerald-400">{task.estimatedBenefit}</p>
                 </div>
               </div>
 
@@ -278,7 +278,7 @@ export function AIActionCenter() {
                     onClick={() => handleCompleteTask(task.id, task.title)}
                     className="rounded-xl text-xs gap-1 h-8 flex-1 sm:flex-initial"
                   >
-                    <Check className="w-3.5 h-3.5 text-emerald-500" />
+                    <Check className="w-3.5 h-3.5 text-primary" />
                     Mark Done
                   </Button>
                   <Button

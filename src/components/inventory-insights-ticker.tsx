@@ -17,20 +17,20 @@ export function InventoryInsightsTicker() {
     if (lowCount > 0) {
       list.push({
         id: 'ins-1',
-        icon: <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />,
+        icon: <AlertTriangle className="w-3.5 h-3.5 text-primary shrink-0" />,
         text: `${lowCount} products entered critical stock threshold — Reorder required to prevent stockout gaps.`,
         tag: 'Critical Stock',
-        badgeClass: 'bg-amber-500/15 text-amber-500 border-amber-500/30',
+        badgeClass: 'bg-primary/15 text-primary border-primary/30',
       });
     }
 
     const totalValuation = products.reduce((sum, p) => sum + (p.stock * p.price), 0);
     list.push({
       id: 'ins-2',
-      icon: <Coins className="w-3.5 h-3.5 text-emerald-500 shrink-0" />,
+      icon: <Coins className="w-3.5 h-3.5 text-primary shrink-0" />,
       text: `Total active catalog asset valuation holds at ${currencySymbol}${Math.round(totalValuation).toLocaleString('en-IN')}.`,
       tag: 'Valuation',
-      badgeClass: 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30',
+      badgeClass: 'bg-primary/15 text-primary border-primary/30',
     });
 
     const saleProductIds = new Set(transactions.filter(t => t.type === 'Sale').map(t => t.productId));
@@ -38,20 +38,20 @@ export function InventoryInsightsTicker() {
     if (deadCount > 0) {
       list.push({
         id: 'ins-3',
-        icon: <PackageX className="w-3.5 h-3.5 text-rose-500 shrink-0" />,
+        icon: <PackageX className="w-3.5 h-3.5 text-destructive shrink-0" />,
         text: `${deadCount} products identified as dead stock — Apply clearance discounts to unlock working capital.`,
         tag: 'Dead Stock',
-        badgeClass: 'bg-rose-500/15 text-rose-500 border-rose-500/30',
+        badgeClass: 'bg-destructive/15 text-destructive border-destructive/30',
       });
     }
 
     if (suppliers.length > 0) {
       list.push({
         id: 'ins-4',
-        icon: <Truck className="w-3.5 h-3.5 text-blue-500 shrink-0" />,
+        icon: <Truck className="w-3.5 h-3.5 text-primary shrink-0" />,
         text: `Linked with ${suppliers.length} active suppliers. Average lead time buffer is 7.2 days.`,
         tag: 'Suppliers',
-        badgeClass: 'bg-blue-500/15 text-blue-500 border-blue-500/30',
+        badgeClass: 'bg-primary/15 text-primary border-primary/30',
       });
     }
 

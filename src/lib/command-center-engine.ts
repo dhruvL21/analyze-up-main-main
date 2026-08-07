@@ -71,8 +71,8 @@ export function computeBusinessHealth(
     return {
       score: 75,
       category: 'Needs Attention',
-      color: '#f59e0b',
-      badgeClass: 'bg-amber-500/15 text-amber-500 border-amber-500/30',
+      color: '#a07e50',
+      badgeClass: 'bg-primary/15 text-primary border-primary/30',
       factors: {
         inventoryHealth: 50,
         marginHealth: 60,
@@ -124,29 +124,29 @@ export function computeBusinessHealth(
   );
 
   let category: BusinessHealthSummary['category'] = 'Healthy';
-  let color = '#10b981';
-  let badgeClass = 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30';
+  let color = '#a07e50';
+  let badgeClass = 'bg-primary/15 text-primary border-primary/30';
 
   if (score >= 95) {
     category = 'Excellent';
     color = '#10b981';
-    badgeClass = 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30';
+    badgeClass = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
   } else if (score >= 80) {
     category = 'Healthy';
-    color = '#22c55e';
-    badgeClass = 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30';
+    color = '#10b981';
+    badgeClass = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
   } else if (score >= 60) {
     category = 'Needs Attention';
     color = '#f59e0b';
-    badgeClass = 'bg-amber-500/15 text-amber-500 border-amber-500/30';
+    badgeClass = 'bg-amber-500/15 text-amber-400 border-amber-500/30';
   } else if (score >= 40) {
     category = 'Poor';
     color = '#f97316';
-    badgeClass = 'bg-orange-500/15 text-orange-500 border-orange-500/30';
+    badgeClass = 'bg-orange-500/15 text-orange-400 border-orange-500/30';
   } else {
     category = 'Critical';
     color = '#ef4444';
-    badgeClass = 'bg-rose-500/15 text-rose-500 border-rose-500/30';
+    badgeClass = 'bg-rose-500/15 text-rose-400 border-rose-500/30';
   }
 
   let summarySentence = 'Operations are stable with good inventory velocity.';

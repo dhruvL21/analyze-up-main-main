@@ -16,11 +16,11 @@ export function ExecutiveKPIGrid() {
       case 'revenue':
         return <IndianRupee className="w-4 h-4 text-emerald-500" />;
       case 'inventory_value':
-        return <Package className="w-4 h-4 text-blue-500" />;
+        return <Package className="w-4 h-4 text-primary" />;
       case 'net_profit':
-        return <CreditCard className="w-4 h-4 text-primary" />;
+        return <CreditCard className="w-4 h-4 text-emerald-500" />;
       default:
-        return <ShoppingCart className="w-4 h-4 text-purple-500" />;
+        return <ShoppingCart className="w-4 h-4 text-primary" />;
     }
   };
 

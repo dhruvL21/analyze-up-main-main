@@ -105,7 +105,7 @@ export function ProductComparisonModal({ open, onOpenChange }: ProductComparison
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Profit Margin</span>
-                    <span className="font-bold text-emerald-500">{reportA.profitMarginPercent}%</span>
+                    <span className="font-bold text-emerald-400">{reportA.profitMarginPercent}%</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Daily Sales Velocity</span>
@@ -124,10 +124,10 @@ export function ProductComparisonModal({ open, onOpenChange }: ProductComparison
               </div>
 
               {/* Product B Card */}
-              <div className="p-4 rounded-2xl bg-secondary/40 border border-purple-500/30 space-y-3">
+              <div className="p-4 rounded-2xl bg-secondary/40 border border-primary/30 space-y-3">
                 <div className="flex items-center justify-between border-b border-border/40 pb-2">
                   <div>
-                    <Badge className="bg-purple-600 text-white text-[10px] mb-1">Grade {reportB.performanceGrade}</Badge>
+                    <Badge className="bg-primary text-primary-foreground text-[10px] mb-1">Grade {reportB.performanceGrade}</Badge>
                     <h4 className="font-bold text-foreground text-sm">{productB.name}</h4>
                   </div>
                   <Badge className={`${reportB.badgeClass} text-[10px]`}>{reportB.healthStatus}</Badge>
@@ -144,7 +144,7 @@ export function ProductComparisonModal({ open, onOpenChange }: ProductComparison
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Profit Margin</span>
-                    <span className="font-bold text-emerald-500">{reportB.profitMarginPercent}%</span>
+                    <span className="font-bold text-emerald-400">{reportB.profitMarginPercent}%</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Daily Sales Velocity</span>
@@ -157,7 +157,7 @@ export function ProductComparisonModal({ open, onOpenChange }: ProductComparison
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-background/60 border border-border/40 space-y-1">
-                  <span className="text-[10px] font-semibold text-purple-500 uppercase tracking-wider block">AI Takeaway</span>
+                  <span className="text-[10px] font-semibold text-primary uppercase tracking-wider block">AI Takeaway</span>
                   <p className="text-[11px] text-muted-foreground">{reportB.executiveSummary}</p>
                 </div>
               </div>
@@ -166,7 +166,7 @@ export function ProductComparisonModal({ open, onOpenChange }: ProductComparison
 
           {/* Trade-off Verdict */}
           {reportA && reportB && (
-            <div className="p-4 rounded-2xl bg-gradient-to-r from-primary/10 via-purple-500/10 to-transparent border border-primary/20 space-y-1">
+            <div className="p-4 rounded-2xl bg-primary/5 border border-primary/20 space-y-1">
               <span className="font-bold text-foreground flex items-center gap-1.5 text-xs">
                 <Sparkles className="w-4 h-4 text-primary" /> AI Comparison Decision Verdict
               </span>

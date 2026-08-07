@@ -19,7 +19,7 @@ export function BusinessPrioritiesCard() {
     <Card className="ios-glass rounded-3xl border-border/50 p-5 shadow-lg space-y-4">
       <CardHeader className="p-0 pb-3 border-b border-border/40 flex flex-row items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
+          <div className="p-2 rounded-xl bg-primary/10 text-primary border border-primary/20">
             <CheckSquare className="w-5 h-5" />
           </div>
           <div>
@@ -27,7 +27,7 @@ export function BusinessPrioritiesCard() {
             <CardDescription className="text-xs">Short, high-impact focus list for busy founders (Max 5)</CardDescription>
           </div>
         </div>
-        <Badge variant="outline" className="text-amber-500 border-amber-500/30 text-xs">
+        <Badge variant="outline" className="text-primary border-primary/30 text-xs">
           Focus Mode
         </Badge>
       </CardHeader>

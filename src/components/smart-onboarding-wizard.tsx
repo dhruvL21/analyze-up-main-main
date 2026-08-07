@@ -365,7 +365,7 @@ export function SmartOnboardingWizard() {
                 className="p-4 rounded-2xl bg-secondary/40 hover:bg-secondary/80 border border-border/50 text-left transition-all hover:scale-[1.02] flex flex-col justify-between space-y-3 group"
               >
                 <div className="flex items-center justify-between w-full">
-                  <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-500 group-hover:bg-blue-500 group-hover:text-white transition-colors">
+                  <div className="p-2.5 rounded-xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
                     <PackagePlus className="w-5 h-5" />
                   </div>
                   <Badge variant="outline" className="text-[10px] text-muted-foreground">Startup / &lt;100 SKUs</Badge>
@@ -384,10 +384,10 @@ export function SmartOnboardingWizard() {
                 className="p-4 rounded-2xl bg-secondary/40 hover:bg-secondary/80 border border-border/50 text-left transition-all hover:scale-[1.02] flex flex-col justify-between space-y-3 group"
               >
                 <div className="flex items-center justify-between w-full">
-                  <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-500 group-hover:bg-emerald-500 group-hover:text-white transition-colors">
+                  <div className="p-2.5 rounded-xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
                     <FileSpreadsheet className="w-5 h-5" />
                   </div>
-                  <Badge variant="outline" className="text-[10px] text-emerald-500 border-emerald-500/30">Most Popular</Badge>
+                  <Badge variant="outline" className="text-[10px] text-primary border-primary/30">Most Popular</Badge>
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-foreground">Import CSV / Excel</h4>
@@ -403,10 +403,10 @@ export function SmartOnboardingWizard() {
                 className="p-4 rounded-2xl bg-secondary/40 hover:bg-secondary/80 border border-border/50 text-left transition-all hover:scale-[1.02] flex flex-col justify-between space-y-3 group"
               >
                 <div className="flex items-center justify-between w-full">
-                  <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-500 group-hover:bg-purple-500 group-hover:text-white transition-colors">
+                  <div className="p-2.5 rounded-xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
                     <ShoppingBag className="w-5 h-5" />
                   </div>
-                  <Badge variant="outline" className="text-[10px] text-purple-500 border-purple-500/30">Shopify Sync</Badge>
+                  <Badge variant="outline" className="text-[10px] text-primary border-primary/30">Shopify Sync</Badge>
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-foreground">Connect Shopify</h4>

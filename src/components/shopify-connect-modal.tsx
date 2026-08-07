@@ -62,11 +62,11 @@ export function ShopifyConnectModal() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'Connected':
-        return <Badge className="bg-emerald-500/15 text-emerald-500 border-emerald-500/20 gap-1.5 py-1 px-3"><CheckCircle2 className="w-3.5 h-3.5" /> Connected</Badge>;
+        return <Badge className="bg-primary/15 text-primary border-primary/20 gap-1.5 py-1 px-3"><CheckCircle2 className="w-3.5 h-3.5" /> Connected</Badge>;
       case 'Pending':
-        return <Badge className="bg-amber-500/15 text-amber-500 border-amber-500/20 gap-1.5 py-1 px-3"><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Pending Approval</Badge>;
+        return <Badge className="bg-primary/15 text-primary border-primary/20 gap-1.5 py-1 px-3"><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Pending Approval</Badge>;
       case 'Sync Required':
-        return <Badge className="bg-blue-500/15 text-blue-500 border-blue-500/20 gap-1.5 py-1 px-3"><AlertCircle className="w-3.5 h-3.5" /> Sync Required</Badge>;
+        return <Badge className="bg-primary/15 text-primary border-primary/20 gap-1.5 py-1 px-3"><AlertCircle className="w-3.5 h-3.5" /> Sync Required</Badge>;
       default:
         return <Badge variant="outline" className="text-muted-foreground gap-1.5 py-1 px-3">Disconnected</Badge>;
     }
@@ -77,7 +77,7 @@ export function ShopifyConnectModal() {
       <DialogContent className="sm:max-w-md ios-glass rounded-2xl border border-border/50">
         <DialogHeader>
           <div className="flex items-center gap-3 mb-2">
-            <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+            <div className="p-2.5 rounded-xl bg-primary/10 text-primary border border-primary/20">
               <ShoppingBag className="w-6 h-6" />
             </div>
             <div>
@@ -146,7 +146,7 @@ export function ShopifyConnectModal() {
             <Button
               type="submit"
               disabled={isConnecting}
-              className="rounded-xl text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white shadow-md"
+              className="rounded-xl text-xs gap-1.5 bg-primary text-primary-foreground shadow-md hover:brightness-110"
             >
               {isConnecting ? (
                 <>

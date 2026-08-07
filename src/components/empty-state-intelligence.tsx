@@ -34,16 +34,16 @@ export function EmptyStateIntelligence() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
-          <div className="p-4 rounded-2xl bg-gradient-to-br from-primary/20 via-accent/15 to-primary/10 border border-primary/30 space-y-2">
+          <div className="p-4 rounded-2xl bg-primary/10 border border-primary/30 space-y-2">
             <div className="flex items-center justify-between">
-              <Zap className="w-5 h-5 text-amber-500" />
-              <Badge className="bg-amber-500 text-white text-[10px]">Instant 1-Click</Badge>
+              <Zap className="w-5 h-5 text-primary" />
+              <Badge className="bg-primary text-primary-foreground text-[10px]">Instant 1-Click</Badge>
             </div>
             <h4 className="text-sm font-bold text-foreground">Explore Demo Business</h4>
             <p className="text-xs text-muted-foreground">Load 200+ products, 15 suppliers & 500+ sales orders to test AI features instantly.</p>
             <Button
               onClick={() => loadDemoBusiness(businessProfile?.businessType || 'Fashion')}
-              className="w-full rounded-xl text-xs gap-1.5 bg-amber-600 hover:bg-amber-500 text-white shadow-md mt-1"
+              className="w-full rounded-xl text-xs gap-1.5 bg-primary text-primary-foreground hover:brightness-110 shadow-md mt-1"
             >
               Load Demo Business
               <ArrowRight className="w-3.5 h-3.5" />
@@ -52,14 +52,14 @@ export function EmptyStateIntelligence() {
 
           <div className="p-4 rounded-2xl bg-secondary/40 border border-border/50 space-y-2">
             <div className="flex items-center justify-between">
-              <FileSpreadsheet className="w-5 h-5 text-emerald-500" />
-              <Badge variant="outline" className="text-emerald-500 text-[10px]">CSV / Excel</Badge>
+              <FileSpreadsheet className="w-5 h-5 text-primary" />
+              <Badge variant="outline" className="text-primary border-primary/30 text-[10px]">CSV / Excel</Badge>
             </div>
             <h4 className="text-sm font-bold text-foreground">Bulk Import Catalog</h4>
             <p className="text-xs text-muted-foreground">Download our official CSV template and import your existing Excel product lists.</p>
             <Button
               onClick={() => router.push('/dashboard/inventory?action=import')}
-              className="w-full rounded-xl text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white shadow-md mt-1"
+              className="w-full rounded-xl text-xs gap-1.5 bg-primary text-primary-foreground hover:brightness-110 shadow-md mt-1"
             >
               Import CSV File
               <ArrowRight className="w-3.5 h-3.5" />
@@ -71,7 +71,7 @@ export function EmptyStateIntelligence() {
           <Button
             variant="ghost"
             onClick={() => setShowShopifyModal(true)}
-            className="rounded-xl text-xs gap-1.5 text-purple-500 hover:bg-purple-500/10"
+            className="rounded-xl text-xs gap-1.5 text-primary hover:bg-primary/10"
           >
             <ShoppingBag className="w-3.5 h-3.5" /> Connect Shopify Store
           </Button>

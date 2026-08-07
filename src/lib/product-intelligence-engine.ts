@@ -5,6 +5,7 @@ export type ProductHealthStatus =
   | 'Healthy'
   | 'Low Stock'
   | 'Critical Stock'
+  | 'Out of Stock'
   | 'Overstocked'
   | 'Dead Stock'
   | 'Fast Moving'
@@ -75,37 +76,38 @@ export function computeProductIntelligence(
 
   // Determine Health Status
   let healthStatus: ProductHealthStatus = 'Healthy';
-  let healthColor = '#22c55e';
-  let badgeClass = 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30';
+  let healthColor = '#a07e50';
+  let badgeClass = 'bg-primary/15 text-primary border-primary/30';
+  const hasSalesHistory = totalSoldQty > 0;
 
   if (product.stock === 0) {
-    healthStatus = 'Critical Stock';
+    healthStatus = 'Out of Stock';
     healthColor = '#ef4444';
-    badgeClass = 'bg-rose-500/15 text-rose-500 border-rose-500/30';
+    badgeClass = 'bg-rose-500/15 text-rose-400 border-rose-500/30';
   } else if (product.stock <= (product.minStock || 5)) {
     healthStatus = 'Low Stock';
     healthColor = '#f59e0b';
-    badgeClass = 'bg-amber-500/15 text-amber-500 border-amber-500/30';
-  } else if (totalSoldQty === 0 && product.stock > 0) {
+    badgeClass = 'bg-amber-500/15 text-amber-400 border-amber-500/30';
+  } else if (!hasSalesHistory) {
     healthStatus = 'Dead Stock';
     healthColor = '#64748b';
-    badgeClass = 'bg-slate-500/15 text-slate-400 border-slate-500/30';
+    badgeClass = 'bg-slate-500/15 text-slate-300 border-slate-500/30';
   } else if (product.stock >= (product.maxStock || 100)) {
     healthStatus = 'Overstocked';
     healthColor = '#3b82f6';
-    badgeClass = 'bg-blue-500/15 text-blue-500 border-blue-500/30';
+    badgeClass = 'bg-blue-500/15 text-blue-400 border-blue-500/30';
   } else if (dailySales >= 2.0) {
     healthStatus = 'Fast Moving';
     healthColor = '#10b981';
-    badgeClass = 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30';
+    badgeClass = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
   } else if (dailySales >= 1.0) {
     healthStatus = 'Trending';
-    healthColor = '#8b5cf6';
-    badgeClass = 'bg-purple-500/15 text-purple-500 border-purple-500/30';
+    healthColor = '#10b981';
+    badgeClass = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
   } else if (dailySales < 0.3 && totalSoldQty > 0) {
     healthStatus = 'Slow Moving';
-    healthColor = '#f97316';
-    badgeClass = 'bg-orange-500/15 text-orange-500 border-orange-500/30';
+    healthColor = '#64748b';
+    badgeClass = 'bg-slate-500/15 text-slate-400 border-slate-500/30';
   }
 
   // Calculate Performance Score (0 - 100) & Grade

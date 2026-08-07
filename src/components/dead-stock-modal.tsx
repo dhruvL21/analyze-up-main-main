@@ -49,8 +49,8 @@ export function DeadStockModal({ open, onOpenChange }: DeadStockModalProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto ios-glass p-6">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg font-bold text-rose-500">
-            <PackageX className="w-5 h-5 text-rose-500" />
+          <DialogTitle className="flex items-center gap-2 text-lg font-bold text-destructive">
+            <PackageX className="w-5 h-5 text-destructive" />
             Dead Stock & Locked Capital Inspector
           </DialogTitle>
           <DialogDescription className="text-xs">
@@ -60,12 +60,12 @@ export function DeadStockModal({ open, onOpenChange }: DeadStockModalProps) {
 
         <div className="space-y-4 py-2 text-xs">
           {/* Summary Box */}
-          <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-between">
+          <div className="p-4 rounded-2xl bg-destructive/10 border border-destructive/20 flex items-center justify-between">
             <div>
-              <span className="text-[11px] font-semibold text-rose-500 uppercase tracking-wider block">Locked Working Capital</span>
+              <span className="text-[11px] font-semibold text-destructive uppercase tracking-wider block">Locked Working Capital</span>
               <span className="text-2xl font-bold text-foreground">{currencySymbol}{Math.round(totalDeadCapital).toLocaleString('en-IN')}</span>
             </div>
-            <Badge className="bg-rose-500 text-white text-xs px-3 py-1 font-semibold">
+            <Badge className="bg-destructive text-destructive-foreground text-xs px-3 py-1 font-semibold">
               {deadStockItems.length} Stagnant SKUs
             </Badge>
           </div>
@@ -73,7 +73,7 @@ export function DeadStockModal({ open, onOpenChange }: DeadStockModalProps) {
           {/* List of items */}
           {deadStockItems.length === 0 ? (
             <div className="p-6 text-center rounded-2xl bg-secondary/30 border border-border/40 space-y-1">
-              <Check className="w-6 h-6 text-emerald-500 mx-auto" />
+              <Check className="w-6 h-6 text-primary mx-auto" />
               <p className="font-semibold text-foreground">No Dead Stock Detected!</p>
               <p className="text-muted-foreground text-xs">All products in your inventory have active customer sales history.</p>
             </div>
@@ -91,12 +91,12 @@ export function DeadStockModal({ open, onOpenChange }: DeadStockModalProps) {
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="font-semibold text-rose-500 text-xs pr-2">{currencySymbol}{Math.round(tied).toLocaleString('en-IN')} tied</span>
+                      <span className="font-semibold text-destructive text-xs pr-2">{currencySymbol}{Math.round(tied).toLocaleString('en-IN')} tied</span>
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => handleApplyDiscount(item, 20)}
-                        className="rounded-xl text-xs gap-1 h-7 border-amber-500/30 text-amber-500 hover:bg-amber-500/10"
+                        className="rounded-xl text-xs gap-1 h-7 border-primary/30 text-primary hover:bg-primary/10"
                       >
                         <Tag className="w-3 h-3" />
                         Apply 20% Off

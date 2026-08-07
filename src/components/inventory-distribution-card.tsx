@@ -29,7 +29,7 @@ export function InventoryDistributionCard() {
     <Card className="ios-glass rounded-3xl border-border/50 p-5 shadow-xl space-y-3">
       <CardHeader className="p-0 pb-3 border-b border-border/40 flex flex-row items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="p-2 rounded-xl bg-purple-500/10 text-purple-500 border border-purple-500/20">
+          <div className="p-2 rounded-xl bg-primary/10 text-primary border border-primary/20">
             <PieChart className="w-5 h-5" />
           </div>
           <div>
@@ -47,52 +47,52 @@ export function InventoryDistributionCard() {
         <div className="space-y-2">
           <div className="space-y-1">
             <div className="flex justify-between text-xs font-medium">
-              <span className="text-emerald-500 flex items-center gap-1">
+              <span className="text-emerald-400 flex items-center gap-1 font-semibold">
                 <CheckCircle2 className="w-3.5 h-3.5" /> Healthy Stock
               </span>
               <span>{healthyCount} SKUs ({healthyPct}%)</span>
             </div>
-            <Progress value={healthyPct} className="h-1.5 rounded-full bg-emerald-500/20" />
+            <Progress value={healthyPct} className="h-1.5 rounded-full bg-emerald-500/20 [&>div]:bg-emerald-500" />
           </div>
 
           <div className="space-y-1">
             <div className="flex justify-between text-xs font-medium">
-              <span className="text-amber-500 flex items-center gap-1">
+              <span className="text-amber-400 flex items-center gap-1 font-semibold">
                 <AlertTriangle className="w-3.5 h-3.5" /> Low Stock Warning
               </span>
               <span>{lowCount} SKUs ({lowPct}%)</span>
             </div>
-            <Progress value={lowPct} className="h-1.5 rounded-full bg-amber-500/20" />
+            <Progress value={lowPct} className="h-1.5 rounded-full bg-amber-500/20 [&>div]:bg-amber-500" />
           </div>
 
           <div className="space-y-1">
             <div className="flex justify-between text-xs font-medium">
-              <span className="text-rose-500 flex items-center gap-1">
+              <span className="text-rose-400 flex items-center gap-1 font-semibold">
                 <XCircle className="w-3.5 h-3.5" /> Critical / Out of Stock
               </span>
               <span>{criticalCount} SKUs ({criticalPct}%)</span>
             </div>
-            <Progress value={criticalPct} className="h-1.5 rounded-full bg-rose-500/20" />
+            <Progress value={criticalPct} className="h-1.5 rounded-full bg-rose-500/20 [&>div]:bg-rose-500" />
           </div>
 
           <div className="space-y-1">
             <div className="flex justify-between text-xs font-medium">
-              <span className="text-muted-foreground flex items-center gap-1">
+              <span className="text-slate-400 flex items-center gap-1 font-semibold">
                 <Clock className="w-3.5 h-3.5" /> Dead Stock Capital Lockup
               </span>
               <span>{deadCount} SKUs ({deadPct}%)</span>
             </div>
-            <Progress value={deadPct} className="h-1.5 rounded-full bg-slate-500/20" />
+            <Progress value={deadPct} className="h-1.5 rounded-full bg-slate-500/20 [&>div]:bg-slate-400" />
           </div>
 
           <div className="space-y-1">
             <div className="flex justify-between text-xs font-medium">
-              <span className="text-blue-500 flex items-center gap-1">
+              <span className="text-blue-400 flex items-center gap-1 font-semibold">
                 <Boxes className="w-3.5 h-3.5" /> Overstocked Items
               </span>
               <span>{overstockCount} SKUs ({overstockPct}%)</span>
             </div>
-            <Progress value={overstockPct} className="h-1.5 rounded-full bg-blue-500/20" />
+            <Progress value={overstockPct} className="h-1.5 rounded-full bg-blue-500/20 [&>div]:bg-blue-500" />
           </div>
         </div>
       </CardContent>

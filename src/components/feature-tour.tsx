@@ -47,7 +47,7 @@ const TOUR_STEPS: TourStep[] = [
     category: 'Welcome Overview',
     description: 'Welcome to AnalyzeUp! Your AI-powered business intelligence copilot designed to turn raw sales, order, and inventory data into profitable strategies.',
     icon: AnalyzeUpIcon,
-    iconColor: 'text-amber-500',
+    iconColor: 'text-primary',
     preferredPlacement: 'bottom',
   },
   {
@@ -57,7 +57,7 @@ const TOUR_STEPS: TourStep[] = [
     category: 'Command Center',
     description: 'Monitor store-wide revenue, profit margins, top-selling products, active inventory values, and real-time monthly sales trends.',
     icon: LayoutDashboard,
-    iconColor: 'text-amber-400',
+    iconColor: 'text-primary',
     preferredPlacement: 'bottom',
   },
   {
@@ -67,7 +67,7 @@ const TOUR_STEPS: TourStep[] = [
     category: 'Daily AI Diagnostics',
     description: 'Automated daily inventory health scoring (0-100), immediate stockout risk warnings, and slow-moving item alerts generated every morning.',
     icon: Sparkles,
-    iconColor: 'text-amber-400',
+    iconColor: 'text-primary',
     preferredPlacement: 'bottom',
   },
   {
@@ -77,7 +77,7 @@ const TOUR_STEPS: TourStep[] = [
     category: 'Smart Recommendations',
     description: 'Actionable AI suggestions highlighting exact dollar/rupee capital savings and steps to liquidate dead stock or reorder top performers.',
     icon: Lightbulb,
-    iconColor: 'text-emerald-400',
+    iconColor: 'text-primary',
     preferredPlacement: 'bottom',
   },
   {
@@ -87,7 +87,7 @@ const TOUR_STEPS: TourStep[] = [
     category: 'AI Machine Intelligence',
     description: 'Leverage smart algorithms that forecast dead stock risks, predict reorder timelines, calculate stockout probabilities, and maximize ROI.',
     icon: Sparkles,
-    iconColor: 'text-yellow-400',
+    iconColor: 'text-primary',
     preferredPlacement: 'bottom',
   },
   {
@@ -97,7 +97,7 @@ const TOUR_STEPS: TourStep[] = [
     category: 'Financial Health',
     description: 'View overall store health rating (0-100), financial safety score, operational risk indicators, and strategic growth advice.',
     icon: Activity,
-    iconColor: 'text-rose-400',
+    iconColor: 'text-primary',
     preferredPlacement: 'bottom',
   },
   {
@@ -107,7 +107,7 @@ const TOUR_STEPS: TourStep[] = [
     category: 'Profit Protection',
     description: 'Track customer product returns, refund costs, return rates by category, and identify defective inventory items before margins drop.',
     icon: RefreshCw,
-    iconColor: 'text-orange-400',
+    iconColor: 'text-primary',
     preferredPlacement: 'bottom',
   },
   {
@@ -117,7 +117,7 @@ const TOUR_STEPS: TourStep[] = [
     category: 'Stock Control',
     description: 'Track real-time stock levels, automated inventory valuations, low-stock threshold alerts, and instant stock update actions.',
     icon: Boxes,
-    iconColor: 'text-emerald-400',
+    iconColor: 'text-primary',
     preferredPlacement: 'bottom',
   },
   {
@@ -127,7 +127,7 @@ const TOUR_STEPS: TourStep[] = [
     category: 'Order Management',
     description: 'Streamline purchase orders, filter order statuses (Pending, Processing, Completed), and analyze channel performance.',
     icon: ShoppingCart,
-    iconColor: 'text-blue-400',
+    iconColor: 'text-primary',
     preferredPlacement: 'bottom',
   },
   {
@@ -137,7 +137,7 @@ const TOUR_STEPS: TourStep[] = [
     category: 'Vendor Network',
     description: 'Track supplier delivery lead times, vendor reliability scores, fulfillment velocity, and vendor contact info.',
     icon: Truck,
-    iconColor: 'text-purple-400',
+    iconColor: 'text-primary',
     preferredPlacement: 'bottom',
   },
   {
@@ -147,7 +147,7 @@ const TOUR_STEPS: TourStep[] = [
     category: 'Advanced Data Science',
     description: 'Explore multi-dimensional data charts, automated anomaly detection, custom filtering, and instant executive summaries.',
     icon: BarChart3,
-    iconColor: 'text-cyan-400',
+    iconColor: 'text-primary',
     preferredPlacement: 'bottom',
   },
   {
@@ -167,7 +167,7 @@ const TOUR_STEPS: TourStep[] = [
     category: 'Customization',
     description: 'Seamlessly toggle between sleek dark mode and bright light mode for comfortable day or night analysis.',
     icon: Sun,
-    iconColor: 'text-amber-300',
+    iconColor: 'text-primary',
     preferredPlacement: 'bottom',
   },
   {
@@ -177,7 +177,7 @@ const TOUR_STEPS: TourStep[] = [
     category: 'User Workspace',
     description: 'Customize workspace settings, view user profiles, and manage subscription tiers anytime.',
     icon: Settings,
-    iconColor: 'text-slate-300',
+    iconColor: 'text-primary',
     preferredPlacement: 'bottom',
   },
 ];
