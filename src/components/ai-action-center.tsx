@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 export function AIActionCenter() {
-  const { products, transactions, suppliers, businessProfile, updateProduct, addOrder, addTransaction } = useData();
+  const { products, transactions, suppliers, orders, businessProfile, updateProduct, addOrder, addTransaction } = useData();
   const { toast } = useToast();
   const router = useRouter();
 
@@ -39,9 +39,9 @@ export function AIActionCenter() {
   });
 
   useEffect(() => {
-    const generated = generateActionTasks(products, transactions, suppliers, businessProfile);
+    const generated = generateActionTasks(products, transactions, suppliers, orders, businessProfile);
     setTasks(generated);
-  }, [products, transactions, suppliers, businessProfile]);
+  }, [products, transactions, suppliers, orders, businessProfile]);
 
   const markTaskCompleted = (taskId: string) => {
     setCompletedTaskIds(prev => {

@@ -51,7 +51,7 @@ export function AddSupplierModal({ open, onOpenChange }: AddSupplierModalProps) 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[95vw] sm:max-w-md max-h-[90vh] overflow-y-auto ios-glass border-border/50 p-6 shadow-2xl rounded-3xl">
-        <DialogHeader className="pb-2 text-left space-y-1">
+        <DialogHeader className="pb-2 text-left space-y-1 pr-8">
           <DialogTitle className="flex items-center gap-2 text-lg font-bold text-foreground">
             <div className="p-2 rounded-xl bg-primary/10 text-primary border border-primary/20">
               <Truck className="w-5 h-5 text-primary" />

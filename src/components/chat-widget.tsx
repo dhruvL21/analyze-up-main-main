@@ -1,31 +1,89 @@
+'use client';
+
 import { useState, useRef, useEffect, useTransition } from 'react';
 import { useData } from '@/context/data-context';
-import { X, Send, Bot, Sparkles, Loader2, ChevronRight, HelpCircle, Lock } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { useRouter } from 'next/navigation';
+import { X, Send, Bot, Sparkles, Loader2, Lock, PlusCircle, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { askAnalyzeUpChat, ChatMessage } from '@/ai/flows/chat';
+import { processCopilotQuery, COPILOT_SUGGESTIONS, CopilotResponse } from '@/lib/copilot-engine';
+import { logBusinessAction } from '@/lib/audit-store';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { sanitizePlainData } from '@/lib/utils';
 
 export function ChatWidget() {
-  const { products, transactions, activePlan, setShowSubscriptionModal, businessProfile } = useData();
+  const { products, transactions, suppliers, orders, returns, activePlan, setShowSubscriptionModal, businessProfile } = useData();
+  const { toast } = useToast();
+  const router = useRouter();
+
   const [isOpen, setIsOpen] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
-  const [messages, setMessages] = useState<ChatMessage[]>([
+  const [messages, setMessages] = useState<(ChatMessage & { copilotRes?: CopilotResponse })[]>([
     {
       role: 'assistant',
-      content: "Hello! I'm your AnalyzeUp Copilot. Ask me anything about your profits, products, or sales. You can use the quick suggestions below to start analyzing!",
+      content: "Hello! I'm your AnalyzeUp AI Business Copilot. Ask me questions like 'What should I do today?', 'Why did profit drop?', or 'Which supplier is best?'.",
     },
   ]);
   const [isPending, startTransition] = useTransition();
   const chatBodyRef = useRef<HTMLDivElement>(null);
 
+  // Listen for global analyzeup_open_copilot trigger
+  useEffect(() => {
+    const handleOpenCopilot = (evt: Event) => {
+      const customEvt = evt as CustomEvent<{ query?: string }>;
+      setIsOpen(true);
+      if (customEvt.detail?.query) {
+        const queryText = customEvt.detail.query;
+        const userMsg: ChatMessage = { role: 'user', content: queryText };
+        setMessages(prev => [...prev, userMsg]);
+
+        startTransition(async () => {
+          try {
+            const copilotRes = processCopilotQuery(
+              queryText,
+              messages,
+              products,
+              transactions,
+              suppliers,
+              orders,
+              returns,
+              businessProfile
+            );
+
+            const responseText = await askAnalyzeUpChat(
+              queryText,
+              messages.slice(-8),
+              sanitizePlainData(products),
+              sanitizePlainData(transactions),
+              sanitizePlainData(suppliers),
+              sanitizePlainData(orders),
+              sanitizePlainData(returns),
+              sanitizePlainData(businessProfile)
+            );
+
+            setMessages(prev => [
+              ...prev,
+              {
+                role: 'assistant',
+                content: responseText || copilotRes.answerMarkdown,
+                copilotRes,
+              },
+            ]);
+          } catch (err) {
+            console.error('Error generating AI Copilot response:', err);
+          }
+        });
+      }
+    };
+
+    window.addEventListener('analyzeup_open_copilot', handleOpenCopilot);
+    return () => window.removeEventListener('analyzeup_open_copilot', handleOpenCopilot);
+  }, [products, transactions, suppliers, orders, returns, businessProfile, messages]);
+
   const isPaid = activePlan !== 'Free Trial';
 
-  const suggestions = [
-    'Why did my profit drop?',
-    'What should I reorder?',
-    'Which products are dead stock?',
-    'How can I increase revenue by ₹10,000?',
-  ];
-
-  // Auto scroll to bottom of messages
+  // Auto scroll to bottom
   useEffect(() => {
     if (chatBodyRef.current) {
       chatBodyRef.current.scrollTo({
@@ -36,84 +94,107 @@ export function ChatWidget() {
   }, [messages, isPending, isOpen]);
 
   const handleSendMessage = (messageText: string) => {
-    if (!isPaid || !messageText.trim() || isPending) return;
+    if (!messageText.trim() || isPending) return;
 
     const userMsg: ChatMessage = { role: 'user', content: messageText };
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages(prev => [...prev, userMsg]);
     setInputMessage('');
 
     startTransition(async () => {
       try {
-        // Serialize products & transactions safely on the client
-        const simplifiedProducts = products.map((p) => ({
-          name: p.name,
-          sku: p.sku || '',
-          stock: p.stock || 0,
-          price: p.price || 0,
-          costPrice: p.costPrice || p.price * 0.6 || 0,
-          averageDailySales: p.averageDailySales || 0,
-          leadTimeDays: p.leadTimeDays || 7,
-        }));
-
-        const simplifiedTransactions = (transactions || []).slice(0, 30).map((t) => {
-          let dateStr = 'Recent';
-          if (t.transactionDate) {
-            if (typeof t.transactionDate === 'object' && t.transactionDate !== null && 'seconds' in t.transactionDate) {
-              dateStr = new Date((t.transactionDate as any).seconds * 1000).toLocaleDateString();
-            } else if (t.transactionDate instanceof Date) {
-              dateStr = t.transactionDate.toLocaleDateString();
-            } else {
-              dateStr = String(t.transactionDate);
-            }
-          }
-          return {
-            productName: t.productName || '',
-            sku: t.sku || '',
-            type: t.type,
-            quantity: t.quantity || 0,
-            price: t.price || 0,
-            date: dateStr,
-          };
-        });
-
-        // Call OpenAI action with history (slice history to keep context windows reasonable)
-        const historySlice = messages.slice(-10); // last 10 messages for conversational flow
-        const response = await askAnalyzeUpChat(
+        // Calculate deterministic copilot response immediately
+        const copilotRes = processCopilotQuery(
           messageText,
-          historySlice,
-          simplifiedProducts,
-          simplifiedTransactions,
+          messages,
+          products,
+          transactions,
+          suppliers,
+          orders,
+          returns,
           businessProfile
         );
 
-        setMessages((prev) => [...prev, { role: 'assistant', content: response }]);
+        // Call server action for AI natural language synthesis
+        const responseText = await askAnalyzeUpChat(
+          messageText,
+          messages.slice(-8),
+          sanitizePlainData(products),
+          sanitizePlainData(transactions),
+          sanitizePlainData(suppliers),
+          sanitizePlainData(orders),
+          sanitizePlainData(returns),
+          sanitizePlainData(businessProfile)
+        );
+
+        setMessages(prev => [
+          ...prev,
+          {
+            role: 'assistant',
+            content: responseText || copilotRes.answerMarkdown,
+            copilotRes,
+          },
+        ]);
       } catch (err) {
         console.error('Chat error:', err);
-        setMessages((prev) => [
+        const fallbackRes = processCopilotQuery(
+          messageText,
+          messages,
+          products,
+          transactions,
+          suppliers,
+          orders,
+          returns,
+          businessProfile
+        );
+        setMessages(prev => [
           ...prev,
-          { role: 'assistant', content: 'Sorry, I failed to process that request. Please try again.' },
+          {
+            role: 'assistant',
+            content: fallbackRes.answerMarkdown,
+            copilotRes: fallbackRes,
+          },
         ]);
       }
     });
   };
 
+  const handleExecuteCopilotAction = (recAction: NonNullable<CopilotResponse['recommendedAction']>) => {
+    if (recAction.targetRoute) {
+      router.push(recAction.targetRoute);
+      setIsOpen(false);
+      toast({
+        title: `🚀 Navigating to ${recAction.label}`,
+        description: 'Opening module for execution.',
+      });
+    } else if (recAction.actionTask) {
+      logBusinessAction({
+        title: recAction.actionTask.title,
+        productName: recAction.actionTask.targetName || 'Catalog Item',
+        actionType: recAction.actionTask.actionType as any,
+        changeDetails: recAction.actionTask.recommendation,
+        impactValue: recAction.actionTask.estimatedBenefit,
+      });
+      toast({
+        title: '✅ Action Added to AI Action Center!',
+        description: `Task "${recAction.actionTask.title}" logged in Action Center & Audit History.`,
+      });
+    }
+  };
+
   return (
     <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
-      {/* Chat Window Panel (Sleek modern glassmorphism mockup) */}
+      {/* Panel */}
       {isOpen && (
-        <div className="w-[400px] max-w-[calc(100vw-2rem)] h-[540px] max-h-[calc(100dvh-120px)] rounded-2xl border border-border/80 bg-card/85 shadow-2xl flex flex-col overflow-hidden backdrop-blur-xl transition-all duration-300 animate-in fade-in slide-in-from-bottom-5 relative">
-          {/* Top glowing strip */}
+        <div className="w-[440px] max-w-[calc(100vw-2rem)] h-[580px] max-h-[calc(100dvh-120px)] rounded-3xl border border-border/80 bg-card/90 shadow-2xl flex flex-col overflow-hidden backdrop-blur-xl transition-all duration-300 animate-in fade-in slide-in-from-bottom-5 relative">
           <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
           <div className="absolute -top-24 -left-24 h-48 w-48 rounded-full bg-primary/5 blur-[80px]" />
-          <div className="absolute -bottom-24 -right-24 h-48 w-48 rounded-full bg-emerald-500/5 blur-[80px]" />
 
           {!isPaid ? (
-            // Locked ChatWidget view
             <div className="flex-1 flex flex-col justify-between p-6 h-full relative z-10">
               <div className="flex justify-end">
                 <button
                   onClick={() => setIsOpen(false)}
-                  className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-secondary/40 text-muted-foreground hover:text-foreground transition-all duration-150 active:scale-95"
+                  className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-secondary/40 text-muted-foreground hover:text-foreground"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -126,165 +207,172 @@ export function ChatWidget() {
                   Unlock AI Business Copilot
                 </h4>
                 <p className="text-sm text-muted-foreground leading-relaxed max-w-[280px] mb-6">
-                  Get instant answers about your products, sales trends, reorder quantities, and profit margins.
+                  Get instant grounded answers about your profits, products, vendor risks, and reorder quantities.
                 </p>
                 <button
                   onClick={() => {
                     setIsOpen(false);
                     setShowSubscriptionModal(true);
                   }}
-                  className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-primary px-6 font-semibold text-primary-foreground shadow-md transition-all hover:bg-primary/90 active:scale-[0.98]"
+                  className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-primary px-6 font-semibold text-primary-foreground shadow-md transition-all hover:bg-primary/90"
                 >
                   Upgrade Plan
                 </button>
               </div>
-              <div className="text-[10px] text-center text-muted-foreground/60 uppercase font-bold tracking-wider pt-4 border-t border-border/10">
-                Premium Copilot Feature
-              </div>
             </div>
           ) : (
-            // Full ChatWidget content (original)
             <>
-              {/* Chat Header */}
-              <div className="relative flex items-center justify-between px-5 py-4 border-b border-border/40 bg-secondary/10">
+              {/* Header */}
+              <div className="relative flex items-center justify-between px-5 py-3.5 border-b border-border/40 bg-secondary/20">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary border border-primary/25 shadow-sm">
                     <Bot className="h-4.5 w-4.5" />
                   </div>
                   <div>
-                    <h4 className="font-bold text-sm text-foreground tracking-tight flex items-center gap-1.5">
-                      Ask AnalyzeUp
+                    <h4 className="font-extrabold text-sm text-foreground tracking-tight flex items-center gap-1.5">
+                      AnalyzeUp Copilot
                     </h4>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span className="relative flex h-1.5 w-1.5">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
                       </span>
-                      <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Business Copilot</span>
+                      <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">
+                        Decision Intelligence
+                      </span>
                     </div>
                   </div>
                 </div>
                 <button
                   onClick={() => setIsOpen(false)}
-                  className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-secondary/40 text-muted-foreground hover:text-foreground transition-all duration-150 active:scale-95"
+                  className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-secondary/40 text-muted-foreground hover:text-foreground"
                 >
                   <X className="h-4 w-4" />
                 </button>
               </div>
 
-              {/* Chat Messages */}
+              {/* Messages Body */}
               <div
                 ref={chatBodyRef}
-                className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4 scrollbar-thin scrollbar-thumb-muted"
+                className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 text-xs scrollbar-thin"
               >
                 {messages.map((msg, index) => (
                   <div
                     key={index}
-                    className={`flex gap-3 max-w-[85%] ${
+                    className={`flex gap-2.5 max-w-[90%] ${
                       msg.role === 'user' ? 'ml-auto flex-row-reverse' : 'mr-auto'
                     }`}
                   >
                     {msg.role === 'assistant' && (
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary border border-primary/10 mt-1 shadow-inner">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary border border-primary/20 mt-1 shadow-sm">
                         <Sparkles className="h-3.5 w-3.5" />
                       </div>
                     )}
-                    <div
-                      className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm ${
-                        msg.role === 'user'
-                          ? 'bg-gradient-to-br from-primary to-amber-700/80 text-primary-foreground font-medium rounded-tr-none border border-primary/20'
-                          : 'bg-secondary/25 text-foreground border border-border/30 rounded-tl-none whitespace-pre-wrap backdrop-blur-sm'
-                      }`}
-                    >
-                      {msg.content}
+                    <div className="space-y-2">
+                      <div
+                        className={`rounded-2xl px-4 py-3 leading-relaxed ${
+                          msg.role === 'user'
+                            ? 'bg-primary text-primary-foreground font-medium rounded-tr-none shadow-sm'
+                            : 'bg-secondary/40 text-foreground border border-border/40 rounded-tl-none whitespace-pre-wrap font-normal'
+                        }`}
+                      >
+                        {msg.content}
+                      </div>
+
+                      {/* Supporting Data & 1-Click Action */}
+                      {msg.copilotRes && (
+                        <div className="p-3 rounded-2xl bg-secondary/30 border border-border/30 space-y-2 text-xs">
+                          {msg.copilotRes.supportingData.length > 0 && (
+                            <div className="grid grid-cols-2 gap-1.5">
+                              {msg.copilotRes.supportingData.map((d, i) => (
+                                <div key={i} className="p-1.5 rounded-lg bg-background/60 border border-border/30 text-[10px]">
+                                  <span className="text-muted-foreground block font-semibold">{d.label}</span>
+                                  <span className="font-bold text-foreground block">{d.value}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {msg.copilotRes.recommendedAction && (
+                            <Button
+                              size="sm"
+                              className="w-full h-8 text-xs font-bold gap-1.5 bg-primary text-primary-foreground hover:brightness-110 shadow-sm rounded-xl mt-1"
+                              onClick={() => handleExecuteCopilotAction(msg.copilotRes!.recommendedAction!)}
+                            >
+                              <ArrowRight className="w-3.5 h-3.5" /> {msg.copilotRes.recommendedAction.label}
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
 
-                {/* Loading Indicator */}
                 {isPending && (
-                  <div className="flex gap-3 max-w-[85%] mr-auto items-start">
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary border border-primary/10 mt-1 shadow-inner">
+                  <div className="flex gap-2.5 max-w-[85%] mr-auto items-center text-xs text-muted-foreground">
+                    <div className="h-7 w-7 rounded-xl bg-primary/10 text-primary border border-primary/20 flex items-center justify-center shrink-0">
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     </div>
-                    <div className="rounded-2xl rounded-tl-none px-4 py-2.5 text-xs bg-secondary/20 text-muted-foreground border border-border/20 flex items-center gap-2 backdrop-blur-sm">
-                      <span className="relative flex h-1.5 w-1.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary"></span>
-                      </span>
-                      AnalyzeUp Copilot is analyzing your data...
-                    </div>
-                  </div>
-                )}
-                {/* Suggestions cards */}
-                {!isPending && (
-                  <div className="pt-4 border-t border-border/20 space-y-2">
-                    <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
-                      <HelpCircle className="h-3 w-3 text-primary" />
-                      <span>Suggested Queries</span>
-                    </div>
-                    <div className="grid gap-2 grid-cols-1 sm:grid-cols-1">
-                      {suggestions.map((query) => (
-                        <button
-                          key={query}
-                          onClick={() => handleSendMessage(query)}
-                          disabled={isPending}
-                          className="group flex items-center justify-between text-left text-xs bg-secondary/15 hover:bg-primary/10 border border-border/20 hover:border-primary/30 p-3 rounded-xl text-muted-foreground hover:text-foreground transition-all duration-200 active:scale-[0.99] disabled:opacity-50"
-                        >
-                          <span className="font-medium pr-2 truncate">{query}</span>
-                          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 group-hover:text-primary transition-all duration-200 group-hover:translate-x-0.5" />
-                        </button>
-                      ))}
-                    </div>
+                    <span>Analyzing business logs & intelligence engines...</span>
                   </div>
                 )}
               </div>
 
-              {/* Chat Input */}
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleSendMessage(inputMessage);
-                }}
-                className="p-4 border-t border-border/40 bg-secondary/5 flex items-center gap-2"
-              >
-                <input
-                  type="text"
-                  value={inputMessage}
-                  onChange={(e) => setInputMessage(e.target.value)}
-                  placeholder="Ask anything about your data..."
-                  disabled={isPending}
-                  className="flex-1 min-w-0 bg-secondary/20 border border-border/60 hover:border-border/80 focus:border-primary/80 focus:ring-1 focus:ring-primary/40 rounded-xl px-4 py-2.5 text-sm focus:outline-none disabled:opacity-50 text-foreground transition-all duration-200"
-                />
-                <button
-                  type="submit"
-                  disabled={!inputMessage.trim() || isPending}
-                  className="h-10 w-10 shrink-0 flex items-center justify-center rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground shadow-md transition-all active:scale-90 hover:scale-105 disabled:opacity-40 disabled:scale-100 disabled:hover:scale-100"
+              {/* Suggestions & Input Bar */}
+              <div className="p-3 border-t border-border/40 bg-secondary/10 space-y-2 shrink-0">
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                  {COPILOT_SUGGESTIONS.slice(0, 4).map((s, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => handleSendMessage(s.question)}
+                      disabled={isPending}
+                      className="text-[11px] bg-secondary/50 hover:bg-primary/10 border border-border/50 hover:border-primary/30 px-2.5 py-1 rounded-full text-muted-foreground hover:text-foreground transition-all shrink-0 font-medium"
+                    >
+                      {s.question}
+                    </button>
+                  ))}
+                </div>
+
+                <form
+                  onSubmit={e => {
+                    e.preventDefault();
+                    handleSendMessage(inputMessage);
+                  }}
+                  className="flex items-center gap-2"
                 >
-                  {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                </button>
-              </form>
+                  <input
+                    value={inputMessage}
+                    onChange={e => setInputMessage(e.target.value)}
+                    placeholder="Ask Copilot anything about your business..."
+                    disabled={isPending}
+                    className="flex-1 bg-secondary/40 border border-border/60 focus:border-primary text-xs h-9 rounded-xl px-3 text-foreground placeholder:text-muted-foreground outline-none"
+                  />
+                  <Button
+                    type="submit"
+                    disabled={!inputMessage.trim() || isPending}
+                    size="icon"
+                    className="h-9 w-9 shrink-0 rounded-xl bg-primary text-primary-foreground hover:brightness-110 shadow-sm"
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </form>
+              </div>
             </>
           )}
         </div>
       )}
 
-      {/* Floating Action Button (Glass Orb design with border glow) */}
+      {/* Floating Trigger Button */}
       <button
-        data-tour="chat-widget"
-        data-chat-widget-toggle="true"
         onClick={() => setIsOpen(!isOpen)}
-        className="group relative flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-tr from-secondary/95 via-card/85 to-secondary/90 hover:from-primary/20 hover:to-primary/30 text-primary shadow-[0_8px_30px_rgb(0,0,0,0.45)] border border-primary/30 hover:border-primary/60 backdrop-blur-md transition-all duration-300 hover:scale-110 active:scale-90 hover:shadow-[0_0_20px_rgba(212,143,56,0.3)]"
-        title="Ask AnalyzeUp"
+        className="group relative flex h-12 w-12 items-center justify-center rounded-2xl bg-transparent hover:bg-secondary/50 text-foreground transition-all duration-300 hover:scale-105 active:scale-95 border border-border/40 backdrop-blur-md shadow-lg"
       >
-        <div className="absolute inset-0 rounded-full bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-        
         {isOpen ? (
-          <X className="h-5 w-5 text-foreground transition-transform duration-300 rotate-90" />
+          <X className="h-5 w-5 text-muted-foreground group-hover:text-foreground" />
         ) : (
           <div className="relative flex items-center justify-center">
-            <Bot className="h-6 w-6 text-primary transition-all duration-300 group-hover:scale-105" />
-            <Sparkles className="h-3 w-3 text-amber-400 absolute -top-1.5 -right-1.5 animate-pulse" />
+            <Bot className="h-5.5 w-5.5 text-primary transition-transform duration-300 group-hover:rotate-12" />
+            <Sparkles className="absolute -top-1 -right-1 h-3 w-3 text-amber-400 animate-pulse" />
           </div>
         )}
       </button>

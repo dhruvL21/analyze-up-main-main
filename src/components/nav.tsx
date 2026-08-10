@@ -11,6 +11,10 @@ import {
   Activity,
   RefreshCw,
   Layers,
+  TrendingUp,
+  Crown,
+  CreditCard,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -36,6 +40,11 @@ const navItems = [
     label: "Suppliers",
   },
   {
+    href: "/dashboard/executive",
+    icon: Crown,
+    label: "Executive",
+  },
+  {
     href: "/dashboard/integrations",
     icon: Layers,
     label: "Connect",
@@ -43,7 +52,7 @@ const navItems = [
   {
     href: "/dashboard/ai-advisor",
     icon: Sparkles,
-    label: "AI Advisor",
+    label: "AI Copilot",
   },
   {
     href: "/dashboard/insights",
@@ -122,7 +131,7 @@ export default function Nav({ isMobile = false }: { isMobile?: boolean }) {
   }
 
   return (
-    <nav className="hidden md:flex items-center gap-1 text-sm font-medium">
+    <nav className="hidden md:flex items-center gap-0.5 lg:gap-1.5 text-xs lg:text-sm font-semibold whitespace-nowrap">
       {navItems.map((item) => {
         const active = isItemActive(item.href, item.label);
         return (
@@ -131,15 +140,15 @@ export default function Nav({ isMobile = false }: { isMobile?: boolean }) {
             href={item.href}
             data-tour={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
             onClick={(e) => handleNavClick(e, item.href)}
-            className={cn("transition-all duration-200 hover:text-foreground/80 px-4 py-2 rounded-full cursor-pointer relative hover:scale-105",
-              active ? "text-accent-foreground" : "text-muted-foreground"
+            className={cn("transition-all duration-200 hover:text-foreground/80 px-2.5 lg:px-3.5 py-1.5 rounded-full cursor-pointer relative whitespace-nowrap shrink-0 hover:scale-105",
+              active ? "text-accent-foreground font-bold" : "text-muted-foreground"
             )}
           >
             {item.label}
             {active && (
               <motion.span
                 layoutId="active-nav-link"
-                className="absolute inset-0 bg-black/20 backdrop-blur-sm rounded-full -z-10 border border-white/10 shadow-md"
+                className="absolute inset-0 bg-black/20 dark:bg-white/10 backdrop-blur-sm rounded-full -z-10 border border-border/40 shadow-sm"
                 transition={{ type: "spring", stiffness: 300, damping: 30 }}
               />
             )}

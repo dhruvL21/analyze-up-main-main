@@ -146,6 +146,33 @@ export const INDUSTRY_CONFIGS: Record<BusinessType, IndustryConfig> = {
     benchmarkMargin: '30% - 50%',
     suggestedCategories: ['Main Products', 'Secondary Products', 'Supplies', 'Accessories'],
   },
+  Ecommerce: {
+    type: 'Ecommerce',
+    label: 'Ecommerce & Online',
+    defaultUnit: 'Item',
+    focusAreas: ['Shipping Velocity', 'Return Rate', 'Cart Conversion', 'Supplier Fulfillment'],
+    aiPriority: 'Focus on fast order fulfillment, customer return mitigation, and supplier lead times.',
+    benchmarkMargin: '40% - 60%',
+    suggestedCategories: ['Best Sellers', 'New Arrivals', 'Clearance', 'Bundles'],
+  },
+  D2C: {
+    type: 'D2C',
+    label: 'Direct to Consumer',
+    defaultUnit: 'Item',
+    focusAreas: ['Brand Margins', 'Customer Lifetime Value', 'Repeat Purchases', 'Batch Stocking'],
+    aiPriority: 'Focus on maintaining healthy direct margins and tracking reorder points for hero SKUs.',
+    benchmarkMargin: '50% - 70%',
+    suggestedCategories: ['Hero Products', 'Subscriptions', 'Bundles', 'Limited Edition'],
+  },
+  'General Business': {
+    type: 'General Business',
+    label: 'General Business',
+    defaultUnit: 'Piece',
+    focusAreas: ['Inventory Health', 'Profit Margins', 'Supplier Performance', 'Reorder Triggers'],
+    aiPriority: 'Focus on cash flow optimization, low stock alert monitoring, and dead stock reduction.',
+    benchmarkMargin: '30% - 50%',
+    suggestedCategories: ['Main Products', 'Secondary Products', 'Supplies', 'Accessories'],
+  },
 };
 
 export function getIndustryConfig(businessType?: string): IndustryConfig {

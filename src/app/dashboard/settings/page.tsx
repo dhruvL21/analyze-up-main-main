@@ -48,6 +48,10 @@ export default function SettingsPage() {
     loadDemoBusiness,
     hasDemoData,
     setShowOnboardingWizard,
+    products,
+    transactions,
+    suppliers,
+    returns,
   } = useData();
 
   const [bizName, setBizName] = useState(businessProfile?.businessName || "My Business");
@@ -184,6 +188,121 @@ export default function SettingsPage() {
             <Button onClick={handleSaveBusinessProfile} className="rounded-xl text-xs gap-1.5 bg-primary text-primary-foreground">
               Save Business Profile
             </Button>
+          </CardContent>
+        </Card>
+
+        {/* Proactive Monitoring & Notification Preferences Card */}
+        <Card className="ios-glass rounded-2xl border-primary/20">
+          <CardHeader>
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-primary" />
+              Proactive Business Monitoring & Notification Preferences
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Configure automated event monitoring thresholds, alert category filters, and auto-resolution rules.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 text-xs">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Minimum Priority Filter</Label>
+                <Select defaultValue="ALL">
+                  <SelectTrigger className="rounded-xl h-9 text-xs">
+                    <SelectValue placeholder="Select Minimum Priority..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">All Meaningful Alerts (Recommended)</SelectItem>
+                    <SelectItem value="HIGH">High & Critical Priority Only</SelectItem>
+                    <SelectItem value="CRITICAL">Critical Priority Only</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Alert Auto-Resolution</Label>
+                <Select defaultValue="auto">
+                  <SelectTrigger className="rounded-xl h-9 text-xs">
+                    <SelectValue placeholder="Auto-Resolve Status..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">Auto-Resolve when inventory is replenished (Recommended)</SelectItem>
+                    <SelectItem value="manual">Manual Resolution Only</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-2 border-t border-border/30">
+              <Label className="text-xs font-semibold block">Active Monitoring Categories</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div className="flex items-center gap-2 p-2.5 rounded-xl bg-secondary/30 border border-border/30">
+                  <Check className="w-4 h-4 text-primary" />
+                  <span className="font-medium">Inventory & Stockouts</span>
+                </div>
+                <div className="flex items-center gap-2 p-2.5 rounded-xl bg-secondary/30 border border-border/30">
+                  <Check className="w-4 h-4 text-primary" />
+                  <span className="font-medium">Supplier & Lead Time</span>
+                </div>
+                <div className="flex items-center gap-2 p-2.5 rounded-xl bg-secondary/30 border border-border/30">
+                  <Check className="w-4 h-4 text-primary" />
+                  <span className="font-medium">Profit & Margin Erosion</span>
+                </div>
+                <div className="flex items-center gap-2 p-2.5 rounded-xl bg-secondary/30 border border-border/30">
+                  <Check className="w-4 h-4 text-primary" />
+                  <span className="font-medium">Demand Forecasting</span>
+                </div>
+                <div className="flex items-center gap-2 p-2.5 rounded-xl bg-secondary/30 border border-border/30">
+                  <Check className="w-4 h-4 text-primary" />
+                  <span className="font-medium">Return Rate Surges</span>
+                </div>
+              </div>
+            </div>
+
+            <Button
+              onClick={() => toast({ title: 'Notification Preferences Saved', description: 'Updated proactive monitoring event rules.' })}
+              className="rounded-xl text-xs gap-1.5 bg-primary text-primary-foreground mt-2"
+            >
+              Save Monitoring Preferences
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Workspace Data Export Card */}
+        <Card className="ios-glass rounded-2xl border-border/50">
+          <CardHeader>
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-primary" />
+              SaaS Workspace Data Export
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Export all workspace inventory, supplier, transaction, and report records in structured JSON or CSV format for SaaS data portability.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-secondary/40 border border-border/40 text-xs">
+              <div>
+                <h4 className="font-semibold text-foreground text-xs">Complete Workspace Archive (JSON)</h4>
+                <p className="text-muted-foreground text-[11px]">
+                  Includes products, suppliers, orders, returns, and executive reports.
+                </p>
+              </div>
+              <Button
+                onClick={() => {
+                  const dump = JSON.stringify({ businessProfile, products, transactions, suppliers, returns }, null, 2);
+                  const blob = new Blob([dump], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `AnalyzeUp_Workspace_Export_${Date.now()}.json`;
+                  a.click();
+                  toast({ title: 'Workspace Exported', description: 'JSON archive downloaded.' });
+                }}
+                variant="outline"
+                className="rounded-xl text-xs gap-1.5 border-border/40 shrink-0"
+              >
+                Download JSON Archive
+              </Button>
+            </div>
           </CardContent>
         </Card>
 

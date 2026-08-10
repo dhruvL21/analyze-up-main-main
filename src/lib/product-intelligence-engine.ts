@@ -1,4 +1,6 @@
 import { Product, Transaction, Supplier, PurchaseOrder, ProductReturn } from './types';
+import { calculateSupplierPerformanceScore, calculateSupplierCostIntelligence } from './supplier-intelligence-engine';
+import { calculateProductVelocity, forecastProductDemand, projectStockoutDate } from './forecasting-engine';
 
 export type ProductHealthStatus =
   | 'Excellent'
@@ -14,7 +16,7 @@ export type ProductHealthStatus =
   | 'Trending'
   | 'Discontinued Candidate';
 
-export type ProductGrade = 'A+' | 'A' | 'B' | 'C' | 'D' | 'Poor';
+export type ProductGrade = 'A+' | 'A' | 'B' | 'C' | 'D' | 'F';
 
 export interface ProductIntelligenceReport {
   healthStatus: ProductHealthStatus;
@@ -45,6 +47,25 @@ export interface ProductIntelligenceReport {
   };
   tags: string[];
   executiveSummary: string;
+  supplierIntelligence?: {
+    supplierName: string;
+    supplierId?: string;
+    supplierScore: number | null;
+    supplierStatus: string;
+    leadTimeDays: number;
+    onTimeDeliveryRate: number | null;
+    isSingleSupplierDependency: boolean;
+    costTrendPercent: number;
+    marginImpactPercentagePoints: number;
+  };
+  forecastingProfile?: {
+    forecast30Days: number;
+    velocityChangePercent: number;
+    projectedStockoutDate: string | null;
+    daysRemaining: number | null;
+    stockoutRiskLevel: string;
+    forecastConfidence: string;
+  };
 }
 
 // 1. Calculate Full Product Intelligence Report
@@ -126,7 +147,7 @@ export function computeProductIntelligence(
   else if (performanceScore >= 60) performanceGrade = 'B';
   else if (performanceScore >= 45) performanceGrade = 'C';
   else if (performanceScore >= 30) performanceGrade = 'D';
-  else performanceGrade = 'Poor';
+  else performanceGrade = 'F';
 
   // Demand Trend
   let demandTrend: ProductIntelligenceReport['demandTrend'] = 'Stable';
@@ -226,6 +247,50 @@ export function computeProductIntelligence(
     executiveSummary += `Demand is ${demandTrend.toLowerCase()} with a healthy profit margin of ${profitMarginPercent}%. Maintain purchasing priority.`;
   }
 
+  // Supplier Intelligence Integration
+  let supplierIntelligence: ProductIntelligenceReport['supplierIntelligence'] = undefined;
+  if (product?.supplier) {
+    const matchedSup = allSuppliers.find(s => s.name === product.supplier || s.id === product.supplierId) || {
+      id: product.supplierId || 'sup-1',
+      name: product.supplier,
+      contactName: '',
+      email: '',
+      phone: '',
+      address: '',
+      createdAt: '',
+      updatedAt: '',
+    };
+
+    const supPerf = calculateSupplierPerformanceScore(matchedSup as Supplier, [], [product], allTransactions);
+    const costItem = calculateSupplierCostIntelligence(product, matchedSup as Supplier, [], allTransactions);
+
+    supplierIntelligence = {
+      supplierName: matchedSup.name,
+      supplierId: matchedSup.id,
+      supplierScore: supPerf.score,
+      supplierStatus: supPerf.status,
+      leadTimeDays: supPerf.avgLeadTimeDays || product.leadTimeDays || 5,
+      onTimeDeliveryRate: supPerf.onTimeDeliveryRate,
+      isSingleSupplierDependency: true,
+      costTrendPercent: costItem.costChangePercent,
+      marginImpactPercentagePoints: costItem.marginImpactPercentagePoints,
+    };
+  }
+
+  // Calculate Product Forecasting Profile
+  const prodVelocity = calculateProductVelocity(product, allTransactions);
+  const prodDemandForecast = forecastProductDemand(product, prodVelocity, allTransactions);
+  const prodStockoutProj = projectStockoutDate(product, prodVelocity, allSuppliers);
+
+  const forecastingProfile = {
+    forecast30Days: prodDemandForecast.forecast30Days,
+    velocityChangePercent: prodVelocity.velocityChangePercent,
+    projectedStockoutDate: prodStockoutProj.projectedStockoutDate,
+    daysRemaining: prodStockoutProj.daysRemaining,
+    stockoutRiskLevel: prodStockoutProj.stockoutRiskLevel,
+    forecastConfidence: prodDemandForecast.confidence,
+  };
+
   return {
     healthStatus,
     healthColor,
@@ -243,6 +308,8 @@ export function computeProductIntelligence(
     opportunityAdvice,
     tags,
     executiveSummary,
+    supplierIntelligence,
+    forecastingProfile,
   };
 }
 

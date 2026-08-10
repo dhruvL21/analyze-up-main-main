@@ -121,7 +121,7 @@ export function ProductIntelligenceDrawer({ product, open, onOpenChange }: Produ
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto ios-glass p-6 space-y-4">
-        <DialogHeader className="p-0 pb-3 border-b border-border/40">
+        <DialogHeader className="p-0 pb-3 border-b border-border/40 pr-8">
           <div className="flex items-center gap-2.5">
             <span className="w-10 h-10 rounded-2xl bg-primary text-primary-foreground font-black text-lg flex items-center justify-center shadow-md shrink-0">
               {report.performanceGrade}
@@ -206,6 +206,83 @@ export function ProductIntelligenceDrawer({ product, open, onOpenChange }: Produ
               Execute 1-Click Action
               <ArrowRight className="w-3.5 h-3.5" />
             </Button>
+          </div>
+        )}
+
+        {/* Supplier Procurement Intelligence */}
+        {report.supplierIntelligence && (
+          <div className="p-3.5 rounded-2xl bg-secondary/40 border border-border/40 space-y-2 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-foreground flex items-center gap-1.5 text-xs">
+                <Truck className="w-4 h-4 text-primary" /> Supplier Procurement Intelligence
+              </span>
+              <Badge variant="outline" className="text-[10px] font-bold">
+                {report.supplierIntelligence.supplierStatus}
+              </Badge>
+            </div>
+            <div className="grid grid-cols-3 gap-2 py-1 bg-background/50 p-2 rounded-xl text-center">
+              <div>
+                <span className="text-[10px] text-muted-foreground block">Supplier</span>
+                <span className="font-bold text-foreground truncate block">{report.supplierIntelligence.supplierName}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-muted-foreground block">Score</span>
+                <span className="font-bold text-primary block">
+                  {report.supplierIntelligence.supplierScore !== null ? `${report.supplierIntelligence.supplierScore}/100` : 'Insufficient History'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-muted-foreground block">Lead Time</span>
+                <span className="font-bold text-foreground block">{report.supplierIntelligence.leadTimeDays} days</span>
+              </div>
+            </div>
+            {report.supplierIntelligence.costTrendPercent !== 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                <AlertTriangle className="w-3 h-3 inline text-amber-400 mr-1" />
+                Supplier purchase cost changed {report.supplierIntelligence.costTrendPercent > 0 ? `+${report.supplierIntelligence.costTrendPercent}%` : `${report.supplierIntelligence.costTrendPercent}%`}. Impact on product margin: {report.supplierIntelligence.marginImpactPercentagePoints} percentage points.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Predictive Forecast Profile */}
+        {report.forecastingProfile && (
+          <div className="p-3.5 rounded-2xl bg-primary/10 border border-primary/25 space-y-2 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="font-extrabold text-primary flex items-center gap-1.5 text-xs">
+                <TrendingUp className="w-4 h-4 text-primary" /> Predictive Demand & Stockout Forecast
+              </span>
+              <Badge
+                variant="outline"
+                className={`text-[10px] font-bold ${
+                  report.forecastingProfile.stockoutRiskLevel === 'HIGH'
+                    ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                    : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                }`}
+              >
+                {report.forecastingProfile.stockoutRiskLevel} Risk
+              </Badge>
+            </div>
+            <div className="grid grid-cols-3 gap-2 py-1 bg-background/60 p-2 rounded-xl text-center">
+              <div>
+                <span className="text-[10px] text-muted-foreground block">30D Forecast</span>
+                <span className="font-bold text-primary block">{report.forecastingProfile.forecast30Days} units</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-muted-foreground block">Velocity Change</span>
+                <span className="font-bold text-foreground block">
+                  {report.forecastingProfile.velocityChangePercent >= 0 ? `+${report.forecastingProfile.velocityChangePercent}%` : `${report.forecastingProfile.velocityChangePercent}%`}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-muted-foreground block">Stockout Date</span>
+                <span className="font-bold text-foreground block">
+                  {report.forecastingProfile.projectedStockoutDate
+                    ? new Date(report.forecastingProfile.projectedStockoutDate).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })
+                    : 'No stockout'}
+                </span>
+              </div>
+            </div>
           </div>
         )}
 

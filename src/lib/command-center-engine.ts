@@ -1,5 +1,7 @@
 import { Product, Transaction, Supplier, PurchaseOrder, ProductReturn, BusinessProfile } from './types';
 import { getIndustryConfig } from './industry-intelligence';
+import { detectProcurementRisks, calculateProcurementSavings } from './supplier-intelligence-engine';
+import { generateBusinessForecastingReport } from './forecasting-engine';
 
 export interface BusinessHealthSummary {
   score: number;
@@ -216,6 +218,7 @@ export function generateActionTasks(
   products: Product[],
   transactions: Transaction[],
   suppliers: Supplier[],
+  orders: PurchaseOrder[] = [],
   businessProfile?: BusinessProfile | null
 ): ActionTask[] {
   const tasks: ActionTask[] = [];
@@ -317,26 +320,64 @@ export function generateActionTasks(
   });
 
   // Task Group 4: Supplier Lead Time Audit
-  const slowSuppliers = [...suppliers]
-    .filter(s => s && s.name)
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  slowSuppliers.slice(0, 2).forEach((slowSup) => {
-    const targetSlug = slowSup.id || getSlug(slowSup.name);
+  // Task Group 4: Supplier Procurement Intelligence & Risk Actions
+  const procurementRisks = detectProcurementRisks(products, suppliers, orders || [], transactions);
+  procurementRisks.slice(0, 3).forEach((risk) => {
+    const targetSlug = getSlug(risk.supplierName);
     tasks.push({
-      id: `task-supplier-${targetSlug}`,
-      title: `Supplier Delivery Delay Risk: ${slowSup.name}`,
-      problem: `Average fulfillment lead time is 8+ days for orders from ${slowSup.name}.`,
-      reason: `Long shipment buffer increases risk of unexpected stockout gaps.`,
-      impact: `Potential customer fulfillment delays during peak order bursts.`,
-      recommendation: `Request expedited freight terms or diversify backup suppliers.`,
-      priority: 'Medium',
-      estimatedBenefit: `Reduce lead time buffer by 3-5 days`,
+      id: `task-supplier-${risk.id}`,
+      title: `${risk.type === 'cost_increase' ? 'Supplier Cost Increase' : (risk.type === 'single_supplier_dependency' ? 'Single-Supplier Risk' : 'Delivery Delay Risk')}: ${risk.supplierName}`,
+      problem: risk.problem,
+      reason: risk.reason,
+      impact: risk.impact,
+      recommendation: risk.recommendation,
+      priority: risk.riskLevel === 'HIGH' ? 'High' : 'Medium',
+      estimatedBenefit: risk.riskLevel === 'HIGH' ? 'Protect margins & stockout risk' : 'Optimize procurement performance',
       actionType: 'supplier',
       targetId: targetSlug,
-      targetName: slowSup.name,
+      targetName: risk.supplierName,
     });
   });
+
+  // Task Group 5: Procurement Cost Savings Opportunity
+  const savingsResult = calculateProcurementSavings(products, suppliers, orders || [], transactions);
+  if (savingsResult.savingsList.length > 0) {
+    const topSave = savingsResult.savingsList[0];
+    tasks.push({
+      id: `task-saving-${getSlug(topSave.productId)}`,
+      title: `Potential Procurement Saving: ${formatCurrency(topSave.potentialGrossSaving)}`,
+      problem: `Paying ₹${topSave.currentCost} to ${topSave.currentSupplierName} for ${topSave.productName}.`,
+      reason: `Alternative vendor (${topSave.alternativeSupplierName}) supplies comparable items at ₹${topSave.alternativeCost} (₹${topSave.unitSaving} cheaper/unit).`,
+      impact: `Potential annual savings of ${formatCurrency(topSave.potentialGrossSaving)}.`,
+      recommendation: topSave.recommendation,
+      priority: 'Medium',
+      estimatedBenefit: `Unlock ${formatCurrency(topSave.potentialGrossSaving)} gross savings`,
+      actionType: 'supplier',
+      targetId: getSlug(topSave.currentSupplierName),
+      targetName: topSave.currentSupplierName,
+    });
+  }
+
+  // Task Group 6: Predictive Stockout & Velocity Warnings (Part 6 Integration)
+  const forecastingReport = generateBusinessForecastingReport(products, transactions, suppliers, orders);
+  forecastingReport.stockoutProjections
+    .filter(s => s.stockoutRiskLevel === 'HIGH')
+    .slice(0, 2)
+    .forEach(stockout => {
+      tasks.push({
+        id: `task-forecast-stockout-${getSlug(stockout.productId)}`,
+        title: `Predictive Restock Alert: ${stockout.productName}`,
+        problem: `Stockout projected in ${stockout.daysRemaining} days (before ${stockout.supplierLeadTimeDays}-day lead time).`,
+        reason: stockout.reason,
+        impact: `Risk of unfulfilled orders and revenue loss for ${stockout.productName}.`,
+        recommendation: `Issue purchase order for ${stockout.recommendedReorderQty} units with ${stockout.preferredSupplierName} immediately.`,
+        priority: 'High',
+        estimatedBenefit: 'Prevent operational stockout & protect sales trajectory',
+        actionType: 'reorder',
+        targetId: stockout.productId,
+        targetName: stockout.productName,
+      });
+    });
 
   // Fallback default tasks if catalog is fresh
   if (tasks.length === 0) {
@@ -519,7 +560,7 @@ export function generateActivityEvents(
     events.push({
       id: `evt-tx-${t.id || i}`,
       title: t.type === 'Sale' ? `Recorded Customer Sale: ${t.productName || 'Product'}` : `Warehouse Stocking: ${t.productName || 'Product'}`,
-      description: `Qty: ${t.quantity} • Value: ₹${(t.totalRevenue || t.price * t.quantity || 0).toLocaleString('en-IN')}`,
+      description: `Qty: ${t.quantity} • Value: ₹${(t.totalRevenue || (t.price || 0) * t.quantity || 0).toLocaleString('en-IN')}`,
       timestamp: txDateStr ? new Date(txDateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : `${i * 12 + 5}m ago`,
       type: t.type === 'Sale' ? 'sale' : 'order',
       iconName: t.type === 'Sale' ? 'ShoppingCart' : 'Package',
