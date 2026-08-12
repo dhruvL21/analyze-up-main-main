@@ -44,7 +44,7 @@ interface DataContextProps {
   addReturn: (returnData: Omit<ProductReturn, 'id' | 'createdAt' | 'updatedAt' | 'userId'>) => Promise<void>;
   deleteReturn: (returnId: string) => Promise<void>;
   updateReturnStatus: (returnId: string, refundStatus: string) => Promise<void>;
-  bulkAddProducts: (products: Omit<Product, 'id' | 'createdAt' | 'updatedAt' | 'userId'>[]) => Promise<void>;
+  bulkAddProducts: (products: Omit<Product, 'id' | 'createdAt' | 'updatedAt' | 'userId'>[], overwriteStock?: boolean) => Promise<void>;
   bulkUpdateProducts: (updates: (Partial<Product> & { id: string })[]) => Promise<void>;
   bulkAddTransactions: (transactions: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>[]) => Promise<void>;
   clearAllData: () => Promise<void>;
@@ -447,7 +447,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [firestore, user, transactionsRef, toast]);
 
-  const bulkAddProducts = useCallback(async (productsData: Omit<Product, 'id' | 'createdAt' | 'updatedAt' | 'userId'>[]) => {
+  const bulkAddProducts = useCallback(async (productsData: Omit<Product, 'id' | 'createdAt' | 'updatedAt' | 'userId'>[], overwriteStock = false) => {
     if (products.length + productsData.length > activePlanLimit) {
       setShowSubscriptionModal(true);
       toast({
@@ -459,32 +459,54 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     }
     if (!firestore || !user || !productsRef || !transactionsRef) return;
 
+    const existingProductSkuMap = new Map(products.map(p => [(p.sku || '').toUpperCase(), p]));
     const batch = writeBatch(firestore);
+    let newCount = 0;
+    let updateCount = 0;
 
     productsData.forEach(productData => {
-      const newProductRef = doc(productsRef);
-      const newProduct: any = {
-        ...productData,
-        userId: user.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        averageDailySales: Math.floor(Math.random() * 10) + 1,
-        leadTimeDays: Math.floor(Math.random() * 10) + 5,
-      };
-      batch.set(newProductRef, newProduct);
+      const skuUpper = (productData.sku || '').toUpperCase();
+      const existingProduct = skuUpper ? existingProductSkuMap.get(skuUpper) : null;
 
-      if (newProduct.stock > 0) {
-        const transRef = doc(transactionsRef);
-        batch.set(transRef, {
+      if (existingProduct) {
+        // Update existing product stock & price safely
+        const productRef = doc(productsRef, existingProduct.id);
+        batch.update(productRef, cleanObject({
+          price: productData.price || existingProduct.price,
+          costPrice: productData.costPrice || existingProduct.costPrice,
+          stock: overwriteStock ? productData.stock : (existingProduct.stock || 0) + (productData.stock || 0),
+          supplier: productData.supplier || existingProduct.supplier,
+          supplierId: productData.supplierId || existingProduct.supplierId,
+          updatedAt: serverTimestamp(),
+        }));
+        updateCount++;
+      } else {
+        // Create new product
+        const newProductRef = doc(productsRef);
+        const newProduct: any = cleanObject({
+          ...productData,
           userId: user.uid,
-          productId: newProductRef.id,
-          locationId: 'MAIN-WAREHOUSE',
-          type: 'Purchase',
-          quantity: newProduct.stock,
-          transactionDate: serverTimestamp(),
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
+          averageDailySales: productData.averageDailySales || (Math.floor(Math.random() * 5) + 1),
+          leadTimeDays: productData.leadTimeDays || (Math.floor(Math.random() * 7) + 5),
         });
+        batch.set(newProductRef, newProduct);
+        newCount++;
+
+        if (newProduct.stock > 0) {
+          const transRef = doc(transactionsRef);
+          batch.set(transRef, cleanObject({
+            userId: user.uid,
+            productId: newProductRef.id,
+            locationId: 'MAIN-WAREHOUSE',
+            type: 'Purchase',
+            quantity: newProduct.stock,
+            transactionDate: serverTimestamp(),
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          }));
+        }
       }
     });
 
@@ -496,8 +518,11 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       }));
     });
 
-    toast({ title: 'Bulk Import Success', description: `${productsData.length} products have been imported.` });
-  }, [firestore, user, productsRef, transactionsRef, toast]);
+    toast({
+      title: 'Bulk Ingestion Complete',
+      description: `${newCount} new products added, ${updateCount} existing products updated. Duplicate records prevented.`,
+    });
+  }, [firestore, user, productsRef, transactionsRef, products, activePlanLimit, toast]);
 
   const bulkUpdateProducts = useCallback(async (updates: (Partial<Product> & { id: string })[]) => {
     if (!firestore || !user || !productsRef) return;
@@ -520,12 +545,22 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const bulkAddTransactions = useCallback(async (transactionsData: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>[]) => {
     if (!firestore || !user || !transactionsRef) return;
 
+    // Deduplicate against existing transactions in memory
+    const existingOrderNos = new Set(transactions.map(t => t.orderNumber).filter(Boolean));
+    const uniqueTransactions = transactionsData.filter(t => !t.orderNumber || !existingOrderNos.has(t.orderNumber));
+
+    if (uniqueTransactions.length === 0) {
+      toast({ title: 'No New Transactions', description: 'All records in this batch already exist in the database.' });
+      return;
+    }
+
     const batch = writeBatch(firestore);
 
-    transactionsData.forEach(transactionData => {
+    uniqueTransactions.forEach(transactionData => {
       const newTransactionRef = doc(transactionsRef);
       const newTransaction = cleanObject({
         ...transactionData,
+        source: (transactionData as any).source || 'CSV',
         tenantId: user.uid,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -541,14 +576,17 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       }));
     });
 
-    toast({ title: 'Transactions Imported', description: `${transactionsData.length} records have been added.` });
-  }, [firestore, user, transactionsRef, toast]);
+    toast({
+      title: 'Transactions Imported',
+      description: `Added ${uniqueTransactions.length} new transaction(s). ${transactionsData.length - uniqueTransactions.length} duplicate(s) safely ignored.`,
+    });
+  }, [firestore, user, transactionsRef, transactions, toast]);
 
   const updateProduct = useCallback(async (updatedProduct: Product) => {
     if (!firestore || !user) return;
     const productRef = doc(firestore, 'users', user.uid, 'products', updatedProduct.id);
     const { id, ...updateData } = updatedProduct;
-    const dataToUpdate = { ...updateData, updatedAt: serverTimestamp() };
+    const dataToUpdate = cleanObject({ ...updateData, updatedAt: serverTimestamp() });
     updateDoc(productRef, dataToUpdate).catch((_serverError) => {
       errorEmitter.emit('permission-error', new FirestorePermissionError({
         path: productRef.path,
@@ -586,17 +624,18 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     });
     batch.set(newOrderRef, newOrder);
 
-    // If order is created as Fulfilled, handle stock reduction immediately
+    // If order is created as Fulfilled, handle stock replenishment immediately
     if (orderData.status === 'Fulfilled') {
       const productRef = doc(firestore, 'users', user.uid, 'products', orderData.productId);
       const product = products.find(p => p.id === orderData.productId);
       if (product) {
         batch.update(productRef, {
-          stock: Math.max(0, product.stock - orderData.quantity),
+          stock: product.stock + orderData.quantity,
           updatedAt: serverTimestamp()
         });
 
         const transactionRef = doc(transactionsRef);
+        const costPrice = product.costPrice || product.price * 0.6;
         batch.set(transactionRef, cleanObject({
           id: transactionRef.id,
           tenantId: user.uid,
@@ -605,9 +644,11 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
           sku: product.sku,
           category: product.categoryId,
           locationId: 'MAIN-WAREHOUSE',
-          type: 'Sale',
+          type: 'Purchase',
           quantity: orderData.quantity,
-          price: product.price,
+          price: costPrice,
+          totalCost: Math.round(costPrice * orderData.quantity),
+          supplier: suppliers.find(s => s.id === orderData.supplierId)?.name || 'Supplier',
           transactionDate: serverTimestamp(),
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
@@ -652,14 +693,15 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       const productRef = doc(firestore, 'users', user.uid, 'products', orderToUpdate.productId);
       const product = products.find(p => p.id === orderToUpdate.productId);
       if (product) {
-        // Decrement stock for a sale
+        // Increment stock for a purchase replenishment
         batch.update(productRef, {
-          stock: Math.max(0, product.stock - orderToUpdate.quantity),
+          stock: product.stock + orderToUpdate.quantity,
           updatedAt: serverTimestamp()
         });
 
-        // Record a Sale Transaction
+        // Record a Purchase Transaction
         const transactionRef = doc(transactionsRef);
+        const costPrice = product.costPrice || product.price * 0.6;
         batch.set(transactionRef, cleanObject({
           id: transactionRef.id,
           tenantId: user.uid,
@@ -668,9 +710,11 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
           sku: product.sku,
           category: product.categoryId,
           locationId: 'MAIN-WAREHOUSE',
-          type: 'Sale',
+          type: 'Purchase',
           quantity: orderToUpdate.quantity,
-          price: product.price,
+          price: costPrice,
+          totalCost: Math.round(costPrice * orderToUpdate.quantity),
+          supplier: suppliers.find(s => s.id === orderToUpdate.supplierId)?.name || 'Supplier',
           transactionDate: serverTimestamp(),
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),

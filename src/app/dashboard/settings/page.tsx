@@ -34,10 +34,26 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Check, Loader2, X, Sparkles, Building2, Zap, Trash2, RefreshCw } from "lucide-react";
+import { Check, Loader2, X, Sparkles, Building2, Zap, Trash2, RefreshCw, LogOut, Sun, Moon } from "lucide-react";
+import { useUser, useAuth } from "@/firebase";
+import { signOut } from "@/firebase/auth/auth-service";
+import { useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
 
 export default function SettingsPage() {
   const { toast } = useToast();
+  const router = useRouter();
+  const auth = useAuth();
+  const { user } = useUser();
+  const { theme, setTheme } = useTheme();
+
+  const handleLogout = async () => {
+    if (auth) {
+      await signOut(auth);
+      sessionStorage.removeItem("analyzeup_free_trial_session_prompted");
+      router.push('/');
+    }
+  };
   const {
     clearAllData,
     activePlan,
@@ -301,6 +317,78 @@ export default function SettingsPage() {
                 className="rounded-xl text-xs gap-1.5 border-border/40 shrink-0"
               >
                 Download JSON Archive
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Appearance & Styling Card */}
+        <Card className="ios-glass rounded-2xl border-border/50">
+          <CardHeader>
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <Moon className="w-5 h-5 text-primary" />
+              Appearance & Theme Preferences
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Toggle between light mode, dark mode, or follow your system settings.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-3 gap-3">
+              <Button
+                variant={theme === 'light' ? 'default' : 'outline'}
+                onClick={() => setTheme('light')}
+                className="flex flex-col items-center justify-center gap-2 h-20 rounded-2xl p-3 border-border/40 transition-all hover:bg-secondary/40"
+              >
+                <Sun className="w-5 h-5 text-amber-500" />
+                <span className="text-[11px] font-bold">Light Mode</span>
+              </Button>
+              <Button
+                variant={theme === 'dark' ? 'default' : 'outline'}
+                onClick={() => setTheme('dark')}
+                className="flex flex-col items-center justify-center gap-2 h-20 rounded-2xl p-3 border-border/40 transition-all hover:bg-secondary/40"
+              >
+                <Moon className="w-5 h-5 text-blue-400" />
+                <span className="text-[11px] font-bold">Dark Mode</span>
+              </Button>
+              <Button
+                variant={theme === 'system' ? 'default' : 'outline'}
+                onClick={() => setTheme('system')}
+                className="flex flex-col items-center justify-center gap-2 h-20 rounded-2xl p-3 border-border/40 transition-all hover:bg-secondary/40"
+              >
+                <RefreshCw className="w-5 h-5 text-emerald-400" />
+                <span className="text-[11px] font-bold">System Default</span>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Account & Session Card */}
+        <Card className="ios-glass rounded-2xl border-border/50">
+          <CardHeader>
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <LogOut className="w-5 h-5 text-rose-500" />
+              Account & Session Management
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Manage your active session or securely log out of your AnalyzeUp account.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-secondary/40 border border-border/40 text-xs">
+              <div>
+                <h4 className="font-semibold text-foreground text-xs">Active Login Account</h4>
+                <p className="text-muted-foreground text-[11px] mt-0.5">
+                  Logged in as <span className="text-primary font-mono">{user?.email || 'founder@business.com'}</span>
+                </p>
+              </div>
+              <Button
+                onClick={handleLogout}
+                variant="destructive"
+                className="rounded-xl text-xs gap-1.5 shrink-0 bg-rose-600 hover:bg-rose-500 text-white shadow-md font-bold"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                Log Out of Account
               </Button>
             </div>
           </CardContent>

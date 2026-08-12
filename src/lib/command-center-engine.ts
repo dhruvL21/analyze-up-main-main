@@ -184,9 +184,7 @@ export function computeBusinessHealth(
   }
 
   let summarySentence = 'Operations are stable with good inventory velocity.';
-  if (executedActionCount > 0) {
-    summarySentence = `Executed ${executedActionCount} founder optimizations! Health score boosted to ${score}/100.`;
-  } else if (deadStockProducts.length > 5) {
+  if (deadStockProducts.length > 5) {
     summarySentence = `Capital lockup detected: ${deadStockProducts.length} dead stock items require clearance.`;
   } else if (inventoryHealth < 70) {
     summarySentence = `Stockout vulnerability: ${products.length - inStockProducts.length} items running low.`;

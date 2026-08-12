@@ -8,7 +8,15 @@ import { useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
 import { logBusinessAction } from '@/lib/audit-store';
 import { AuditLogModal } from '@/components/audit-log-modal';
-import { Sparkles, ArrowRight, CheckCircle2, TrendingUp, PackagePlus, Tag, ShieldCheck, RefreshCw, History } from 'lucide-react';
+import { Sparkles, ArrowRight, CheckCircle2, TrendingUp, PackagePlus, Tag, ShieldCheck, RefreshCw, History, AlertTriangle } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 
 export function InventoryRecommendationsPanel() {
   const { products, transactions, updateProduct, addOrder, addTransaction, suppliers, businessProfile } = useData();
@@ -29,6 +37,11 @@ export function InventoryRecommendationsPanel() {
   });
 
   const [animatingId, setAnimatingId] = useState<string | null>(null);
+  const [confirmData, setConfirmData] = useState<{
+    title: string;
+    description: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
 
@@ -69,138 +82,139 @@ export function InventoryRecommendationsPanel() {
     p => p && (p.averageDailySales || 0) >= 0.8 && (p.price || 0) > 0 && !appliedIds.has(`${p.id}:price_up`)
   );
 
-  const handleReorder = async (prod: any) => {
+  const handleReorder = (prod: any) => {
     const key = `${prod.id}:reorder`;
-    setAnimatingId(key);
     const reorderQty = (prod.minStock || 5) * 4 || 50;
     const costPrice = prod.costPrice || (prod.price || 500) * 0.6;
     const totalCost = Math.round(costPrice * reorderQty);
     const pName = prod.name || prod.productName || 'Product';
 
-    try {
-      await addOrder({
-        supplierId: prod.supplierId || suppliers[0]?.id || 'sup-1',
-        productId: prod.id,
-        quantity: reorderQty,
-        orderDate: new Date().toISOString(),
-        expectedDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString(),
-        status: 'Pending',
-      });
+    setConfirmData({
+      title: `Create Purchase Order for ${reorderQty} Units`,
+      description: `Create and fulfill a purchase order with supplier "${prod.supplier || suppliers[0]?.name || 'Supplier'}" for ${reorderQty} units of "${pName}" at a cost of ${currencySymbol}${costPrice}/unit (Total: ${currencySymbol}${totalCost.toLocaleString('en-IN')}). This will increment stock levels.`,
+      onConfirm: async () => {
+        setAnimatingId(key);
+        try {
+          await addOrder({
+            supplierId: prod.supplierId || suppliers[0]?.id || 'sup-1',
+            productId: prod.id,
+            quantity: reorderQty,
+            unitCost: costPrice,
+            totalCost: totalCost,
+            orderDate: new Date().toISOString(),
+            expectedDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString(),
+            status: 'Fulfilled',
+          });
 
-      await addTransaction({
-        productId: prod.id,
-        productName: pName,
-        sku: prod.sku || '',
-        type: 'Purchase',
-        quantity: reorderQty,
-        price: costPrice,
-        totalCost: totalCost,
-        supplier: prod.supplier || suppliers[0]?.name || 'Supplier',
-        transactionDate: new Date().toISOString(),
-        status: 'Completed',
-      });
+          logBusinessAction({
+            title: 'Executed Reorder Purchase Order',
+            productName: pName,
+            actionType: 'reorder',
+            changeDetails: `Created PO for ${reorderQty} units with supplier ${prod.supplier || suppliers[0]?.name || 'Supplier'}. Total cost: ${currencySymbol}${totalCost.toLocaleString('en-IN')}. Stock updated.`,
+            impactValue: `+${reorderQty} Units Restocked`,
+          });
 
-      await updateProduct({
-        ...prod,
-        stock: prod.stock + reorderQty,
-        updatedAt: new Date().toISOString(),
-      });
+          setTimeout(() => {
+            markApplied(key);
+            setAnimatingId(null);
+          }, 800);
 
-      logBusinessAction({
-        title: 'Executed Reorder Purchase Order',
-        productName: pName,
-        actionType: 'reorder',
-        changeDetails: `Created PO for ${reorderQty} units with supplier ${prod.supplier || suppliers[0]?.name || 'Supplier'}. Total cost: ${currencySymbol}${totalCost.toLocaleString('en-IN')}. Stock updated.`,
-        impactValue: `+${reorderQty} Units Restocked`,
-      });
-
-      setTimeout(() => {
-        markApplied(key);
-        setAnimatingId(null);
-      }, 800);
-
-      toast({
-        title: '📦 Reorder PO Logged & Saved in History!',
-        description: `Added ${reorderQty} units to "${pName}". Click "Change History" to view recorded audit.`,
-      });
-    } catch (err) {
-      console.error(err);
-      setAnimatingId(null);
-    }
+          toast({
+            title: '📦 Reorder PO Logged & Saved in History!',
+            description: `Added ${reorderQty} units to "${pName}". Click "Change History" to view recorded audit.`,
+          });
+        } catch (err) {
+          console.error(err);
+          setAnimatingId(null);
+        }
+      }
+    });
   };
 
-  const handleClearance = async (prod: any) => {
+  const handleClearance = (prod: any) => {
     const key = `${prod.id}:clearance`;
-    setAnimatingId(key);
     const oldPrice = prod.price || 500;
     const newPrice = Math.round(oldPrice * 0.8);
     const pName = prod.name || prod.productName || 'Product';
 
-    try {
-      await updateProduct({
-        ...prod,
-        price: newPrice,
-        updatedAt: new Date().toISOString(),
-      });
+    setConfirmData({
+      title: 'Apply 20% Clearance Discount',
+      description: `Reduce the selling price of "${pName}" from ${currencySymbol}${oldPrice} to ${currencySymbol}${newPrice} (-20%) to liquidate dead stock. This will modify catalog pricing.`,
+      onConfirm: async () => {
+        setAnimatingId(key);
+        try {
+          await updateProduct({
+            ...prod,
+            price: newPrice,
+            updatedAt: new Date().toISOString(),
+          });
 
-      logBusinessAction({
-        title: 'Applied 20% Clearance Promo',
-        productName: pName,
-        actionType: 'discount',
-        changeDetails: `Reduced selling price from ${currencySymbol}${oldPrice} to ${currencySymbol}${newPrice} (-20%). Unlocked tied cash flow.`,
-        impactValue: `-20% Price Clearance`,
-      });
+          logBusinessAction({
+            title: 'Applied 20% Clearance Promo',
+            productName: pName,
+            actionType: 'discount',
+            changeDetails: `Reduced selling price from ${currencySymbol}${oldPrice} to ${currencySymbol}${newPrice} (-20%). Unlocked tied cash flow.`,
+            impactValue: `-20% Price Clearance`,
+          });
 
-      setTimeout(() => {
-        markApplied(key);
-        setAnimatingId(null);
-      }, 800);
+          setTimeout(() => {
+            markApplied(key);
+            setAnimatingId(null);
+          }, 800);
 
-      toast({
-        title: '🏷️ Clearance Promo Applied & Saved in History!',
-        description: `Reduced price of "${pName}" to ${currencySymbol}${newPrice}. Click "Change History" to view audit details.`,
-      });
-    } catch (err) {
-      console.error(err);
-      setAnimatingId(null);
-    }
+          toast({
+            title: '🏷️ Clearance Promo Applied & Saved in History!',
+            description: `Reduced price of "${pName}" to ${currencySymbol}${newPrice}. Click "Change History" to view audit details.`,
+          });
+        } catch (err) {
+          console.error(err);
+          setAnimatingId(null);
+        }
+      }
+    });
   };
 
-  const handlePriceUp = async (prod: any) => {
+  const handlePriceUp = (prod: any) => {
     const key = `${prod.id}:price_up`;
-    setAnimatingId(key);
     const oldPrice = prod.price || 500;
     const newPrice = Math.round(oldPrice * 1.08);
     const pName = prod.name || prod.productName || 'Product';
 
-    try {
-      await updateProduct({
-        ...prod,
-        price: newPrice,
-        updatedAt: new Date().toISOString(),
-      });
+    setConfirmData({
+      title: 'Optimize Price (+8%)',
+      description: `Increase the selling price of "${pName}" from ${currencySymbol}${oldPrice} to ${currencySymbol}${newPrice} (+8%) for margin optimization. This will modify catalog pricing.`,
+      onConfirm: async () => {
+        setAnimatingId(key);
+        try {
+          await updateProduct({
+            ...prod,
+            price: newPrice,
+            updatedAt: new Date().toISOString(),
+          });
 
-      logBusinessAction({
-        title: 'Optimized Price (+8%)',
-        productName: pName,
-        actionType: 'price_up',
-        changeDetails: `Adjusted selling price from ${currencySymbol}${oldPrice} to ${currencySymbol}${newPrice} (+8%) for margin expansion.`,
-        impactValue: `+8% Price Boost`,
-      });
+          logBusinessAction({
+            title: 'Optimized Price (+8%)',
+            productName: pName,
+            actionType: 'price_up',
+            changeDetails: `Adjusted selling price from ${currencySymbol}${oldPrice} to ${currencySymbol}${newPrice} (+8%) for margin expansion.`,
+            impactValue: `+8% Price Boost`,
+          });
 
-      setTimeout(() => {
-        markApplied(key);
-        setAnimatingId(null);
-      }, 800);
+          setTimeout(() => {
+            markApplied(key);
+            setAnimatingId(null);
+          }, 800);
 
-      toast({
-        title: '📈 Selling Price Optimized & Saved in History!',
-        description: `Adjusted price of "${pName}" to ${currencySymbol}${newPrice}. Click "Change History" to view audit details.`,
-      });
-    } catch (err) {
-      console.error(err);
-      setAnimatingId(null);
-    }
+          toast({
+            title: '📈 Selling Price Optimized & Saved in History!',
+            description: `Adjusted price of "${pName}" to ${currencySymbol}${newPrice}. Click "Change History" to view audit details.`,
+          });
+        } catch (err) {
+          console.error(err);
+          setAnimatingId(null);
+        }
+      }
+    });
   };
 
   const isAllOptimized = !lowStockProd && !deadStockProd && !priceUpProd;
@@ -208,13 +222,13 @@ export function InventoryRecommendationsPanel() {
   return (
     <>
       <Card className="ios-glass rounded-3xl border-emerald-500/20 p-5 shadow-xl space-y-3">
-        <CardHeader className="p-0 pb-3 border-b border-border/40 flex flex-row items-center justify-between">
+        <CardHeader className="p-0 pb-3 border-b border-border/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
               <Sparkles className="w-5 h-5 animate-pulse" />
             </div>
             <div>
-              <CardTitle className="text-base font-bold flex items-center gap-2">
+              <CardTitle className="text-base font-bold flex items-center gap-2 flex-wrap">
                 Proactive AI Inventory Recommendations
                 {appliedIds.size > 0 && (
                   <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[10px]">
@@ -226,7 +240,7 @@ export function InventoryRecommendationsPanel() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Button
               size="sm"
               variant="outline"
@@ -241,7 +255,13 @@ export function InventoryRecommendationsPanel() {
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={handleResetApplied}
+                onClick={() => {
+                  setConfirmData({
+                    title: 'Reset Optimization History',
+                    description: 'Are you sure you want to reset your applied recommendation history? This will re-analyze the entire catalog for low stock, dead stock, and price optimizations.',
+                    onConfirm: handleResetApplied,
+                  });
+                }}
                 className="h-7 text-[11px] text-muted-foreground hover:text-emerald-400 gap-1 px-2.5 rounded-xl"
               >
                 <RefreshCw className="w-3 h-3" /> Reset History
@@ -378,6 +398,52 @@ export function InventoryRecommendationsPanel() {
         open={isAuditModalOpen}
         onOpenChange={setIsAuditModalOpen}
       />
+
+      <Dialog open={confirmData !== null} onOpenChange={(open) => { if (!open) setConfirmData(null); }}>
+        <DialogContent className="max-w-md bg-zinc-950/90 border border-amber-500/20 rounded-3xl ios-glass text-white shadow-2xl p-6">
+          <DialogHeader className="space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                <AlertTriangle className="w-5 h-5 animate-bounce text-amber-400" />
+              </div>
+              <DialogTitle className="text-base font-bold text-white">Confirm Business Change</DialogTitle>
+            </div>
+            <DialogDescription className="text-xs text-zinc-400">
+              Are you sure you want to execute this change? This will write modifications directly to your database.
+            </DialogDescription>
+          </DialogHeader>
+
+          {confirmData && (
+            <div className="py-2 text-xs space-y-3">
+              <div className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-1.5">
+                <div className="text-zinc-200 font-bold">{confirmData.title}</div>
+                <div className="text-zinc-300 leading-relaxed">{confirmData.description}</div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="flex flex-row items-center justify-end gap-2 pt-4 border-t border-zinc-800/40">
+            <Button
+              variant="ghost"
+              onClick={() => setConfirmData(null)}
+              className="rounded-xl text-xs hover:bg-zinc-900 text-zinc-400 hover:text-white px-3"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (confirmData) {
+                  confirmData.onConfirm();
+                  setConfirmData(null);
+                }
+              }}
+              className="bg-amber-500 hover:bg-amber-600 text-black font-extrabold rounded-xl text-xs px-4"
+            >
+              Confirm & Apply
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

@@ -140,6 +140,11 @@ export default function ExecutiveIntelligencePage() {
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState<ReportSnapshot | null>(null);
   const [growthTick, setGrowthTick] = useState(0);
+  const [confirmData, setConfirmData] = useState<{
+    title: string;
+    description: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   // Simulation State
   const [simType, setSimType] = useState<SimulationType>('PRICE_CHANGE');
@@ -356,7 +361,7 @@ export default function ExecutiveIntelligencePage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold tracking-tight md:text-2xl flex items-center gap-2">
-              <Crown className="w-6 h-6 text-amber-400" /> Executive Suite & Workspace Governance
+              <Crown className="w-6 h-6 text-amber-400" /> Executive Intelligence
             </h1>
             <Badge variant="outline" className="text-[10px] font-extrabold bg-amber-500/10 text-amber-400 border-amber-500/30">
               C-Suite Hub
@@ -531,12 +536,12 @@ export default function ExecutiveIntelligencePage() {
                 </CardDescription>
               </div>
 
-              <div className="flex items-center gap-1.5 bg-secondary/50 p-1.5 rounded-xl text-sm">
+              <div className="flex items-center gap-1.5 bg-secondary/50 p-1.5 rounded-xl overflow-x-auto w-full md:w-auto shrink-0 scrollbar-none">
                 {(['MONTH', 'QUARTER', 'YEAR'] as const).map(p => (
                   <button
                     key={p}
                     onClick={() => setPeriodType(p)}
-                    className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+                    className={`px-3 md:px-4 py-1 md:py-1.5 rounded-lg text-xs md:text-sm font-semibold transition-all shrink-0 whitespace-nowrap ${
                       periodType === p ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
@@ -719,12 +724,12 @@ export default function ExecutiveIntelligencePage() {
                 </CardDescription>
               </div>
 
-              <div className="flex items-center gap-1.5 bg-secondary/50 p-1 rounded-xl text-xs">
+              <div className="flex items-center gap-1.5 bg-secondary/50 p-1 rounded-xl overflow-x-auto w-full md:w-auto shrink-0 scrollbar-none">
                 {(['BASE', 'HIGH_DEMAND', 'LOW_DEMAND'] as const).map(sc => (
                   <button
                     key={sc}
                     onClick={() => setActiveScenario(sc)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 whitespace-nowrap ${
                       activeScenario === sc ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
@@ -1044,7 +1049,7 @@ export default function ExecutiveIntelligencePage() {
                 </CardDescription>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-0 overflow-x-auto scrollbar-none">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -1105,8 +1110,14 @@ export default function ExecutiveIntelligencePage() {
                                   variant="outline"
                                   className="h-7 text-[11px] rounded-lg border-border/40"
                                   onClick={() => {
-                                    saveOpportunityStatus(opp.id, 'DISMISSED');
-                                    toast({ title: 'Opportunity Dismissed', description: 'Removed from priority queue.' });
+                                    setConfirmData({
+                                      title: `Dismiss Growth Opportunity: ${opp.title}`,
+                                      description: `Are you sure you want to dismiss this growth opportunity? This will remove it from your active queue.`,
+                                      onConfirm: () => {
+                                        saveOpportunityStatus(opp.id, 'DISMISSED');
+                                        toast({ title: 'Opportunity Dismissed', description: 'Removed from priority queue.' });
+                                      }
+                                    });
                                   }}
                                 >
                                   Dismiss
@@ -1115,9 +1126,15 @@ export default function ExecutiveIntelligencePage() {
                                   size="sm"
                                   className="h-7 text-[11px] rounded-lg gap-1 bg-primary text-primary-foreground font-bold"
                                   onClick={() => {
-                                    saveOpportunityStatus(opp.id, 'ACCEPTED');
-                                    handleAskCopilot(`How should I execute this growth opportunity: ${opp.title}? ${opp.recommendation}`);
-                                    toast({ title: '🚀 Executing Opportunity', description: 'Copilot opened with execution plan.' });
+                                    setConfirmData({
+                                      title: `Execute Growth Opportunity: ${opp.title}`,
+                                      description: `Are you sure you want to accept and execute this opportunity? This will open Copilot with recommendation: "${opp.recommendation}".`,
+                                      onConfirm: () => {
+                                        saveOpportunityStatus(opp.id, 'ACCEPTED');
+                                        handleAskCopilot(`How should I execute this growth opportunity: ${opp.title}? ${opp.recommendation}`);
+                                        toast({ title: '🚀 Executing Opportunity', description: 'Copilot opened with execution plan.' });
+                                      }
+                                    });
                                   }}
                                 >
                                   Execute <ArrowRight className="w-3 h-3" />
@@ -1546,7 +1563,7 @@ export default function ExecutiveIntelligencePage() {
                 <BookmarkCheck className="w-4 h-4 text-primary" /> Saved Strategic Simulations ({savedScenarios.length})
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className={savedScenarios.length === 0 ? "p-6" : "p-0 overflow-x-auto scrollbar-none"}>
               {savedScenarios.length === 0 ? (
                 <p className="text-xs text-muted-foreground py-4 text-center">
                   No saved scenarios yet. Use the simulation controls above and click "Save Scenario" to store decisions.
@@ -1594,16 +1611,22 @@ export default function ExecutiveIntelligencePage() {
                               Load
                             </Button>
                             <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 w-7 p-0 text-rose-400 hover:text-rose-300"
-                              onClick={() => {
-                                deleteSavedScenario(sc.id);
-                                toast({ title: 'Deleted Scenario', description: 'Removed from saved simulations.' });
-                              }}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
+                               size="sm"
+                               variant="ghost"
+                               className="h-7 w-7 p-0 text-rose-400 hover:text-rose-300"
+                               onClick={() => {
+                                 setConfirmData({
+                                   title: `Delete Saved Scenario: ${sc.name}`,
+                                   description: `Are you sure you want to permanently delete this saved simulation scenario? This action cannot be undone.`,
+                                   onConfirm: () => {
+                                     deleteSavedScenario(sc.id);
+                                     toast({ title: 'Deleted Scenario', description: 'Removed from saved simulations.' });
+                                   }
+                                 });
+                               }}
+                             >
+                               <Trash2 className="w-3.5 h-3.5" />
+                             </Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1664,6 +1687,52 @@ export default function ExecutiveIntelligencePage() {
           <DialogFooter>
             <Button onClick={handleSendInvite} className="rounded-xl text-xs bg-primary text-primary-foreground">
               Send Invitation
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmData !== null} onOpenChange={(open) => { if (!open) setConfirmData(null); }}>
+        <DialogContent className="max-w-md bg-zinc-950/90 border border-amber-500/20 rounded-3xl ios-glass text-white shadow-2xl p-6">
+          <DialogHeader className="space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                <AlertTriangle className="w-5 h-5 animate-bounce text-amber-400" />
+              </div>
+              <DialogTitle className="text-base font-bold text-white">Confirm Action</DialogTitle>
+            </div>
+            <DialogDescription className="text-xs text-zinc-400">
+              Are you sure you want to proceed with this decision?
+            </DialogDescription>
+          </DialogHeader>
+
+          {confirmData && (
+            <div className="py-2 text-xs space-y-3">
+              <div className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-1.5">
+                <div className="text-zinc-200 font-bold">{confirmData.title}</div>
+                <div className="text-zinc-300 leading-relaxed">{confirmData.description}</div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="flex flex-row items-center justify-end gap-2 pt-4 border-t border-zinc-800/40">
+            <Button
+              variant="ghost"
+              onClick={() => setConfirmData(null)}
+              className="rounded-xl text-xs hover:bg-zinc-900 text-zinc-400 hover:text-white px-3"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (confirmData) {
+                  confirmData.onConfirm();
+                  setConfirmData(null);
+                }
+              }}
+              className="bg-amber-500 hover:bg-amber-600 text-black font-extrabold rounded-xl text-xs px-4"
+            >
+              Confirm
             </Button>
           </DialogFooter>
         </DialogContent>

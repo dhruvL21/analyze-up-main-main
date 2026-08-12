@@ -41,86 +41,106 @@ export function ProductIntelligenceDrawer({ product, open, onOpenChange }: Produ
   const { transactions, returns, suppliers, updateProduct, addOrder, addTransaction, businessProfile } = useData();
   const { toast } = useToast();
 
+  const [confirmData, setConfirmData] = React.useState<{
+    title: string;
+    description: string;
+    onConfirm: () => void;
+  } | null>(null);
+
   if (!product) return null;
 
   const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
   const report = computeProductIntelligence(product, transactions, returns, suppliers);
 
-  const handleExecuteReorder = async () => {
+  const handleExecuteReorder = () => {
     const reorderQty = report.reorderAdvice.suggestedQty;
     const costPrice = product.costPrice || (product.price || 500) * 0.6;
     const totalCost = Math.round(costPrice * reorderQty);
 
-    try {
-      await addOrder({
-        supplierId: product.supplierId || suppliers[0]?.id || 'sup-1',
-        productId: product.id,
-        quantity: reorderQty,
-        orderDate: new Date().toISOString(),
-        expectedDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString(),
-        status: 'Pending',
-      });
+    setConfirmData({
+      title: `Create Purchase Order for ${reorderQty} Units`,
+      description: `Create and fulfill a purchase order with supplier "${product.supplier || suppliers[0]?.name || 'Supplier'}" for ${reorderQty} units of "${product.name}" at a cost of ${currencySymbol}${costPrice}/unit (Total: ${currencySymbol}${totalCost.toLocaleString('en-IN')}). This will increment stock levels.`,
+      onConfirm: async () => {
+        try {
+          await addOrder({
+            supplierId: product.supplierId || suppliers[0]?.id || 'sup-1',
+            productId: product.id,
+            quantity: reorderQty,
+            unitCost: costPrice,
+            totalCost: totalCost,
+            orderDate: new Date().toISOString(),
+            expectedDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString(),
+            status: 'Fulfilled',
+          });
 
-      await addTransaction({
-        productId: product.id,
-        productName: product.name,
-        sku: product.sku || '',
-        type: 'Purchase',
-        quantity: reorderQty,
-        price: costPrice,
-        totalCost: totalCost,
-        supplier: product.supplier || suppliers[0]?.name || 'Supplier',
-        transactionDate: new Date().toISOString(),
-        status: 'Completed',
-      });
-
-      await updateProduct({
-        ...product,
-        stock: product.stock + reorderQty,
-        updatedAt: new Date().toISOString(),
-      });
-
-      toast({
-        title: '📦 Restock Purchase Order Executed!',
-        description: `Added ${reorderQty} units to "${product.name}" (${currencySymbol}${totalCost.toLocaleString('en-IN')}). Logged in Orders & Transactions.`,
-      });
-      onOpenChange(false);
-    } catch (err) {
-      console.error(err);
-    }
+          toast({
+            title: '📦 Restock Purchase Order Executed!',
+            description: `Added ${reorderQty} units to "${product.name}" (${currencySymbol}${totalCost.toLocaleString('en-IN')}). Logged in Orders & Transactions.`,
+          });
+          onOpenChange(false);
+        } catch (err) {
+          console.error(err);
+        }
+      }
+    });
   };
 
-  const handleApplyClearance = async () => {
-    const newPrice = Math.round((product.price || 500) * 0.8);
-    await updateProduct({
-      ...product,
-      price: newPrice,
-      updatedAt: new Date().toISOString(),
+  const handleApplyClearance = () => {
+    const oldPrice = product.price || 500;
+    const newPrice = Math.round(oldPrice * 0.8);
+
+    setConfirmData({
+      title: 'Apply 20% Clearance Discount',
+      description: `Reduce the selling price of "${product.name}" from ${currencySymbol}${oldPrice} to ${currencySymbol}${newPrice} (-20%) to liquidate dead stock. This updates catalog pricing.`,
+      onConfirm: async () => {
+        try {
+          await updateProduct({
+            ...product,
+            price: newPrice,
+            updatedAt: new Date().toISOString(),
+          });
+          toast({
+            title: '🏷️ Clearance Promo Applied!',
+            description: `Updated selling price of "${product.name}" to ${currencySymbol}${newPrice} in database.`,
+          });
+          onOpenChange(false);
+        } catch (err) {
+          console.error(err);
+        }
+      }
     });
-    toast({
-      title: '🏷️ 20% Clearance Discount Applied!',
-      description: `Updated selling price of "${product.name}" to ${currencySymbol}${newPrice} in database.`,
-    });
-    onOpenChange(false);
   };
 
-  const handleApplyPriceUp = async () => {
-    const newPrice = Math.round((product.price || 500) * 1.08);
-    await updateProduct({
-      ...product,
-      price: newPrice,
-      updatedAt: new Date().toISOString(),
+  const handleApplyPriceUp = () => {
+    const oldPrice = product.price || 500;
+    const newPrice = Math.round(oldPrice * 1.08);
+
+    setConfirmData({
+      title: 'Optimize Price (+8%)',
+      description: `Increase the selling price of "${product.name}" from ${currencySymbol}${oldPrice} to ${currencySymbol}${newPrice} (+8%) for margin optimization. This updates catalog pricing.`,
+      onConfirm: async () => {
+        try {
+          await updateProduct({
+            ...product,
+            price: newPrice,
+            updatedAt: new Date().toISOString(),
+          });
+          toast({
+            title: '📈 Selling Price Optimized (+8%)!',
+            description: `Updated selling price of "${product.name}" to ${currencySymbol}${newPrice} in database.`,
+          });
+          onOpenChange(false);
+        } catch (err) {
+          console.error(err);
+        }
+      }
     });
-    toast({
-      title: '📈 Selling Price Optimized (+8%)!',
-      description: `Updated selling price of "${product.name}" to ${currencySymbol}${newPrice} in database.`,
-    });
-    onOpenChange(false);
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto ios-glass p-6 space-y-4">
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto ios-glass p-6 space-y-4">
         <DialogHeader className="p-0 pb-3 border-b border-border/40 pr-8">
           <div className="flex items-center gap-2.5">
             <span className="w-10 h-10 rounded-2xl bg-primary text-primary-foreground font-black text-lg flex items-center justify-center shadow-md shrink-0">
@@ -305,5 +325,52 @@ export function ProductIntelligenceDrawer({ product, open, onOpenChange }: Produ
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
+
+    <Dialog open={confirmData !== null} onOpenChange={(open) => { if (!open) setConfirmData(null); }}>
+      <DialogContent className="max-w-md bg-zinc-950/90 border border-amber-500/20 rounded-3xl ios-glass text-white shadow-2xl p-6">
+        <DialogHeader className="space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <AlertTriangle className="w-5 h-5 animate-bounce text-amber-400" />
+            </div>
+            <DialogTitle className="text-base font-bold text-white">Confirm Business Change</DialogTitle>
+          </div>
+          <DialogDescription className="text-xs text-zinc-400">
+            Are you sure you want to execute this change? This will write modifications directly to your database.
+          </DialogDescription>
+        </DialogHeader>
+
+        {confirmData && (
+          <div className="py-2 text-xs space-y-3">
+            <div className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-1.5">
+              <div className="text-zinc-200 font-bold">{confirmData.title}</div>
+              <div className="text-zinc-300 leading-relaxed">{confirmData.description}</div>
+            </div>
+          </div>
+        )}
+
+        <DialogFooter className="flex flex-row items-center justify-end gap-2 pt-4 border-t border-zinc-800/40">
+          <Button
+            variant="ghost"
+            onClick={() => setConfirmData(null)}
+            className="rounded-xl text-xs hover:bg-zinc-900 text-zinc-400 hover:text-white px-3"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              if (confirmData) {
+                confirmData.onConfirm();
+                setConfirmData(null);
+              }
+            }}
+            className="bg-amber-500 hover:bg-amber-600 text-black font-extrabold rounded-xl text-xs px-4"
+          >
+            Confirm & Apply
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </>
+);
 }

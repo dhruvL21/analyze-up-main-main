@@ -53,9 +53,15 @@ import { findMatchingImportProfile, saveImportProfile, ImportProfile } from '@/l
 interface ImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  presetFile?: {
+    name: string;
+    content: string;
+    driveFileId?: string;
+  } | null;
+  onImportComplete?: (summary: any) => void;
 }
 
-export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
+export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete }: ImportDialogProps) {
   const {
     bulkAddProducts,
     bulkAddTransactions,
@@ -101,6 +107,85 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
   } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Reset states when closed
+  React.useEffect(() => {
+    if (!open) {
+      setStage(1);
+      setFileName('');
+      setRawHeaders([]);
+      setRawRows([]);
+      setNormalizedItems([]);
+      setImportSummary(null);
+    }
+  }, [open]);
+
+  // Handle preset file (e.g. from Google Drive)
+  React.useEffect(() => {
+    if (open && presetFile) {
+      setFileName(presetFile.name);
+      setIsProcessing(true);
+
+      Papa.parse(presetFile.content, {
+        header: true,
+        skipEmptyLines: true,
+        complete: async (results) => {
+          if (!results.data || results.data.length === 0) {
+            toast({ variant: 'destructive', title: 'Empty CSV File', description: 'No valid rows found in file.' });
+            setIsProcessing(false);
+            return;
+          }
+
+          const headers = Object.keys(results.data[0] || {});
+          setRawHeaders(headers);
+          setRawRows(results.data as Record<string, any>[]);
+
+          // Check if there is a remembered import profile for this file structure
+          const profile = findMatchingImportProfile(headers);
+          if (profile) {
+            setMatchedProfile(profile);
+          }
+
+          setStage(2); // AI File Type & Mapping Step
+          setIsAiDetecting(true);
+
+          try {
+            // 1. Detect File Type via AI Accountant
+            const detectRes = await detectBusinessFileType(headers, results.data as Record<string, any>[]);
+            setDetectedFileType(detectRes.fileType);
+            setDetectionConfidence(detectRes.confidence);
+            setDetectionReasoning(detectRes.reasoning);
+
+            // 2. Fetch Semantic Field Mappings for Detected File Type
+            const initialMapping = profile ? profile.mapping : undefined;
+
+            if (initialMapping) {
+              setFieldMapping(initialMapping);
+            } else {
+              const mapRes = await getSmartMappingForFileType(detectRes.fileType, headers, results.data as Record<string, any>[]);
+              setFieldMapping(mapRes.mapping);
+              setMappingConfidence(mapRes.confidence);
+            }
+
+            toast({
+              title: `AI Detected: ${detectRes.fileTypeName} ✨`,
+              description: `${detectRes.confidence}% Confidence — ${detectRes.reasoning}`,
+            });
+          } catch (err) {
+            console.error('AI Detection Error:', err);
+          } finally {
+            setIsAiDetecting(false);
+            setIsProcessing(false);
+          }
+        },
+        error: (error: any) => {
+          console.error('CSV Parsing Error:', error);
+          toast({ variant: 'destructive', title: 'Parsing Error', description: 'Failed to read CSV file format.' });
+          setIsProcessing(false);
+        },
+      });
+    }
+  }, [open, presetFile, toast]);
 
   // Download Sample Template
   const handleDownloadTemplate = () => {
@@ -442,7 +527,8 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
         };
       });
 
-      await bulkAddProducts(productsToImport);
+      const isInventorySnapshot = detectedFileType === 'INVENTORY_MASTER' || detectedFileType === 'WAREHOUSE_STOCK';
+      await bulkAddProducts(productsToImport, isInventorySnapshot);
 
       // 4. Format Sales Transactions to drive Revenue, Profit, Charts & AI Copilot
       const transactionsToImport: any[] = [];
@@ -484,7 +570,7 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
       const endTime = performance.now();
       const executionTime = Math.round(endTime - startTime);
 
-      setImportSummary({
+      const summary = {
         fileTypeName: FILE_TYPE_DEFINITIONS[detectedFileType].name,
         importedCount: validRows.length,
         revenueImpact: impactMetrics.estimatedRevenue,
@@ -492,7 +578,15 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
         newSuppliers: newSupCount,
         newCustomers: impactMetrics.customersFoundCount || validRows.length,
         executionTimeMs: executionTime,
-      });
+        fileType: detectedFileType,
+        driveFileId: presetFile?.driveFileId
+      };
+
+      setImportSummary(summary);
+
+      if (onImportComplete) {
+        onImportComplete(summary);
+      }
 
       toast({
         title: 'Business Engine Synchronized ✨',

@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { useRouter, usePathname } from 'next/navigation';
 import { useState, useMemo, useEffect } from 'react';
 import { computeBusinessHealth } from '@/lib/command-center-engine';
-import { LogOut, Settings, Menu, Sun, Moon, X, LayoutDashboard, Boxes, ShoppingCart, Truck, BarChart3, Sparkles, Activity, RefreshCw, Compass, TrendingUp, Bell, Crown } from 'lucide-react';
+import { LogOut, Settings, Menu, Sun, Moon, X, LayoutDashboard, Boxes, ShoppingCart, Truck, BarChart3, Sparkles, Activity, RefreshCw, Compass, TrendingUp, Bell, Crown, Layers } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -35,7 +35,8 @@ const mobileNavItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/dashboard/inventory', label: 'Operations', icon: Boxes },
   { href: '/dashboard/suppliers', label: 'Suppliers', icon: Truck },
-  { href: '/dashboard/executive', label: 'Executive Suite', icon: Crown },
+  { href: '/dashboard/executive', label: 'Executive', icon: Crown },
+  { href: '/dashboard/integrations', label: 'Connect', icon: Layers },
   { href: '/dashboard/ai-advisor', label: 'AI Copilot', icon: Sparkles },
   { href: '/dashboard/insights', label: 'Insights & Health', icon: BarChart3 },
 ];
@@ -151,25 +152,6 @@ export function Header() {
             </TooltipTrigger>
             <TooltipContent>
               <p>Business Alerts ({activeAlertCount})</p>
-            </TooltipContent>
-          </Tooltip>
-
-          {/* Settings Button */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="rounded-full"
-                onClick={() => router.push('/dashboard/settings')}
-                data-tour="settings-btn"
-              >
-                <Settings className="h-5 w-5" />
-                <span className="sr-only">Settings</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Workspace Settings</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>

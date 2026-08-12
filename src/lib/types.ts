@@ -88,6 +88,8 @@ export interface Transaction {
   locationId?: string;
   transactionDate: string | FieldValue;
   transactionId?: string;
+  orderNumber?: string;
+  source?: 'CSV' | 'SHOPIFY' | 'GDRIVE' | 'MANUAL' | string;
   createdAt: string | FieldValue;
   updatedAt?: string | FieldValue;
   userId?: string;
