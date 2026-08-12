@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { useRouter, usePathname } from 'next/navigation';
 import { useState, useMemo, useEffect } from 'react';
 import { computeBusinessHealth } from '@/lib/command-center-engine';
-import { LogOut, Settings, Menu, Sun, Moon, X, LayoutDashboard, Boxes, ShoppingCart, Truck, BarChart3, Sparkles, Activity, RefreshCw, Compass } from 'lucide-react';
+import { LogOut, Settings, Menu, Sun, Moon, X, LayoutDashboard, Boxes, ShoppingCart, Truck, BarChart3, Sparkles, Activity, RefreshCw, Compass, TrendingUp, Bell, Crown, Layers } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -28,14 +28,16 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useData } from '@/context/data-context';
+import { detectBusinessEvents, getStoredEventStatuses } from '@/lib/business-event-engine';
+import { NotificationCenterDrawer } from './notification-center-drawer';
 
 const mobileNavItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/dashboard/returns', label: 'Returns', icon: RefreshCw },
-  { href: '/dashboard/inventory', label: 'Inventory', icon: Boxes },
-  { href: '/dashboard/orders', label: 'Order', icon: ShoppingCart },
+  { href: '/dashboard/inventory', label: 'Operations', icon: Boxes },
   { href: '/dashboard/suppliers', label: 'Suppliers', icon: Truck },
-  { href: '/dashboard/ai-advisor', label: 'AI Advisor', icon: Sparkles },
+  { href: '/dashboard/executive', label: 'Executive', icon: Crown },
+  { href: '/dashboard/integrations', label: 'Connect', icon: Layers },
+  { href: '/dashboard/ai-advisor', label: 'AI Copilot', icon: Sparkles },
   { href: '/dashboard/insights', label: 'Insights & Health', icon: BarChart3 },
 ];
 
@@ -71,18 +73,33 @@ export function Header() {
   const auth = useAuth();
   const { theme, setTheme } = useTheme();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { products, transactions, suppliers, returns, isLimitExceeded, activePlan, setShowSubscriptionModal, setIsTourOpen } = useData();
+  const [notifDrawerOpen, setNotifDrawerOpen] = useState(false);
+  const { products, transactions, suppliers, orders, returns, isLimitExceeded, activePlan, setShowSubscriptionModal, setIsTourOpen, businessProfile } = useData();
   const [healthTick, setHealthTick] = useState(0);
 
   useEffect(() => {
     const handleUpdate = () => setHealthTick(t => t + 1);
     window.addEventListener('analyzeup_audit_logged', handleUpdate);
     window.addEventListener('analyzeup_tasks_updated', handleUpdate);
+    window.addEventListener('analyzeup_events_updated', handleUpdate);
     return () => {
       window.removeEventListener('analyzeup_audit_logged', handleUpdate);
       window.removeEventListener('analyzeup_tasks_updated', handleUpdate);
+      window.removeEventListener('analyzeup_events_updated', handleUpdate);
     };
   }, []);
+
+  const businessEvents = useMemo(() => {
+    return detectBusinessEvents(products, transactions, suppliers, orders, returns, businessProfile);
+  }, [products, transactions, suppliers, orders, returns, businessProfile]);
+
+  const activeAlertCount = useMemo(() => {
+    const statuses = getStoredEventStatuses();
+    return businessEvents.filter(e => {
+      const status = statuses[e.id] || e.status;
+      return status !== 'RESOLVED';
+    }).length;
+  }, [businessEvents, healthTick]);
 
   const healthSummary = useMemo(() => {
     return computeBusinessHealth(products, transactions, suppliers, returns);
@@ -114,112 +131,72 @@ export function Header() {
       </div>
 
       <div className="flex flex-shrink-0 items-center justify-end gap-1">
+        {/* Proactive Notification Bell */}
         <TooltipProvider>
-          {/* Theme Toggle - Desktop Only */}
-          <div className="hidden md:block" data-tour="theme-toggle">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className='rounded-full'
-                  onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-                >
-                  <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-                  <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-                  <span className="sr-only">Toggle theme</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Toggle Theme</p>
-              </TooltipContent>
-            </Tooltip>
-          </div>
-
-          {/* Settings - Desktop Only */}
-          <div className="hidden md:block" data-tour="settings-btn">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className='rounded-full'
-                  onClick={() => router.push('/dashboard/settings')}
-                >
-                  <Settings className="h-5 w-5" />
-                  <span className="sr-only">Settings</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Settings</p>
-              </TooltipContent>
-            </Tooltip>
-          </div>
-
-          {/* Settings Dropdown - Mobile Only */}
-          <div className="md:hidden">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="rounded-full"
-                >
-                  <Settings className="h-5 w-5" />
-                  <span className="sr-only">Settings Menu</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-52 ios-glass">
-                <DropdownMenuItem onClick={() => router.push('/dashboard/settings')} className="cursor-pointer">
-                  <Settings className="mr-2 h-4 w-4" />
-                  Account Settings
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} className="cursor-pointer">
-                  {theme === 'light' ? (
-                    <>
-                      <Moon className="mr-2 h-4 w-4" />
-                      Dark Mode
-                    </>
-                  ) : (
-                    <>
-                      <Sun className="mr-2 h-4 w-4" />
-                      Light Mode
-                    </>
-                  )}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout} className="text-destructive cursor-pointer">
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Log Out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          {/* Log out - Desktop Only */}
-          <div className="hidden md:block">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className='rounded-full' onClick={handleLogout}>
-                  <LogOut className="h-5 w-5" />
-                  <span className="sr-only">Log out</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Log out</p>
-              </TooltipContent>
-            </Tooltip>
-          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-full relative"
+                onClick={() => setNotifDrawerOpen(true)}
+              >
+                <Bell className="h-5 w-5" />
+                {activeAlertCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow-sm">
+                    {activeAlertCount}
+                  </span>
+                )}
+                <span className="sr-only">Notifications</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Business Alerts ({activeAlertCount})</p>
+            </TooltipContent>
+          </Tooltip>
         </TooltipProvider>
-        <Button variant="ghost" className="relative h-9 w-9 rounded-full">
-          <Avatar className="h-9 w-9">
-            <AvatarImage
-              src={user?.photoURL || ''}
-              alt="User avatar"
-            />
-            <AvatarFallback>{user?.displayName?.charAt(0) || user?.email?.charAt(0) || 'U'}</AvatarFallback>
-          </Avatar>
-        </Button>
+
+        {/* Account Avatar Dropdown Menu */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="relative h-9 w-9 rounded-full p-0">
+              <Avatar className="h-9 w-9 border border-border/50">
+                <AvatarImage src={user?.photoURL || ''} alt="User avatar" />
+                <AvatarFallback className="bg-primary/20 text-primary font-bold text-xs">
+                  {user?.displayName?.charAt(0) || user?.email?.charAt(0) || 'U'}
+                </AvatarFallback>
+              </Avatar>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56 ios-glass">
+            <div className="px-3 py-2 border-b border-border/30">
+              <p className="font-bold text-xs text-foreground truncate">{user?.displayName || 'Business User'}</p>
+              <p className="text-[10px] text-muted-foreground truncate">{user?.email || 'user@business.com'}</p>
+            </div>
+            <DropdownMenuItem onClick={() => router.push('/dashboard/settings')} className="cursor-pointer text-xs">
+              <Settings className="mr-2 h-4 w-4" />
+              Account Settings
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} className="cursor-pointer text-xs">
+              {theme === 'light' ? (
+                <>
+                  <Moon className="mr-2 h-4 w-4" />
+                  Dark Mode
+                </>
+              ) : (
+                <>
+                  <Sun className="mr-2 h-4 w-4" />
+                  Light Mode
+                </>
+              )}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleLogout} className="text-destructive cursor-pointer text-xs">
+              <LogOut className="mr-2 h-4 w-4 text-destructive" />
+              Log Out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         {/* Mobile Hamburger Menu Icon - Far Right */}
         <div className="md:hidden flex items-center">
@@ -308,6 +285,8 @@ export function Header() {
           </>
         )}
       </AnimatePresence>
+
+      <NotificationCenterDrawer open={notifDrawerOpen} onOpenChange={setNotifDrawerOpen} />
     </header>
   );
 }

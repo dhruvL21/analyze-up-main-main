@@ -16,10 +16,19 @@ import {
   ShieldCheck,
   History,
   Check,
+  AlertTriangle,
 } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 
 export function AIActionCenter() {
-  const { products, transactions, suppliers, businessProfile, updateProduct, addOrder, addTransaction } = useData();
+  const { products, transactions, suppliers, orders, businessProfile, updateProduct, addOrder, addTransaction } = useData();
   const { toast } = useToast();
   const router = useRouter();
 
@@ -38,10 +47,16 @@ export function AIActionCenter() {
     return [];
   });
 
+  const [confirmData, setConfirmData] = useState<{
+    title: string;
+    description: string;
+    onConfirm: () => void;
+  } | null>(null);
+
   useEffect(() => {
-    const generated = generateActionTasks(products, transactions, suppliers, businessProfile);
+    const generated = generateActionTasks(products, transactions, suppliers, orders, businessProfile);
     setTasks(generated);
-  }, [products, transactions, suppliers, businessProfile]);
+  }, [products, transactions, suppliers, orders, businessProfile]);
 
   const markTaskCompleted = (taskId: string) => {
     setCompletedTaskIds(prev => {
@@ -55,125 +70,112 @@ export function AIActionCenter() {
   };
 
 
-  const handleExecuteAction = async (task: ActionTask) => {
-    // 1. Immediately complete task in React state so card dismisses instantaneously
-    markTaskCompleted(task.id);
-
+  const handleExecuteAction = (task: ActionTask) => {
     const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
     const targetProd = products.find(p => (task.targetId && p.id === task.targetId) || (p.name && task.targetName && p.name.toLowerCase() === task.targetName.toLowerCase()) || (p.sku && task.title.includes(p.sku)));
     const pName = targetProd?.name || task.targetName || 'Product';
 
-    try {
-      if (task.actionType === 'reorder') {
-        const reorderQty = (targetProd?.minStock || 5) * 4 || 50;
-        const costPrice = targetProd?.costPrice || (targetProd?.price || 500) * 0.6;
-        const totalCost = Math.round(costPrice * reorderQty);
+    setConfirmData({
+      title: task.title,
+      description: `Confirm execution of: "${task.recommendation}". This will update stock levels or catalog pricing in Firestore.`,
+      onConfirm: async () => {
+        // 1. Immediately complete task in React state so card dismisses instantaneously
+        markTaskCompleted(task.id);
 
-        await addOrder({
-          supplierId: targetProd?.supplierId || suppliers[0]?.id || 'sup-1',
-          productId: targetProd?.id || 'prod-1',
-          quantity: reorderQty,
-          orderDate: new Date().toISOString(),
-          expectedDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString(),
-          status: 'Pending',
-        });
+        try {
+          if (task.actionType === 'reorder') {
+            const reorderQty = (targetProd?.minStock || 5) * 4 || 50;
+            const costPrice = targetProd?.costPrice || (targetProd?.price || 500) * 0.6;
+            const totalCost = Math.round(costPrice * reorderQty);
 
-        await addTransaction({
-          productId: targetProd?.id || 'prod-1',
-          productName: pName,
-          sku: targetProd?.sku || '',
-          type: 'Purchase',
-          quantity: reorderQty,
-          price: costPrice,
-          totalCost: totalCost,
-          supplier: targetProd?.supplier || suppliers[0]?.name || 'Supplier',
-          transactionDate: new Date().toISOString(),
-          status: 'Completed',
-        });
+            await addOrder({
+              supplierId: targetProd?.supplierId || suppliers[0]?.id || 'sup-1',
+              productId: targetProd?.id || 'prod-1',
+              quantity: reorderQty,
+              unitCost: costPrice,
+              totalCost: totalCost,
+              orderDate: new Date().toISOString(),
+              expectedDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString(),
+              status: 'Fulfilled',
+            });
 
-        if (targetProd) {
-          await updateProduct({
-            ...targetProd,
-            stock: targetProd.stock + reorderQty,
-            updatedAt: new Date().toISOString(),
-          });
+            logBusinessAction({
+              title: 'Executed Purchase Order Reorder',
+              productName: pName,
+              actionType: 'reorder',
+              changeDetails: `Reordered ${reorderQty} units at ${currencySymbol}${costPrice}/unit (${currencySymbol}${totalCost.toLocaleString('en-IN')}).`,
+              impactValue: `+${reorderQty} Units`,
+            });
+
+            toast({
+              title: '📦 Purchase Order Created & Saved to Audit!',
+              description: `Logged PO for ${reorderQty} units of "${pName}". Click "Change History" to view recorded audit.`,
+            });
+          } else if (task.actionType === 'discount') {
+            if (targetProd) {
+              const oldPrice = targetProd.price || 500;
+              const newPrice = Math.round(oldPrice * 0.8);
+              await updateProduct({
+                ...targetProd,
+                price: newPrice,
+                updatedAt: new Date().toISOString(),
+              });
+
+              logBusinessAction({
+                title: 'Liquidated Dead Stock (20% Clearance)',
+                productName: pName,
+                actionType: 'discount',
+                changeDetails: `Reduced price from ${currencySymbol}${oldPrice} to ${currencySymbol}${newPrice} (-20%). Unlocked working capital.`,
+                impactValue: `-20% Clearance`,
+              });
+
+              toast({
+                title: '🏷️ Clearance Promo Applied & Saved to Audit!',
+                description: `Reduced price of "${pName}" to ${currencySymbol}${newPrice}. Click "Change History" to view recorded audit.`,
+              });
+            }
+          } else if (task.actionType === 'price_up') {
+            if (targetProd) {
+              const oldPrice = targetProd.price || 500;
+              const newPrice = Math.round(oldPrice * 1.08);
+              await updateProduct({
+                ...targetProd,
+                price: newPrice,
+                updatedAt: new Date().toISOString(),
+              });
+
+              logBusinessAction({
+                title: 'Optimized Price (+8%)',
+                productName: pName,
+                actionType: 'price_up',
+                changeDetails: `Adjusted price from ${currencySymbol}${oldPrice} to ${currencySymbol}${newPrice} (+8%) for margin expansion.`,
+                impactValue: `+8% Price Boost`,
+              });
+
+              toast({
+                title: '📈 Price Optimized & Saved to Audit!',
+                description: `Adjusted price of "${pName}" to ${currencySymbol}${newPrice}. Click "Change History" to view recorded audit.`,
+              });
+            }
+          } else if (task.actionType === 'supplier') {
+            logBusinessAction({
+              title: 'Dispatched Supplier Expedite Notice',
+              productName: task.targetName || 'Supplier',
+              actionType: 'supplier',
+              changeDetails: `Dispatched high-priority delivery expedite to supplier ${task.targetName}.`,
+              impactValue: `Expedited`,
+            });
+
+            toast({
+              title: '🚚 Supplier Expedite Dispatched',
+              description: `High-priority delivery notice dispatched to ${task.targetName || 'supplier'}.`,
+            });
+          }
+        } catch (err) {
+          console.error('Error executing action:', err);
         }
-
-        logBusinessAction({
-          title: 'Executed Purchase Order Reorder',
-          productName: pName,
-          actionType: 'reorder',
-          changeDetails: `Reordered ${reorderQty} units at ${currencySymbol}${costPrice}/unit (${currencySymbol}${totalCost.toLocaleString('en-IN')}).`,
-          impactValue: `+${reorderQty} Units`,
-        });
-
-        toast({
-          title: '📦 Purchase Order Created & Saved to Audit!',
-          description: `Logged PO for ${reorderQty} units of "${pName}". Click "Change History" to view recorded audit.`,
-        });
-      } else if (task.actionType === 'discount') {
-        if (targetProd) {
-          const oldPrice = targetProd.price || 500;
-          const newPrice = Math.round(oldPrice * 0.8);
-          await updateProduct({
-            ...targetProd,
-            price: newPrice,
-            updatedAt: new Date().toISOString(),
-          });
-
-          logBusinessAction({
-            title: 'Liquidated Dead Stock (20% Clearance)',
-            productName: pName,
-            actionType: 'discount',
-            changeDetails: `Reduced price from ${currencySymbol}${oldPrice} to ${currencySymbol}${newPrice} (-20%). Unlocked working capital.`,
-            impactValue: `-20% Clearance`,
-          });
-
-          toast({
-            title: '🏷️ Clearance Promo Applied & Saved to Audit!',
-            description: `Reduced price of "${pName}" to ${currencySymbol}${newPrice}. Click "Change History" to view recorded audit.`,
-          });
-        }
-      } else if (task.actionType === 'price_up') {
-        if (targetProd) {
-          const oldPrice = targetProd.price || 500;
-          const newPrice = Math.round(oldPrice * 1.08);
-          await updateProduct({
-            ...targetProd,
-            price: newPrice,
-            updatedAt: new Date().toISOString(),
-          });
-
-          logBusinessAction({
-            title: 'Optimized Price (+8%)',
-            productName: pName,
-            actionType: 'price_up',
-            changeDetails: `Adjusted price from ${currencySymbol}${oldPrice} to ${currencySymbol}${newPrice} (+8%) for margin expansion.`,
-            impactValue: `+8% Price Boost`,
-          });
-
-          toast({
-            title: '📈 Price Optimized & Saved to Audit!',
-            description: `Adjusted price of "${pName}" to ${currencySymbol}${newPrice}. Click "Change History" to view recorded audit.`,
-          });
-        }
-      } else if (task.actionType === 'supplier') {
-        logBusinessAction({
-          title: 'Dispatched Supplier Expedite Notice',
-          productName: task.targetName || 'Supplier',
-          actionType: 'supplier',
-          changeDetails: `Dispatched high-priority delivery expedite to supplier ${task.targetName}.`,
-          impactValue: `Expedited`,
-        });
-
-        toast({
-          title: '🚚 Supplier Expedite Dispatched',
-          description: `High-priority delivery notice dispatched to ${task.targetName || 'supplier'}.`,
-        });
       }
-    } catch (err) {
-      console.error('Error executing action:', err);
-    }
+    });
   };
 
   const activeTasks = tasks.filter(t => !completedTaskIds.includes(t.id));
@@ -181,7 +183,7 @@ export function AIActionCenter() {
   return (
     <>
       <Card className="ios-glass rounded-3xl border-emerald-500/20 p-5 shadow-xl space-y-4">
-        <CardHeader className="p-0 pb-3 border-b border-border/40 flex flex-row items-center justify-between">
+        <CardHeader className="p-0 pb-3 border-b border-border/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
               <Sparkles className="w-5 h-5 animate-pulse" />
@@ -197,7 +199,7 @@ export function AIActionCenter() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Button
               size="sm"
               variant="outline"
@@ -265,16 +267,16 @@ export function AIActionCenter() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-1 border-t border-border/40 gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-2 border-t border-border/40 gap-3">
                   <p className="text-[11px] text-muted-foreground">
                     <span className="font-semibold text-foreground">Recommendation:</span> {task.recommendation}
                   </p>
 
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
                     <Button
                       size="sm"
                       onClick={() => handleExecuteAction(task)}
-                      className="rounded-xl text-xs h-8 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow-md shadow-emerald-600/20 gap-1.5 px-4"
+                      className="w-full sm:w-auto rounded-xl text-xs h-8 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow-md shadow-emerald-600/20 gap-1.5 px-4"
                     >
                       Execute Action
                       <ArrowRight className="w-3.5 h-3.5" />
@@ -292,6 +294,52 @@ export function AIActionCenter() {
         open={isAuditModalOpen}
         onOpenChange={setIsAuditModalOpen}
       />
+
+      <Dialog open={confirmData !== null} onOpenChange={(open) => { if (!open) setConfirmData(null); }}>
+        <DialogContent className="max-w-md bg-zinc-950/90 border border-amber-500/20 rounded-3xl ios-glass text-white shadow-2xl p-6">
+          <DialogHeader className="space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                <AlertTriangle className="w-5 h-5 animate-bounce text-amber-400" />
+              </div>
+              <DialogTitle className="text-base font-bold text-white">Confirm Business Change</DialogTitle>
+            </div>
+            <DialogDescription className="text-xs text-zinc-400">
+              Are you sure you want to execute this change? This will write modifications directly to your database.
+            </DialogDescription>
+          </DialogHeader>
+
+          {confirmData && (
+            <div className="py-2 text-xs space-y-3">
+              <div className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-1.5">
+                <div className="text-zinc-200 font-bold">{confirmData.title}</div>
+                <div className="text-zinc-300 leading-relaxed">{confirmData.description}</div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="flex flex-row items-center justify-end gap-2 pt-4 border-t border-zinc-800/40">
+            <Button
+              variant="ghost"
+              onClick={() => setConfirmData(null)}
+              className="rounded-xl text-xs hover:bg-zinc-900 text-zinc-400 hover:text-white px-3"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (confirmData) {
+                  confirmData.onConfirm();
+                  setConfirmData(null);
+                }
+              }}
+              className="bg-amber-500 hover:bg-amber-600 text-black font-extrabold rounded-xl text-xs px-4"
+            >
+              Confirm & Apply
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

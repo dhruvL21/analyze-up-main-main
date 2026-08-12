@@ -27,7 +27,7 @@ export function RevenueProfitIntelligence() {
     return products.map((p) => {
       const pSales = transactions.filter((t) => t.type === 'Sale' && (t.productId === p.id || t.sku === p.sku));
       const qtySold = pSales.reduce((sum, t) => sum + (t.quantity || 0), 0);
-      const revenue = pSales.reduce((sum, t) => sum + (t.totalRevenue || (t.quantity * t.price)), 0);
+      const revenue = pSales.reduce((sum, t) => sum + (t.totalRevenue || (t.quantity * (t.price || 0))), 0);
       
       const unitCost = p.costPrice || p.price * 0.6;
       const totalCost = qtySold * unitCost;
@@ -380,11 +380,14 @@ export function RevenueProfitIntelligence() {
               <div className="p-4 rounded-2xl bg-secondary/40 border border-border/40 space-y-2">
                 <h4 className="font-bold text-foreground flex items-center gap-1.5 text-sm">
                   <Layers className="w-4 h-4 text-primary" />
-                  Executive Product Performance Breakdown
+                  Executive Product Performance & Supplier Margin Impact
                 </h4>
                 <p className="text-muted-foreground">
-                  Combined catalog view evaluating high-margin cash cows, top sellers, and margin-distressed catalog items with actionable AI recommendations.
+                  Combined catalog view evaluating how supplier purchase costs directly impact product profit margins.
                 </p>
+                <div className="p-3 rounded-xl bg-background/60 border border-primary/20 text-[11px] space-y-1 font-mono text-primary">
+                  <span>SUPPLIER ➔ PURCHASE COST ➔ PRODUCT COST ➔ PRODUCT MARGIN ➔ BUSINESS PROFIT ➔ AI RECOMMENDATION</span>
+                </div>
               </div>
 
               <div className="divide-y divide-border/40 rounded-2xl border border-border/40 overflow-hidden bg-secondary/20 text-xs">

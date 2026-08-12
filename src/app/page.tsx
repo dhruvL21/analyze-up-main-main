@@ -8,84 +8,6 @@ import { RotatingText } from '@/components/rotating-text';
 export default function LandingPage() {
   return (
     <div className="flex flex-col min-h-[100dvh] bg-background text-foreground relative overflow-hidden">
-      {/* Floating E-commerce Background Elements (Desktop only) */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden z-0 hidden xl:block">
-        {/* Glow Blobs */}
-        <div className="absolute top-[15%] left-[10%] w-[500px] h-[500px] rounded-full bg-primary/5 blur-[120px]" />
-        <div className="absolute top-[35%] right-[5%] w-[600px] h-[600px] rounded-full bg-purple-500/5 blur-[150px]" />
-        <div className="absolute top-[55%] left-[8%] w-[500px] h-[500px] rounded-full bg-emerald-500/5 blur-[120px]" />
-        <div className="absolute top-[75%] right-[10%] w-[550px] h-[550px] rounded-full bg-primary/5 blur-[130px]" />
-        <div className="absolute top-[90%] left-[12%] w-[400px] h-[400px] rounded-full bg-purple-500/5 blur-[110px]" />
-
-        {/* Floating Card 1: Stock Alert (Left - top 22%) */}
-        <div className="absolute left-[3%] top-[22%] w-60 p-4 rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm -rotate-6 shadow-2xl opacity-45 hover:opacity-90 transition-all duration-500">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500/90">Low Stock Alert</span>
-          </div>
-          <p className="text-xs font-bold text-foreground">Classic White Tee</p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">8 units remaining (Runway: 3 days)</p>
-        </div>
-
-        {/* Floating Card 2: New Sale (Right - top 28%) */}
-        <div className="absolute right-[3%] top-[28%] w-56 p-4 rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm rotate-6 shadow-2xl opacity-45 hover:opacity-90 transition-all duration-500">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Order Completed</span>
-            <span className="text-xs font-bold text-emerald-400">+₹4,500</span>
-          </div>
-          <div className="h-1.5 w-full bg-secondary/50 rounded-full overflow-hidden">
-            <div className="h-full w-3/4 bg-emerald-500 rounded-full" />
-          </div>
-          <p className="text-[10px] text-muted-foreground mt-1.5">SKU: TS-002 • Qty: 3</p>
-        </div>
-
-        {/* Floating Card 3: Margin Analyst (Left - top 44%) */}
-        <div className="absolute left-[4%] top-[44%] w-56 p-4 rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm rotate-3 shadow-2xl opacity-40 hover:opacity-90 transition-all duration-500">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Profit Margin</span>
-          </div>
-          <p className="text-xs font-bold text-foreground">Gross Margin: 68%</p>
-          <p className="text-[11px] text-emerald-400 mt-0.5">Healthy (Industry avg: 55%)</p>
-        </div>
-
-        {/* Floating Card 4: Supplier Risk (Right - top 52%) */}
-        <div className="absolute right-[4%] top-[52%] w-60 p-4 rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm -rotate-6 shadow-2xl opacity-40 hover:opacity-90 transition-all duration-500">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500">Supplier Risk</span>
-            <span className="text-[10px] font-semibold text-amber-500">PO Delayed</span>
-          </div>
-          <p className="text-xs font-bold text-foreground">Apex Electronics</p>
-          <p className="text-[10px] text-muted-foreground mt-0.5">Average lead time increased to 12 days.</p>
-        </div>
-
-        {/* Floating Card 5: Return Processed (Left - top 68%) */}
-        <div className="absolute left-[4%] top-[68%] w-64 p-4 rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm rotate-3 shadow-2xl opacity-35 hover:opacity-90 transition-all duration-500">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-primary">Return Logged</span>
-            <span className="text-xs font-bold text-primary">-₹1,999</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="h-6 w-6 rounded bg-primary/10 flex items-center justify-center text-[10px] text-primary font-bold">R</div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold truncate text-foreground">Waterproof Backpack</p>
-              <p className="text-[10px] text-muted-foreground">Reason: Wrong Size • Restocked</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Floating Card 6: Supplier Restock (Right - top 76%) */}
-        <div className="absolute right-[4%] top-[76%] w-60 p-4 rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm -rotate-3 shadow-2xl opacity-35 hover:opacity-90 transition-all duration-500">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400">Fulfillment</span>
-            <span className="text-[10px] text-purple-400 font-semibold">PO #4029</span>
-          </div>
-          <p className="text-xs font-bold text-foreground">50 Units Received</p>
-          <p className="text-[10px] text-muted-foreground mt-0.5">Supplier: Zenith Textiles</p>
-          <div className="mt-2 h-1 bg-purple-500/30 rounded-full w-full">
-            <div className="h-full bg-purple-500 rounded-full w-full" />
-          </div>
-        </div>
-      </div>
       <header className="px-4 lg:px-6 h-16 flex items-center justify-between sticky top-0 z-50 bg-background/70 backdrop-blur-xl border-b">
         <Link href="/" className="flex items-center justify-center shrink-0">
           <AnalyzeUpIcon className="h-6 w-6 text-primary" />
@@ -116,7 +38,7 @@ export default function LandingPage() {
         </div>
       </header>
       <main className="flex-1">
-        <section className="w-full pt-12 pb-20 md:pt-16 md:pb-24 lg:pt-20 lg:pb-32 animated-grid-background overflow-hidden">
+        <section className="w-full pt-12 pb-20 md:pt-16 md:pb-24 lg:pt-20 lg:pb-32 overflow-hidden">
           <div className="container px-4 md:px-6 mx-auto">
             <div className="grid grid-cols-[1fr_100px] min-[400px]:grid-cols-[1fr_130px] sm:grid-cols-[1.2fr_0.8fr] lg:grid-cols-[1fr_500px] gap-4 md:gap-12 items-center">
               <div className="flex flex-col justify-center space-y-6 text-left">

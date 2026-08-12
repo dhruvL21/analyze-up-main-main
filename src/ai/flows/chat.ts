@@ -2,6 +2,7 @@
 
 import { openai } from '@/ai/openai';
 import { getIndustryConfig } from '@/lib/industry-intelligence';
+import { processCopilotQuery, CopilotResponse } from '@/lib/copilot-engine';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -11,31 +12,48 @@ export interface ChatMessage {
 export async function askAnalyzeUpChat(
   userMessage: string,
   chatHistory: ChatMessage[],
-  products: any[],
-  transactions: any[],
+  products: any[] = [],
+  transactions: any[] = [],
+  suppliers: any[] = [],
+  orders: any[] = [],
+  returns: any[] = [],
   businessProfile?: any
 ): Promise<string> {
   const industry = getIndustryConfig(businessProfile?.businessType);
 
+  // First process deterministic Copilot intelligence response
+  const copilotRes = processCopilotQuery(
+    userMessage,
+    chatHistory,
+    products,
+    transactions,
+    suppliers,
+    orders,
+    returns,
+    businessProfile
+  );
+
+  // Construct system prompt containing calculated deterministic metrics
   const systemPrompt = `
-You are "AnalyzeUp AI Business Copilot", an intelligent, expert AI advisor for "${businessProfile?.businessName || 'the business'}" in the ${industry.label} industry.
-Business Size: ${businessProfile?.businessSize || 'SMB'}, Base Currency: ${businessProfile?.currency || 'INR (₹)'}.
-Industry Priority Focus: ${industry.aiPriority}
+You are "AnalyzeUp AI Business Copilot", an expert AI advisor for "${businessProfile?.businessName || 'the business'}" in the ${industry.label} industry.
+Currency: ${businessProfile?.currency || 'INR (₹)'}.
 
-You have access to real-time business data:
-
-1. Current Products in Stock:
-${JSON.stringify(products, null, 2)}
-
-2. Recent Sales/Purchase Transactions:
-${JSON.stringify(transactions, null, 2)}
+DETERMINISTIC BUSINESS METRICS COMPUTED BY APPLICATION:
+- Query Intent: ${copilotRes.intentLabel}
+- What Happened: ${copilotRes.what}
+- Why It Happened: ${copilotRes.why}
+- Recommended Action: ${copilotRes.actionText}
+- Supporting Data: ${copilotRes.supportingData.map(d => `${d.label}: ${d.value}`).join(' | ')}
 
 INSTRUCTIONS:
-1. Answer the founder's questions with actionable business decisions rather than just raw facts.
-2. Ground all answers strictly in the provided inventory and transaction data.
-3. Tailor strategic suggestions specifically for a ${industry.label} business.
-4. Format responses cleanly using markdown (bullet points, bold text, step-by-step decision points).
-5. Always use the business's selected currency format (${businessProfile?.currency || '₹'}).
+1. Explain the computed metrics clearly using concise, executive Markdown formatting.
+2. Structure the response into:
+   ### ${copilotRes.intentLabel.toUpperCase()}
+   - **WHAT:** ${copilotRes.what}
+   - **WHY:** ${copilotRes.why}
+   - **RECOMMENDED ACTION:** ${copilotRes.actionText}
+3. Include the supporting metrics in a clear list.
+4. Ground all statements strictly in these computed metrics. Never invent unverified sales or profit numbers.
 `;
 
   try {
@@ -54,10 +72,10 @@ INSTRUCTIONS:
       temperature: 0,
     });
 
-    const reply = response.choices[0].message.content || "I couldn't generate a response. Please try again.";
+    const reply = response.choices[0].message.content || copilotRes.answerMarkdown;
     return reply;
   } catch (error) {
-    console.error('Error in askAnalyzeUpChat:', error);
-    return "Sorry, I encountered an error while analyzing your data. Please check your connection and try again.";
+    console.error('OpenAI API call bypassed/failed, returning deterministic Copilot answer:', error);
+    return copilotRes.answerMarkdown;
   }
 }

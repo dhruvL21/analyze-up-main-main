@@ -252,7 +252,17 @@ export default function InventoryPage() {
                           onClick={() => openProductReport(product)}
                         >
                           <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
-                            <span className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-400 font-black text-xs inline-flex items-center justify-center border border-emerald-500/20">
+                            <span
+                              className={`w-8 h-8 rounded-full font-black text-xs inline-flex items-center justify-center border shadow-sm ${
+                                report.performanceGrade === 'A+' || report.performanceGrade === 'A'
+                                  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                  : report.performanceGrade === 'B'
+                                  ? 'bg-blue-500/15 text-blue-400 border-blue-500/30'
+                                  : report.performanceGrade === 'C'
+                                  ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                                  : 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                              }`}
+                            >
                               {report.performanceGrade}
                             </span>
                           </TableCell>

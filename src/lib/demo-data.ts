@@ -140,10 +140,10 @@ export function generateDemoBusinessData() {
       category: catObj ? catObj.name : 'General',
       type: isSale ? 'Sale' : 'Purchase',
       quantity: qty,
-      price: unitPrice,
-      totalRevenue: isSale ? unitPrice * qty : 0,
-      costPerUnit: product.costPrice,
-      totalCost: product.costPrice * qty,
+      price: unitPrice || 0,
+      totalRevenue: isSale ? (unitPrice || 0) * qty : 0,
+      costPerUnit: product.costPrice || 0,
+      totalCost: (product.costPrice || 0) * qty,
       supplier: product.supplier,
       customerName: isSale ? `Customer #${1000 + (t % 150)}` : undefined,
       paymentMethod: isSale ? paymentMethods[t % paymentMethods.length] : 'Bank Transfer',
@@ -154,24 +154,50 @@ export function generateDemoBusinessData() {
     });
   }
 
-  // Generate 25 Purchase Orders
+  // Generate 65 Purchase Orders across suppliers with realistic lead times and delivery statuses
   const purchaseOrders: PurchaseOrder[] = [];
-  for (let po = 1; po <= 25; po++) {
-    const product = products[po * 7 % products.length];
-    const supObj = suppliers.find(s => s.name === product.supplier) || suppliers[0];
-    const poDate = new Date(now.getTime() - ((25 - po) * 3 * 24 * 60 * 60 * 1000)).toISOString();
-    const deliveryDate = new Date(now.getTime() + (po * 24 * 60 * 60 * 1000)).toISOString();
+  const poStatuses: ('Fulfilled' | 'Pending' | 'Cancelled')[] = ['Fulfilled', 'Fulfilled', 'Fulfilled', 'Pending', 'Cancelled'];
+
+  for (let po = 1; po <= 65; po++) {
+    const product = products[po * 3 % products.length];
+    // Leave supplier 'sup-15' with ZERO POs to test Insufficient History empty state!
+    const activeSuppliers = suppliers.filter(s => s.id !== 'sup-15');
+    const supObj = activeSuppliers[po % activeSuppliers.length];
+    
+    const daysAgo = Math.floor((po / 65) * 80) + 2;
+    const orderDateObj = new Date(now.getTime() - (daysAgo * 24 * 60 * 60 * 1000));
+    const poDate = orderDateObj.toISOString();
+    
+    const leadTime = supObj.name.includes('Apex') || supObj.name.includes('Pure') ? 4 : (supObj.name.includes('Master') ? 9 : 6);
+    const expectedDeliveryObj = new Date(orderDateObj.getTime() + (leadTime * 24 * 60 * 60 * 1000));
+    const expectedDeliveryDate = expectedDeliveryObj.toISOString();
+
+    const status = poStatuses[po % poStatuses.length];
+    let actualDeliveryDate: string | undefined = undefined;
+
+    if (status === 'Fulfilled') {
+      // Simulate on-time vs late delivery (85% on time, 15% delayed)
+      const delayDays = (po % 7 === 0) ? Math.floor(Math.random() * 4) + 2 : 0;
+      actualDeliveryDate = new Date(expectedDeliveryObj.getTime() + (delayDays * 24 * 60 * 60 * 1000)).toISOString();
+    }
+
+    const qty = Math.floor(Math.random() * 60) + 20;
+    const unitCost = product.costPrice || Math.round(product.price * 0.6);
+    const totalCost = Math.round(unitCost * qty);
 
     purchaseOrders.push({
       id: `po-${po}`,
       supplierId: supObj.id,
       productId: product.id,
-      quantity: Math.floor(Math.random() * 50) + 20,
+      quantity: qty,
+      unitCost,
+      totalCost,
       orderDate: poDate,
-      expectedDeliveryDate: deliveryDate,
-      status: po % 3 === 0 ? 'Pending' : 'Fulfilled',
+      expectedDeliveryDate,
+      actualDeliveryDate,
+      status,
       createdAt: poDate,
-      updatedAt: poDate,
+      updatedAt: actualDeliveryDate || poDate,
     });
   }
 
