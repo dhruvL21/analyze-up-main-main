@@ -5,18 +5,45 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function sanitizePlainData<T>(data: T): T {
-  if (data === null || data === undefined) return data;
-  try {
-    return JSON.parse(
-      JSON.stringify(data, (key, val) => {
-        if (val && typeof val === 'object' && typeof val.seconds === 'number') {
-          return new Date(val.seconds * 1000).toISOString();
-        }
-        return val;
-      })
-    );
-  } catch {
-    return data;
+/**
+ * Recursively converts Firestore Timestamps, Dates, and custom class instances
+ * into pure, plain serializable JavaScript objects and ISO date strings.
+ * This guarantees safe Next.js Server Action argument serialization.
+ */
+export function serializePlainData<T>(val: any): T {
+  if (val === null || val === undefined) return val;
+  if (typeof val === 'function' || typeof val === 'symbol') return undefined as any;
+  if (typeof val !== 'object') return val;
+
+  // Handle Firestore Timestamp with toDate() or { seconds, nanoseconds }
+  if (typeof val.toDate === 'function') {
+    try {
+      return val.toDate().toISOString() as any;
+    } catch {
+      return new Date().toISOString() as any;
+    }
   }
+  if (typeof val.seconds === 'number' && typeof val.nanoseconds === 'number') {
+    return new Date(val.seconds * 1000).toISOString() as any;
+  }
+  if (val instanceof Date) {
+    return val.toISOString() as any;
+  }
+
+  if (Array.isArray(val)) {
+    return val.map(item => serializePlainData(item)) as any;
+  }
+
+  // Create pure plain dictionary (null prototype or Object.prototype with no methods)
+  const plain: Record<string, any> = {};
+  for (const key of Object.keys(val)) {
+    if (key === 'toJSON') continue;
+    const cleaned = serializePlainData(val[key]);
+    if (cleaned !== undefined) {
+      plain[key] = cleaned;
+    }
+  }
+  return plain as T;
 }
+
+export const sanitizePlainData = serializePlainData;

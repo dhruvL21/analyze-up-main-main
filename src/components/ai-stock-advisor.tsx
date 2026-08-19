@@ -18,6 +18,7 @@ import { aiStockAdvisor } from '@/ai/flows/low-stock-alerts';
 import { generateBusinessStrategy } from '@/ai/flows/business-strategy-generator';
 import type { BusinessStrategyOutput } from '@/ai/flows/business-strategy-generator';
 import { Badge } from './ui/badge';
+import { serializePlainData } from '@/lib/utils';
 
 export function AIStockAdvisor() {
   const { products, transactions, activePlan, setShowSubscriptionModal } = useData();
@@ -62,8 +63,10 @@ export function AIStockAdvisor() {
   const handleGenerateStrategy = () => {
     if (!isPaid) return;
     startStrategyTransition(async () => {
-        const salesData = JSON.stringify(transactions.filter(t => t.type === 'Sale'));
-        const productData = JSON.stringify(products);
+        const cleanSales = serializePlainData(transactions.filter(t => t.type === 'Sale'));
+        const cleanProducts = serializePlainData(products);
+        const salesData = JSON.stringify(cleanSales);
+        const productData = JSON.stringify(cleanProducts);
         
         const result = await generateBusinessStrategy({ salesData, productData });
         setStrategy(result);

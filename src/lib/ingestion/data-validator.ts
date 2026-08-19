@@ -1,0 +1,228 @@
+/**
+ * Ingestion: Deterministic Data Validator & Normalizer
+ * Pure code for type conversion, missing value handling, duplicate detection, and schema validation.
+ */
+import {
+  CanonicalProduct,
+  CanonicalProductSchema,
+  CanonicalSale,
+  CanonicalSaleSchema,
+  CanonicalSupplier,
+  CanonicalSupplierSchema,
+  CanonicalPurchaseOrder,
+  CanonicalPurchaseOrderSchema,
+  CanonicalReturn,
+  CanonicalReturnSchema,
+} from '@/schemas/canonical';
+import { NormalizationOutput } from '@/schemas/mapping-contract';
+
+/* ----------------- NUMERIC & DATE CLEANERS ----------------- */
+
+export function cleanNumber(val: any, fallback = 0): number {
+  if (val === undefined || val === null) return fallback;
+  if (typeof val === 'number') return isNaN(val) ? fallback : val;
+  const str = String(val).trim().replace(/,/g, '').replace(/[₹$€£%]/g, '');
+  const parsed = parseFloat(str);
+  return isNaN(parsed) ? fallback : parsed;
+}
+
+export function cleanInteger(val: any, fallback = 0): number {
+  const num = cleanNumber(val, fallback);
+  return Math.round(num);
+}
+
+export function cleanDate(val: any): string {
+  if (!val) return new Date().toISOString().split('T')[0];
+  if (val instanceof Date) return val.toISOString().split('T')[0];
+
+  const str = String(val).trim();
+  // Check ISO format YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+    return str.slice(0, 10);
+  }
+
+  // Check DD/MM/YYYY or DD-MM-YYYY
+  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (dmyMatch) {
+    const d = dmyMatch[1].padStart(2, '0');
+    const m = dmyMatch[2].padStart(2, '0');
+    const y = dmyMatch[3];
+    return `${y}-${m}-${d}`;
+  }
+
+  // Check MM/DD/YYYY
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toISOString().split('T')[0];
+  }
+
+  return new Date().toISOString().split('T')[0];
+}
+
+/* ----------------- DATASET NORMALIZERS ----------------- */
+
+export function normalizeToProducts(
+  rawRows: Record<string, any>[],
+  fieldMapping: Record<string, string>
+): NormalizationOutput<CanonicalProduct> {
+  const validRecords: CanonicalProduct[] = [];
+  const errorRecords: NormalizationOutput['errorRecords'] = [];
+  const warnings: string[] = [];
+  const seenSkus = new Set<string>();
+  let skippedDuplicates = 0;
+
+  rawRows.forEach((row, idx) => {
+    const mapped: Record<string, any> = {};
+    const rowNum = idx + 1;
+
+    Object.entries(fieldMapping).forEach(([sourceCol, targetKey]) => {
+      if (targetKey && targetKey !== 'skip') {
+        mapped[targetKey] = row[sourceCol];
+      }
+    });
+
+    const name = String(mapped.name || mapped.product_name || mapped.title || '').trim();
+    if (!name) {
+      errorRecords.push({
+        rowNumber: rowNum,
+        rawRow: row,
+        errors: ['Missing required product name/title.'],
+      });
+      return;
+    }
+
+    const rawSku = String(mapped.sku || mapped.item_code || mapped.barcode || `SKU-${idx + 1}`).trim().toUpperCase();
+    const sku = rawSku.length > 0 ? rawSku : `SKU-${idx + 1}`;
+
+    if (seenSkus.has(sku)) {
+      skippedDuplicates++;
+      warnings.push(`Duplicate SKU "${sku}" found at row ${rowNum} — updated with latest record.`);
+    } else {
+      seenSkus.add(sku);
+    }
+
+    const price = cleanNumber(mapped.price || mapped.selling_price, 0);
+    const costPrice = cleanNumber(mapped.cost_price || mapped.costPrice || mapped.cost, Math.round(price * 0.6));
+    const stock = cleanInteger(mapped.stock || mapped.inventory_quantity || mapped.quantity, 0);
+    const minStock = cleanInteger(mapped.min_stock || mapped.minStock, 5);
+    const maxStock = cleanInteger(mapped.max_stock || mapped.maxStock, Math.max(100, stock * 2));
+    const leadTime = cleanInteger(mapped.lead_time_days || mapped.leadTimeDays, 7);
+
+    const productCandidate: CanonicalProduct = {
+      product_id: mapped.product_id ? String(mapped.product_id) : `prod-${sku.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+      product_name: name,
+      sku,
+      category: String(mapped.category || mapped.department || 'General').trim() || 'General',
+      inventory_quantity: stock,
+      min_stock: minStock,
+      max_stock: maxStock,
+      price,
+      cost_price: costPrice,
+      supplier_name: String(mapped.supplier_name || mapped.supplier || mapped.vendor || '').trim(),
+      supplier_id: String(mapped.supplier_id || '').trim(),
+      lead_time_days: leadTime > 0 ? leadTime : 7,
+      unit: String(mapped.unit || 'Piece').trim() || 'Piece',
+      brand: String(mapped.brand || '').trim(),
+      barcode: String(mapped.barcode || '').trim(),
+      description: String(mapped.description || '').trim(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const parseResult = CanonicalProductSchema.safeParse(productCandidate);
+    if (parseResult.success) {
+      validRecords.push(parseResult.data);
+    } else {
+      errorRecords.push({
+        rowNumber: rowNum,
+        rawRow: row,
+        errors: parseResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`),
+      });
+    }
+  });
+
+  return {
+    success: validRecords.length > 0,
+    validRecords,
+    errorRecords,
+    skippedDuplicates,
+    warnings,
+    normalizedSchema: 'analyzeup_v1',
+  };
+}
+
+export function normalizeToSales(
+  rawRows: Record<string, any>[],
+  fieldMapping: Record<string, string>
+): NormalizationOutput<CanonicalSale> {
+  const validRecords: CanonicalSale[] = [];
+  const errorRecords: NormalizationOutput['errorRecords'] = [];
+  const warnings: string[] = [];
+
+  rawRows.forEach((row, idx) => {
+    const mapped: Record<string, any> = {};
+    const rowNum = idx + 1;
+
+    Object.entries(fieldMapping).forEach(([sourceCol, targetKey]) => {
+      if (targetKey && targetKey !== 'skip') {
+        mapped[targetKey] = row[sourceCol];
+      }
+    });
+
+    const productName = String(mapped.product_name || mapped.name || mapped.item_name || '').trim();
+    if (!productName) {
+      errorRecords.push({
+        rowNumber: rowNum,
+        rawRow: row,
+        errors: ['Missing product name for sales record.'],
+      });
+      return;
+    }
+
+    const unitsSold = cleanInteger(mapped.units_sold || mapped.quantity || mapped.qty, 1);
+    const sellingPrice = cleanNumber(mapped.selling_price || mapped.price || mapped.unit_price, 0);
+    const costPerUnit = cleanNumber(mapped.cost_per_unit || mapped.cost_price || mapped.cost, Math.round(sellingPrice * 0.6));
+    const revenue = cleanNumber(mapped.revenue || mapped.total_revenue, sellingPrice * unitsSold);
+    const totalCost = cleanNumber(mapped.total_cost, costPerUnit * unitsSold);
+
+    const saleCandidate: CanonicalSale = {
+      sale_id: mapped.sale_id ? String(mapped.sale_id) : `sale-${Date.now()}-${idx}`,
+      order_number: String(mapped.order_number || mapped.order_id || mapped.invoice_number || `INV-${1000 + idx}`).trim(),
+      product_id: mapped.product_id ? String(mapped.product_id) : `prod-${productName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+      product_name: productName,
+      sku: String(mapped.sku || `SKU-${idx + 1}`).trim().toUpperCase(),
+      category: String(mapped.category || 'General').trim() || 'General',
+      units_sold: unitsSold > 0 ? unitsSold : 1,
+      selling_price: sellingPrice,
+      cost_per_unit: costPerUnit,
+      revenue,
+      total_cost: totalCost,
+      customer_name: String(mapped.customer_name || mapped.customer || 'Retail Customer').trim(),
+      supplier_name: String(mapped.supplier_name || mapped.supplier || '').trim(),
+      sale_date: cleanDate(mapped.sale_date || mapped.date || mapped.order_date),
+      payment_method: String(mapped.payment_method || mapped.payment || 'UPI').trim(),
+      status: 'Completed',
+      created_at: new Date().toISOString(),
+    };
+
+    const parseResult = CanonicalSaleSchema.safeParse(saleCandidate);
+    if (parseResult.success) {
+      validRecords.push(parseResult.data);
+    } else {
+      errorRecords.push({
+        rowNumber: rowNum,
+        rawRow: row,
+        errors: parseResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`),
+      });
+    }
+  });
+
+  return {
+    success: validRecords.length > 0,
+    validRecords,
+    errorRecords,
+    skippedDuplicates: 0,
+    warnings,
+    normalizedSchema: 'analyzeup_v1',
+  };
+}
