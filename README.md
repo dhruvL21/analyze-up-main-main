@@ -230,8 +230,6 @@ AnalyzeUp uses Firebase Authentication to provide secure user authentication.
 
 The application is designed around authenticated business data so users can access their own inventory and analytics environment.
 
----
-
 ## 🏗️ System Architecture
 
 AnalyzeUp follows a modern full-stack architecture built around Next.js and Firebase.
@@ -247,26 +245,26 @@ AnalyzeUp follows a modern full-stack architecture built around Next.js and Fire
                     │ React + TypeScript   │
                     └──────────┬───────────┘
                                │
-              ┌────────────────┼────────────────┐
-              │                │                │
-              ▼                ▼                ▼
-       ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-       │  Firebase   │  │  API Routes │  │   Genkit    │
-       │ Auth/DB     │  │ Server Side │  │   AI Layer  │
-       └──────┬──────┘  └──────┬──────┘  └──────┬──────┘
-              │                │                │
-              │                │                ▼
-              │                │         ┌─────────────┐
-              │                │         │ Google AI   │
-              │                │         └─────────────┘
-              │                │
-              │       ┌────────┴─────────┐
-              │       │                  │
-              ▼       ▼                  ▼
-       ┌──────────┐ ┌──────────┐  ┌──────────────┐
-       │ Firestore│ │Google    │  │   Shopify    │
-       │ Database │ │Drive     │  │ Integration  │
-       └──────────┘ └──────────┘  └──────────────┘
+               ┌────────────────┼────────────────┐
+               │                │                │
+               ▼                ▼                ▼
+        ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+        │  Firebase   │  │  API Routes │  │   OpenAI    │
+        │ Auth/DB     │  │ Server Side │  │  AI Layer   │
+        └──────┬──────┘  └──────┬──────┘  └──────┬──────┘
+               │                │                │
+               │                │                ▼
+               │                │         ┌─────────────┐
+               │                │         │ GPT-4o-mini │
+               └─────────────┘  └─────────────┘  └─────────────┘
+               │                │                │
+               │       ┌────────┴─────────┐
+               │       │                  │
+               ▼       ▼                  ▼
+        ┌──────────┐ ┌──────────┐  ┌──────────────┐
+        │ Firestore│ │Google    │  │   Shopify    │
+        │ Database │ │Drive     │  │ Integration  │
+        └──────────┘ └──────────┘  └──────────────┘
 ```
 
 ---
@@ -341,16 +339,17 @@ CSV / Excel ───┘
 
 ### AI
 
-* **Google AI**
-* **Genkit**
-* AI-powered data interpretation
-* AI stock recommendations
-* AI business strategy generation
+* **OpenAI API (GPT-4o-mini)**
+* AI-powered data interpretation & CSV schema mapping
+* AI stock recommendations & runway analysis
+* AI business strategy & health score generation
+* AI Copilot chat advisor with industry-specific intelligence
 
 ### Integrations
 
 * **Google Drive API**
 * **Shopify**
+* **Razorpay Payment Gateway**
 * CSV / Excel data processing
 
 ### Deployment
@@ -361,27 +360,29 @@ CSV / Excel ───┘
 
 ## 🔑 Environment Variables
 
-Create a `.env.local` file in the root directory.
+Create a `.env.local` file in the root directory (or copy `.env.example`):
 
-```env
-# Google AI
-GOOGLE_API_KEY="YOUR_GOOGLE_AI_API_KEY"
-
-# Firebase
-NEXT_PUBLIC_FIREBASE_API_KEY="YOUR_FIREBASE_API_KEY"
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="YOUR_FIREBASE_AUTH_DOMAIN"
-NEXT_PUBLIC_FIREBASE_PROJECT_ID="YOUR_FIREBASE_PROJECT_ID"
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="YOUR_FIREBASE_STORAGE_BUCKET"
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="YOUR_FIREBASE_MESSAGING_SENDER_ID"
-NEXT_PUBLIC_FIREBASE_APP_ID="YOUR_FIREBASE_APP_ID"
-
-# Google Drive OAuth
-GOOGLE_CLIENT_ID="YOUR_GOOGLE_CLIENT_ID"
-GOOGLE_CLIENT_SECRET="YOUR_GOOGLE_CLIENT_SECRET"
-GOOGLE_REDIRECT_URI="YOUR_GOOGLE_REDIRECT_URI"
+```bash
+cp .env.example .env.local
 ```
 
-> Keep all API keys and OAuth credentials private. Never commit `.env.local` to GitHub.
+Configure the required and optional environment keys:
+
+```env
+# OpenAI API (Required for AI Intelligence Features)
+OPENAI_API_KEY="your_openai_api_key_here"
+
+# Razorpay Payments (Optional / Defaults to test keys if empty)
+RAZORPAY_KEY_ID="your_razorpay_key_id"
+RAZORPAY_KEY_SECRET="your_razorpay_key_secret"
+
+# Google Drive OAuth (Required for Google Drive AutoSync)
+GOOGLE_CLIENT_ID="your_google_client_id"
+GOOGLE_CLIENT_SECRET="your_google_client_secret"
+GOOGLE_REDIRECT_URI="http://localhost:9002/api/drive/callback"
+```
+
+> Keep all API keys and OAuth credentials private. Never commit `.env.local` or `.env` to GitHub.
 
 ---
 
@@ -410,8 +411,9 @@ Before running AnalyzeUp locally, make sure you have:
 * Node.js 20.x or later
 * npm
 * Firebase project
-* Google AI API key
-* Google Cloud OAuth credentials if using Google Drive
+* OpenAI API key (`OPENAI_API_KEY`)
+* Google Cloud OAuth credentials if using Google Drive AutoSync
+* Razorpay credentials if using paid subscriptions
 * Shopify credentials if using the Shopify integration
 
 ---
@@ -486,6 +488,12 @@ npm run typecheck
 ```
 
 Runs TypeScript type checking.
+
+```bash
+npm test
+```
+
+Runs the automated unit and integration test suite with Vitest.
 
 ---
 
@@ -621,4 +629,4 @@ AI-Powered Inventory & Business Intelligence Platform
 
 Built with:
 
-**Next.js · React · TypeScript · Firebase · Google AI · Genkit · Shopify · Google Drive · Recharts · ShadCN UI · Tailwind CSS · Vercel**
+**Next.js · React · TypeScript · Firebase · OpenAI (GPT-4o-mini) · Shopify · Google Drive · Razorpay · Recharts · ShadCN UI · Tailwind CSS · Vercel**

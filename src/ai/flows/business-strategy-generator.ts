@@ -34,19 +34,21 @@ export type BusinessStrategyOutput = {
 export async function generateBusinessStrategy(
   input: BusinessStrategyInput
 ): Promise<BusinessStrategyOutput> {
+  const validatedInput = BusinessStrategyInputSchema.parse(input);
+
   const prompt = `
 You are a seasoned business consultant tasked with creating a comprehensive business growth strategy.
 
 Analyze the data provided below carefully:
 
 Sales Data:
-${input.salesData}
+${validatedInput.salesData}
 
 Product Data:
-${input.productData}
+${validatedInput.productData}
 
 Market Trends (if available):
-${input.marketTrends || 'Not provided'}
+${validatedInput.marketTrends || 'Not provided'}
 
 Based on this information, generate:
 

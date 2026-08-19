@@ -1,7 +1,5 @@
 'use client';
 
-import { Timestamp } from 'firebase/firestore';
-
 import React, { useState, useEffect } from 'react';
 import {
   Card,
@@ -44,6 +42,16 @@ import { useData } from '@/context/data-context';
 
 type ReportType = 'inventory_summary' | 'sales_report' | 'transaction_log';
 type DateRange = '7' | '30' | '90' | 'all';
+
+function parseDateValue(raw: any): Date {
+  if (!raw) return new Date();
+  if (raw instanceof Date) return raw;
+  if (typeof raw === 'object' && typeof raw.toDate === 'function') {
+    return raw.toDate();
+  }
+  const parsed = new Date(raw);
+  return isNaN(parsed.getTime()) ? new Date() : parsed;
+}
 
 export default function InsightsPage() {
   const { products, transactions, isLoading } = useData();
@@ -90,9 +98,7 @@ export default function InsightsPage() {
     // Find the date of the most recent transaction to anchor our date range
     let latestTime = 0;
     transactions.forEach(t => {
-      const d = t.transactionDate instanceof Timestamp 
-        ? t.transactionDate.toMillis() 
-        : new Date(t.transactionDate as string).getTime();
+      const d = parseDateValue(t.transactionDate).getTime();
       if (!isNaN(d) && d > latestTime) latestTime = d;
     });
     
@@ -100,9 +106,7 @@ export default function InsightsPage() {
     const rangeStartDate = subDays(referenceDate, parseInt(dateRange));
     
     return transactions.filter((t) => {
-      const transactionDate = t.transactionDate instanceof Timestamp 
-        ? t.transactionDate.toDate() 
-        : new Date(t.transactionDate as string);
+      const transactionDate = parseDateValue(t.transactionDate);
       return transactionDate >= rangeStartDate;
     });
   };
@@ -182,9 +186,7 @@ export default function InsightsPage() {
             const revenue = product ? t.quantity * product.price : 0;
             return {
               transactionId: t.id,
-              transactionDate: t.transactionDate instanceof Timestamp 
-                ? t.transactionDate.toDate().toISOString() 
-                : t.transactionDate,
+              transactionDate: parseDateValue(t.transactionDate).toISOString(),
               productId: t.productId,
               productName: product?.name || 'Unknown',
               quantitySold: t.quantity,
@@ -201,9 +203,7 @@ export default function InsightsPage() {
            const product = products.find((p) => p.id === t.productId);
             return {
                 transactionId: t.id,
-                transactionDate: t.transactionDate instanceof Timestamp 
-                    ? t.transactionDate.toDate().toISOString() 
-                    : t.transactionDate,
+                transactionDate: parseDateValue(t.transactionDate).toISOString(),
                 type: t.type,
                 productId: t.productId,
                 productName: product?.name || 'Unknown',
@@ -591,9 +591,7 @@ export default function InsightsPage() {
                    <TableBody>
                      {filteredTransactions.slice(0, 15).map((t) => {
                        const product = products.find((p) => p.id === t.productId || p.sku === t.sku);
-                       const date = t.transactionDate instanceof Timestamp 
-                         ? t.transactionDate.toDate() 
-                         : new Date(t.transactionDate as string);
+                       const date = parseDateValue(t.transactionDate);
                        const totalPrice = t.totalCost || t.totalRevenue || (t.quantity * (t.price || 0));
 
                        return (
@@ -621,9 +619,7 @@ export default function InsightsPage() {
                <div className="md:hidden divide-y divide-border/50">
                  {filteredTransactions.slice(0, 15).map((t) => {
                    const product = products.find((p) => p.id === t.productId || p.sku === t.sku);
-                   const date = t.transactionDate instanceof Timestamp 
-                     ? t.transactionDate.toDate() 
-                     : new Date(t.transactionDate as string);
+                   const date = parseDateValue(t.transactionDate);
                    const isSale = t.type === 'Sale';
                    const totalPrice = t.totalCost || t.totalRevenue || (t.quantity * (t.price || 0));
 

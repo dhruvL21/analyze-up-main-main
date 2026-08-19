@@ -34,9 +34,11 @@ export type AIStockAdvisorOutput = {
 export async function aiStockAdvisor(
   input: AIStockAdvisorInput
 ): Promise<AIStockAdvisorOutput> {
+  const validatedInput = AIStockAdvisorInputSchema.parse(input);
+
   const prompt = `
 You are an AI inventory assistant.
-In the "reasoning" explanation, refer to the product by its actual name "${input.productName}" rather than using generic terms like "the product".
+In the "reasoning" explanation, refer to the product by its actual name "${validatedInput.productName}" rather than using generic terms like "the product".
 
 Respond ONLY in valid JSON matching the schema:
 
@@ -78,8 +80,18 @@ Current Stock Level: ${input.currentStockLevel}
       productName: input.productName,
     };
   } catch (error) {
-    console.error('Error in aiStockAdvisor:', error);
-    throw error;
+    console.warn('aiStockAdvisor falling back to deterministic calculation:', error);
+    const leadTimeBuffer = input.averageDailySales * input.supplierLeadTimeDays;
+    const stockoutRisk = input.currentStockLevel <= leadTimeBuffer;
+    const targetStock = input.averageDailySales * (input.supplierLeadTimeDays + 14);
+    const recommendedReorderQuantity = Math.max(10, Math.ceil(targetStock - input.currentStockLevel));
+
+    return {
+      stockoutRisk,
+      recommendedReorderQuantity,
+      reasoning: `${input.productName} currently has ${input.currentStockLevel} units in stock. With daily sales of ${input.averageDailySales} units and a supplier lead time of ${input.supplierLeadTimeDays} days, ${stockoutRisk ? 'reordering is urgently recommended to prevent a stockout.' : 'stock level is currently adequate.'}`,
+      productName: input.productName,
+    };
   }
 }
 

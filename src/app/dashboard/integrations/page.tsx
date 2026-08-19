@@ -13,8 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
-import { useUser, useFirestore } from '@/firebase';
-import { doc, onSnapshot, collection, setDoc, addDoc, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
+import { useUser } from '@/firebase';
 import { ImportDialog } from '@/components/import-dialog';
 import { findMatchingImportProfile } from '@/lib/import-profile-store';
 import Papa from 'papaparse';
@@ -141,10 +140,16 @@ export default function IntegrationsPage() {
     addCategory,
     addSupplier,
     bulkAddProducts,
-    bulkAddTransactions
+    bulkAddTransactions,
+    subscribeGoogleDriveConnection,
+    getGoogleDriveFiles,
+    getSyncHistory,
+    getMappingProfiles,
+    disconnectGoogleDrive,
+    recordSyncSuccess,
+    saveMappingProfile,
   } = useData();
   const { user } = useUser();
-  const firestore = useFirestore();
   const { toast } = useToast();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -180,23 +185,14 @@ export default function IntegrationsPage() {
 
   // 1. Subscribe to real Google Drive connection state
   useEffect(() => {
-    if (!user || !firestore) {
-      setIsLoadingConnection(false);
-      return;
-    }
-
-    const docRef = doc(firestore, 'users', user.uid, 'integrations', 'google-drive');
-    const unsubscribe = onSnapshot(docRef, (snap) => {
-      if (snap.exists() && snap.data().connectionStatus === 'Connected') {
-        setDriveConnection(snap.data());
-      } else {
-        setDriveConnection(null);
-      }
+    setIsLoadingConnection(true);
+    const unsubscribe = subscribeGoogleDriveConnection((conn) => {
+      setDriveConnection(conn);
       setIsLoadingConnection(false);
     });
 
     return () => unsubscribe();
-  }, [user, firestore]);
+  }, [subscribeGoogleDriveConnection]);
 
   // 2. Fetch scanned files list and stats on connection changes
   useEffect(() => {
@@ -208,17 +204,15 @@ export default function IntegrationsPage() {
   }, [driveConnection, user]);
 
   const loadStats = async () => {
-    if (!user || !firestore) return;
     try {
-      const filesSnap = await getDocs(collection(firestore, 'users', user.uid, 'google_drive_files'));
+      const files = await getGoogleDriveFiles();
       let rows = 0;
-      let files = 0;
+      let filesCount = 0;
       let errors = 0;
       let duplicates = 0;
 
-      filesSnap.forEach(doc => {
-        const d = doc.data();
-        files++;
+      files.forEach((d: any) => {
+        filesCount++;
         if (d.status === 'Synced') {
           rows += d.validRows || 0;
         } else if (d.status === 'Needs Review') {
@@ -228,7 +222,7 @@ export default function IntegrationsPage() {
       });
 
       setSyncStats({
-        filesCount: files,
+        filesCount,
         rowsCount: rows,
         duplicatesCount: duplicates,
         errorsCount: errors
@@ -239,13 +233,8 @@ export default function IntegrationsPage() {
   };
 
   const loadSyncHistory = async () => {
-    if (!user || !firestore) return;
     try {
-      const snap = await getDocs(collection(firestore, 'users', user.uid, 'sync_history'));
-      const historyList = snap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })).sort((a: any, b: any) => new Date(b.syncedAt).getTime() - new Date(a.syncedAt).getTime());
+      const historyList = await getSyncHistory();
       setSyncHistory(historyList);
     } catch (e) {
       console.error(e);
@@ -259,26 +248,11 @@ export default function IntegrationsPage() {
   };
 
   // 4. Disconnect Google Drive connection
-  const disconnectGoogleDrive = async () => {
-    if (!user || !firestore) return;
+  const handleDisconnectGoogleDrive = async () => {
     if (!window.confirm('Are you sure you want to disconnect Google Drive? This will clear connection credentials.')) return;
-
-    try {
-      const docRef = doc(firestore, 'users', user.uid, 'integrations', 'google-drive');
-      await deleteDoc(docRef);
-      setDriveConnection(null);
-      setDriveFiles([]);
-      toast({
-        title: 'Google Drive Disconnected',
-        description: 'Successfully revoked credentials from AnalyzeUp workspace.',
-      });
-    } catch (e) {
-      toast({
-        variant: 'destructive',
-        title: 'Disconnection Failed',
-        description: 'Failed to delete connection document.',
-      });
-    }
+    await disconnectGoogleDrive();
+    setDriveConnection(null);
+    setDriveFiles([]);
   };
 
   // 5. Scan Folder for files
@@ -364,7 +338,7 @@ export default function IntegrationsPage() {
 
   // 8. Silent Sync or Manual Mapping Ingestion Flow
   const syncFile = async (file: any) => {
-    if (!user || !firestore) return;
+    if (!user) return;
     setIsSyncingFileId(file.id);
     setSyncState('syncing');
 
@@ -383,7 +357,7 @@ export default function IntegrationsPage() {
         throw new Error(data.error || 'Failed to download file content.');
       }
 
-      // Check if there is an existing mapping profile signature in Firestore
+      // Check if there is an existing mapping profile signature in DataContext
       const results = Papa.parse(data.csvContent, { header: true, skipEmptyLines: true });
       const rawRows = results.data as Record<string, any>[];
       if (rawRows.length === 0) {
@@ -392,11 +366,10 @@ export default function IntegrationsPage() {
 
       const headers = Object.keys(rawRows[0]);
       
-      // Load saved mapping profiles from Firestore
-      const profilesSnap = await getDocs(collection(firestore, 'users', user.uid, 'mapping_profiles'));
-      const profiles = profilesSnap.docs.map(d => d.data());
+      // Load saved mapping profiles from DataContext
+      const profiles = await getMappingProfiles();
       const currentSignature = headers.slice().sort().join('|').toLowerCase();
-      const matchedProfile = profiles.find(p => p.headersSignature === currentSignature);
+      const matchedProfile = profiles.find((p: any) => p.headersSignature === currentSignature);
 
       if (matchedProfile) {
         // Auto Sync: Run direct ingestion silently on the client side
@@ -424,7 +397,7 @@ export default function IntegrationsPage() {
 
   // 9. Client-side silent normalization & ingestion
   const runSilentIngestion = async (fileId: string, fileName: string, csvContent: string, profile: any) => {
-    if (!user || !firestore) return;
+    if (!user) return;
     try {
       const results = Papa.parse(csvContent, { header: true, skipEmptyLines: true });
       const rawRows = results.data as Record<string, any>[];
@@ -559,32 +532,26 @@ export default function IntegrationsPage() {
         await bulkAddTransactions(transactionsToImport);
       }
 
-      // Track Google Drive file synced version in Firestore
-      const fileRef = doc(firestore, 'users', user.uid, 'google_drive_files', fileId);
-      await setDoc(fileRef, {
-        id: fileId,
-        fileName,
-        status: 'Synced',
-        lastProcessedAt: new Date().toISOString(),
-        validRows: validRows.length,
-        size: csvContent.length,
-        modifiedTime: new Date().toISOString(),
-      }, { merge: true });
-
-      // Save to Sync History log
-      await addDoc(collection(firestore, 'users', user.uid, 'sync_history'), {
-        syncedAt: new Date().toISOString(),
-        filesCount: 1,
-        rowsCount: validRows.length,
-        status: 'Completed',
-        files: [fileName],
-      });
-
-      // Update Drive lastSyncAt
-      const connRef = doc(firestore, 'users', user.uid, 'integrations', 'google-drive');
-      await updateDoc(connRef, {
-        lastSyncAt: new Date().toISOString(),
-      });
+      // Track Google Drive file and sync history via DataContext
+      await recordSyncSuccess(
+        fileId,
+        {
+          id: fileId,
+          fileName,
+          status: 'Synced',
+          lastProcessedAt: new Date().toISOString(),
+          validRows: validRows.length,
+          size: csvContent.length,
+          modifiedTime: new Date().toISOString(),
+        },
+        {
+          syncedAt: new Date().toISOString(),
+          filesCount: 1,
+          rowsCount: validRows.length,
+          status: 'Completed',
+          files: [fileName],
+        }
+      );
 
       toast({
         title: 'File Synced Successfully ✨',
@@ -604,49 +571,42 @@ export default function IntegrationsPage() {
 
   // 10. Open Mapping Dialog callback to register the mapping profile in Firestore
   const handleImportComplete = async (summary: any) => {
-    if (!user || !firestore || !presetFile) return;
+    if (!user || !presetFile) return;
 
     try {
       const fileId = presetFile.driveFileId || `custom-${Date.now()}`;
       
-      // Save Mapping Profile in Firestore so that subsequent syncs run automatically
+      // Save Mapping Profile via DataContext so that subsequent syncs run automatically
       const currentSignature = rawHeadersSignature(presetFile.content);
-      const profileRef = doc(firestore, 'users', user.uid, 'mapping_profiles', `profile-${fileId}`);
-      await setDoc(profileRef, {
+      await saveMappingProfile(fileId, {
         id: `profile-${fileId}`,
         profileName: `Auto Map for ${presetFile.name}`,
         fileType: summary.fileType,
         headersSignature: currentSignature,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
-      }, { merge: true });
-
-      // Track Drive file synced version in Firestore
-      const fileRef = doc(firestore, 'users', user.uid, 'google_drive_files', fileId);
-      await setDoc(fileRef, {
-        id: fileId,
-        fileName: presetFile.name,
-        status: 'Synced',
-        lastProcessedAt: new Date().toISOString(),
-        validRows: summary.importedCount,
-        size: presetFile.content.length,
-        modifiedTime: new Date().toISOString(),
-      }, { merge: true });
-
-      // Add to Sync History log
-      await addDoc(collection(firestore, 'users', user.uid, 'sync_history'), {
-        syncedAt: new Date().toISOString(),
-        filesCount: 1,
-        rowsCount: summary.importedCount,
-        status: 'Completed',
-        files: [presetFile.name],
       });
 
-      // Update Drive lastSyncAt
-      const connRef = doc(firestore, 'users', user.uid, 'integrations', 'google-drive');
-      await updateDoc(connRef, {
-        lastSyncAt: new Date().toISOString(),
-      });
+      // Track Drive file and sync history via DataContext
+      await recordSyncSuccess(
+        fileId,
+        {
+          id: fileId,
+          fileName: presetFile.name,
+          status: 'Synced',
+          lastProcessedAt: new Date().toISOString(),
+          validRows: summary.importedCount,
+          size: presetFile.content.length,
+          modifiedTime: new Date().toISOString(),
+        },
+        {
+          syncedAt: new Date().toISOString(),
+          filesCount: 1,
+          rowsCount: summary.importedCount,
+          status: 'Completed',
+          files: [presetFile.name],
+        }
+      );
 
       setPresetFile(null);
       scanDriveFolder();
@@ -941,7 +901,7 @@ export default function IntegrationsPage() {
                         <HistoryIcon className="w-4 h-4" />
                       </Button>
                       <Button
-                        onClick={disconnectGoogleDrive}
+                        onClick={handleDisconnectGoogleDrive}
                         variant="ghost"
                         className="text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 rounded-xl text-xs px-2.5"
                       >

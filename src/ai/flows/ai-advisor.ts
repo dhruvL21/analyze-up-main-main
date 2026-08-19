@@ -2,20 +2,53 @@
 
 import { openai } from '@/ai/openai';
 import { getIndustryConfig } from '@/lib/industry-intelligence';
+import type { Product, Transaction, Supplier, BusinessProfile } from '@/lib/types';
+import { z } from 'zod';
 
-export type AIAdvisorInsights = {
-  businessHealthComment: string;
-  deadStockTips: Record<string, string>;
-  supplierInsights: Record<string, string>;
-};
+/* -------------------- SCHEMAS -------------------- */
+
+const AIAdvisorOutputSchema = z.object({
+  businessHealthComment: z.string().default('No comments available.'),
+  deadStockTips: z.record(z.string()).default({}),
+  supplierInsights: z.record(z.string()).default({}),
+});
+
+export type AIAdvisorInsights = z.infer<typeof AIAdvisorOutputSchema>;
+
+/* -------------------- FLOW EXPORT -------------------- */
 
 export async function generateAIAdvisorInsights(
-  products: any[],
-  transactions: any[],
-  suppliers: any[],
-  businessProfile?: any
+  products: Product[],
+  transactions: Transaction[],
+  suppliers: Supplier[],
+  businessProfile?: BusinessProfile | null
 ): Promise<AIAdvisorInsights> {
   const industry = getIndustryConfig(businessProfile?.businessType);
+
+  // Clean and sanitize input payloads before embedding in prompt
+  const safeProducts = (products || []).slice(0, 50).map(p => ({
+    name: p.name,
+    stock: p.stock,
+    price: p.price,
+    costPrice: p.costPrice,
+    category: p.category,
+    minStock: p.minStock,
+    supplier: p.supplier,
+  }));
+
+  const safeTransactions = (transactions || []).slice(-50).map(t => ({
+    type: t.type,
+    productName: t.productName,
+    quantity: t.quantity,
+    totalRevenue: t.totalRevenue,
+    transactionDate: t.transactionDate,
+  }));
+
+  const safeSuppliers = (suppliers || []).slice(0, 20).map(s => ({
+    name: s.name,
+    leadTimeDays: s.leadTimeDays,
+    rating: s.rating,
+  }));
 
   const prompt = `
 You are AnalyzeUp, an AI Business Copilot assisting a founder in the "${industry.label}" sector (Business Size: ${businessProfile?.businessSize || 'SMB'}, Country: ${businessProfile?.country || 'India'}).
@@ -25,13 +58,13 @@ Benchmark Profit Margin: ${industry.benchmarkMargin}
 Here is the current business data:
 
 Products:
-${JSON.stringify(products, null, 2)}
+${JSON.stringify(safeProducts, null, 2)}
 
 Recent Transactions:
-${JSON.stringify(transactions, null, 2)}
+${JSON.stringify(safeTransactions, null, 2)}
 
 Suppliers:
-${JSON.stringify(suppliers, null, 2)}
+${JSON.stringify(safeSuppliers, null, 2)}
 
 Based on this data, please generate tailored insights for a ${industry.label} business:
 1. A concise, professional, actionable comment on the overall Business Health Score (covering margins, dead stock risk, stock availability, and ${industry.focusAreas.join(', ')}). Mention the biggest decision the founder should make right now.
@@ -62,12 +95,7 @@ Respond ONLY in valid JSON with these exact keys:
     }
 
     const parsed = JSON.parse(content);
-    
-    return {
-      businessHealthComment: parsed.businessHealthComment || 'No comments available.',
-      deadStockTips: parsed.deadStockTips || {},
-      supplierInsights: parsed.supplierInsights || {},
-    };
+    return AIAdvisorOutputSchema.parse(parsed);
   } catch (error) {
     console.error('Error generating AI advisor insights:', error);
     return {

@@ -2,6 +2,13 @@ import { Product, Transaction, Supplier, PurchaseOrder, ProductReturn, BusinessP
 import { getIndustryConfig } from './industry-intelligence';
 import { detectProcurementRisks, calculateProcurementSavings } from './supplier-intelligence-engine';
 import { generateBusinessForecastingReport } from './forecasting-engine';
+import {
+  toDomainProducts,
+  toDomainTransactions,
+  toDomainSuppliers,
+  toDomainPurchaseOrders,
+  toDomainProductReturns,
+} from './domain-adapters';
 
 export interface BusinessHealthSummary {
   score: number;
@@ -72,11 +79,16 @@ export interface TodayPriorityItem {
 
 // 1. Calculate Dynamic Business Health Score (0-100) responding to executed founder tasks
 export function computeBusinessHealth(
-  products: Product[],
-  transactions: Transaction[],
-  suppliers: Supplier[],
-  returns: ProductReturn[]
+  rawProducts: Product[],
+  rawTransactions: Transaction[] = [],
+  rawSuppliers: Supplier[] = [],
+  rawReturns: ProductReturn[] = []
 ): BusinessHealthSummary {
+  const products = toDomainProducts(rawProducts);
+  const transactions = toDomainTransactions(rawTransactions);
+  const suppliers = toDomainSuppliers(rawSuppliers);
+  const returns = toDomainProductReturns(rawReturns);
+
   if (!products || products.length === 0) {
     return {
       score: 75,
@@ -213,12 +225,17 @@ const getSlug = (str: string) => (str || 'item').toLowerCase().replace(/[^a-z0-9
 
 // 2. Generate Action Center Tasks
 export function generateActionTasks(
-  products: Product[],
-  transactions: Transaction[],
-  suppliers: Supplier[],
-  orders: PurchaseOrder[] = [],
+  rawProducts: Product[],
+  rawTransactions: Transaction[] = [],
+  rawSuppliers: Supplier[] = [],
+  rawOrders: PurchaseOrder[] = [],
   businessProfile?: BusinessProfile | null
 ): ActionTask[] {
+  const products = toDomainProducts(rawProducts);
+  const transactions = toDomainTransactions(rawTransactions);
+  const suppliers = toDomainSuppliers(rawSuppliers);
+  const orders = toDomainPurchaseOrders(rawOrders);
+
   const tasks: ActionTask[] = [];
   const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
   const formatCurrency = (val: number) => {
@@ -397,10 +414,14 @@ export function generateActionTasks(
 
 // 3. Generate Today Priorities
 export function generateTodayPriorities(
-  products: Product[],
-  transactions: Transaction[],
-  suppliers: Supplier[]
+  rawProducts: Product[],
+  rawTransactions: Transaction[] = [],
+  rawSuppliers: Supplier[] = []
 ): TodayPriorityItem[] {
+  const products = toDomainProducts(rawProducts);
+  const transactions = toDomainTransactions(rawTransactions);
+  const suppliers = toDomainSuppliers(rawSuppliers);
+
   const priorities: TodayPriorityItem[] = [];
 
   const lowStock = products.filter(p => p.stock <= (p.minStock || 5));
@@ -449,10 +470,12 @@ export function generateTodayPriorities(
 
 // 4. Compute Executive KPI Card Interpretations
 export function computeExecutiveKPIs(
-  products: Product[],
-  transactions: Transaction[],
+  rawProducts: Product[],
+  rawTransactions: Transaction[] = [],
   businessProfile?: BusinessProfile | null
 ): KPICardItem[] {
+  const products = toDomainProducts(rawProducts);
+  const transactions = toDomainTransactions(rawTransactions);
   const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
 
   const totalInventoryVal = products.reduce((sum, p) => sum + (p.stock * p.price), 0);
@@ -510,9 +533,12 @@ export function computeExecutiveKPIs(
 
 // 5. Detailed Inventory Quality Metrics
 export function computeInventoryQuality(
-  products: Product[],
-  transactions: Transaction[]
+  rawProducts: Product[],
+  rawTransactions: Transaction[] = []
 ): InventoryQualityMetrics {
+  const products = toDomainProducts(rawProducts);
+  const transactions = toDomainTransactions(rawTransactions);
+
   const healthyCount = products.filter(p => p.stock > (p.minStock || 5) && p.stock < (p.maxStock || 100)).length;
   const lowStockCount = products.filter(p => p.stock > 0 && p.stock <= (p.minStock || 5)).length;
   const criticalStockCount = products.filter(p => p.stock === 0).length;
@@ -547,10 +573,13 @@ export function computeInventoryQuality(
 
 // 6. Activity Event Stream
 export function generateActivityEvents(
-  products: Product[],
-  transactions: Transaction[],
-  suppliers: Supplier[]
+  rawProducts: Product[],
+  rawTransactions: Transaction[] = [],
+  rawSuppliers: Supplier[] = []
 ): ActivityEvent[] {
+  const products = toDomainProducts(rawProducts);
+  const transactions = toDomainTransactions(rawTransactions);
+  const suppliers = toDomainSuppliers(rawSuppliers);
   const events: ActivityEvent[] = [];
 
   transactions.slice(0, 4).forEach((t, i) => {

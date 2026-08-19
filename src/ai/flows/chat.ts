@@ -3,6 +3,7 @@
 import { openai } from '@/ai/openai';
 import { getIndustryConfig } from '@/lib/industry-intelligence';
 import { processCopilotQuery, CopilotResponse } from '@/lib/copilot-engine';
+import type { Product, Transaction, Supplier, PurchaseOrder, ProductReturn, BusinessProfile } from '@/lib/types';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -11,13 +12,13 @@ export interface ChatMessage {
 
 export async function askAnalyzeUpChat(
   userMessage: string,
-  chatHistory: ChatMessage[],
-  products: any[] = [],
-  transactions: any[] = [],
-  suppliers: any[] = [],
-  orders: any[] = [],
-  returns: any[] = [],
-  businessProfile?: any
+  chatHistory: ChatMessage[] = [],
+  products: Product[] = [],
+  transactions: Transaction[] = [],
+  suppliers: Supplier[] = [],
+  orders: PurchaseOrder[] = [],
+  returns: ProductReturn[] = [],
+  businessProfile?: BusinessProfile | null
 ): Promise<string> {
   const industry = getIndustryConfig(businessProfile?.businessType);
 

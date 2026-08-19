@@ -33,39 +33,7 @@ export function AIBrief() {
     if (!isPaid) return;
     startTransition(async () => {
       try {
-        const simplifiedProducts = products.map((p) => ({
-          name: p.name,
-          sku: p.sku || '',
-          stock: p.stock || 0,
-          price: p.price || 0,
-          costPrice: p.costPrice || p.price * 0.6 || 0,
-          averageDailySales: p.averageDailySales || 0,
-          leadTimeDays: p.leadTimeDays || 7,
-        }));
-
-        const simplifiedTransactions = (transactions || []).slice(0, 30).map((t) => {
-          let dateStr = 'Recent';
-          if (t.transactionDate) {
-            if (typeof t.transactionDate === 'object' && t.transactionDate !== null && 'seconds' in t.transactionDate) {
-              dateStr = new Date((t.transactionDate as any).seconds * 1000).toLocaleDateString();
-            } else if (t.transactionDate instanceof Date) {
-              dateStr = t.transactionDate.toLocaleDateString();
-            } else {
-              dateStr = String(t.transactionDate);
-            }
-          }
-
-          return {
-            productName: t.productName || '',
-            sku: t.sku || '',
-            type: t.type,
-            quantity: t.quantity || 0,
-            price: t.price || 0,
-            date: dateStr,
-          };
-        });
-
-        const result = await generateAIBrief(simplifiedProducts, simplifiedTransactions);
+        const result = await generateAIBrief(products, transactions);
         setBrief(result);
       } catch (err) {
         console.error('Failed to generate AI Brief:', err);

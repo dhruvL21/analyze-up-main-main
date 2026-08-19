@@ -644,6 +644,45 @@ export function processCopilotQuery(
     };
   }
 
+  // 5.5. REVENUE & SALES DEMAND
+  if (intent === 'REVENUE_ANALYSIS') {
+    const what = `Total Gross Revenue is ${formatCur(totalRevenue)} generated from ${salesTx.length} completed transactions.`;
+    const why = `Revenue is generated across ${products.length} catalog items with an average transaction value of ${salesTx.length > 0 ? formatCur(totalRevenue / salesTx.length) : formatCur(0)}.`;
+    const actionText = 'Analyze top-selling categories to expand high-velocity product lines and optimize stock replenishment.';
+
+    const answerMarkdown = `### REVENUE & SALES DEMAND ANALYSIS\n\n` +
+      `- **Total Gross Revenue:** ${formatCur(totalRevenue)}\n` +
+      `- **Total Sales Transactions:** ${salesTx.length}\n` +
+      `- **Catalog Products:** ${products.length} items\n\n` +
+      `**Recommended Action:** ${actionText}`;
+
+    return {
+      intent,
+      intentLabel,
+      answerMarkdown,
+      what,
+      why,
+      actionText,
+      confidence,
+      confidenceReason,
+      supportingData: [
+        { label: 'Gross Revenue', value: formatCur(totalRevenue) },
+        { label: 'Sales Transactions', value: `${salesTx.length}` },
+        { label: 'Avg Margin', value: `${overallMarginPercent}%` },
+      ],
+      recommendedAction: {
+        label: 'View Revenue Reports',
+        actionType: 'navigate',
+        targetRoute: '/dashboard/reports',
+      },
+      suggestedFollowUps: [
+        'What will my revenue look like next month?',
+        'Why did my profit decrease?',
+        'Which products should I reorder?',
+      ],
+    };
+  }
+
   // 6. BUSINESS HEALTH OVERVIEW
   const what = `Business Health Quotient is ${health.score}/100 (${health.category}).`;
   const why = health.summarySentence;
@@ -657,8 +696,8 @@ export function processCopilotQuery(
     `**Executive Summary:** ${health.summarySentence}`;
 
   return {
-    intent: 'BUSINESS_HEALTH',
-    intentLabel: 'Business Health Overview',
+    intent: intent || 'BUSINESS_HEALTH',
+    intentLabel: intentLabel || 'Business Health Overview',
     answerMarkdown,
     what,
     why,
