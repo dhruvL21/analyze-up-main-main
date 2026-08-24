@@ -38,24 +38,34 @@ export default function BillingPage() {
     handleUpgrade,
     isProcessingPayment,
     businessProfile,
+    aiQueryCount,
   } = useData();
   const { toast } = useToast();
   const router = useRouter();
 
-  const [currentPlanKey, setCurrentPlanKey] = useState<PlanType>(
-    activePlan === 'Pro Plan' ? 'PRO' : activePlan === 'Growth Plan' ? 'GROWTH' : 'STARTER'
-  );
+  const resolvedPlanKey: PlanType = React.useMemo(() => {
+    if (activePlan === 'Enterprise Pro' || activePlan === 'Pro Plan') return 'PRO';
+    if (activePlan === 'Growth Plan') return 'GROWTH';
+    if (activePlan === 'Starter Plan') return 'STARTER';
+    return 'FREE';
+  }, [activePlan]);
+
+  const [currentPlanKey, setCurrentPlanKey] = useState<PlanType>(resolvedPlanKey);
+
+  React.useEffect(() => {
+    setCurrentPlanKey(resolvedPlanKey);
+  }, [resolvedPlanKey]);
 
   const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
 
   // Live Usage Counts
   const productCount = products.length;
-  const aiQueryCount = 43; // Simulated persistent counter
+  const currentAiQueryCount = aiQueryCount;
   const reportCount = 8;
   const teamMemberCount = 2;
 
   const productUsage = checkUsageLimit(currentPlanKey, 'products', productCount);
-  const aiUsage = checkUsageLimit(currentPlanKey, 'aiQueries', aiQueryCount);
+  const aiUsage = checkUsageLimit(currentPlanKey, 'aiQueries', currentAiQueryCount);
   const reportUsage = checkUsageLimit(currentPlanKey, 'reports', reportCount);
   const teamUsage = checkUsageLimit(currentPlanKey, 'teamMembers', teamMemberCount);
 

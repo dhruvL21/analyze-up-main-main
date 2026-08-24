@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useData } from '@/context/data-context';
+import { logBusinessAction } from '@/lib/audit-store';
 import {
   Upload,
   FileSpreadsheet,
@@ -667,6 +668,16 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
       if (onImportComplete) {
         onImportComplete(summary);
       }
+
+      logBusinessAction({
+        title: `Database Import: ${FILE_TYPE_DEFINITIONS[detectedFileType].name}`,
+        productName: `${validRows.length} Records Ingested`,
+        actionType: 'import',
+        changeDetails: `Successfully mapped and imported ${validRows.length} business records into live inventory, suppliers, and sales logs.`,
+        impactValue: `${validRows.length} rows`,
+        previousValue: `Type: ${detectedFileType}`,
+        newValue: `Linked in ${executionTime}ms`,
+      });
 
       toast({
         title: 'Business Engine Synchronized ✨',

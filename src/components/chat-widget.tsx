@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { sanitizePlainData } from '@/lib/utils';
 
 export function ChatWidget() {
-  const { products, transactions, suppliers, orders, returns, activePlan, setShowSubscriptionModal, businessProfile } = useData();
+  const { products, transactions, suppliers, orders, returns, activePlan, setShowSubscriptionModal, businessProfile, incrementAiQueryCount } = useData();
   const { toast } = useToast();
   const router = useRouter();
 
@@ -102,6 +102,9 @@ export function ChatWidget() {
 
     startTransition(async () => {
       try {
+        // Increment workspace AI Copilot query counter
+        incrementAiQueryCount(1);
+
         // Calculate deterministic copilot response immediately
         const copilotRes = processCopilotQuery(
           messageText,

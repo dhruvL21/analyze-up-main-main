@@ -17,6 +17,7 @@ import { Product } from '@/lib/types';
 import { computeProductIntelligence } from '@/lib/product-intelligence-engine';
 import { useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
+import { logBusinessAction } from '@/lib/audit-store';
 import {
   Sparkles,
   TrendingUp,
@@ -73,6 +74,16 @@ export function ProductIntelligenceDrawer({ product, open, onOpenChange }: Produ
             status: 'Fulfilled',
           });
 
+          logBusinessAction({
+            title: `PO Executed: ${reorderQty} units`,
+            productName: product.name,
+            actionType: 'reorder',
+            changeDetails: `Created & fulfilled purchase order for ${reorderQty} units at ${currencySymbol}${costPrice}/unit with "${product.supplier || 'Supplier'}". Total spend: ${currencySymbol}${totalCost.toLocaleString('en-IN')}.`,
+            impactValue: `${currencySymbol}${totalCost.toLocaleString('en-IN')}`,
+            previousValue: `Stock: ${product.stock}`,
+            newValue: `Stock: ${product.stock + reorderQty}`,
+          });
+
           toast({
             title: '📦 Restock Purchase Order Executed!',
             description: `Added ${reorderQty} units to "${product.name}" (${currencySymbol}${totalCost.toLocaleString('en-IN')}). Logged in Orders & Transactions.`,
@@ -99,6 +110,17 @@ export function ProductIntelligenceDrawer({ product, open, onOpenChange }: Produ
             price: newPrice,
             updatedAt: new Date().toISOString(),
           });
+
+          logBusinessAction({
+            title: 'Clearance Promo Applied (-20%)',
+            productName: product.name,
+            actionType: 'discount',
+            changeDetails: `Reduced catalog selling price by 20% from ${currencySymbol}${oldPrice} to ${currencySymbol}${newPrice} to liquidate inventory.`,
+            impactValue: `-20% off`,
+            previousValue: `${currencySymbol}${oldPrice}`,
+            newValue: `${currencySymbol}${newPrice}`,
+          });
+
           toast({
             title: '🏷️ Clearance Promo Applied!',
             description: `Updated selling price of "${product.name}" to ${currencySymbol}${newPrice} in database.`,
@@ -125,6 +147,17 @@ export function ProductIntelligenceDrawer({ product, open, onOpenChange }: Produ
             price: newPrice,
             updatedAt: new Date().toISOString(),
           });
+
+          logBusinessAction({
+            title: 'Price Optimized (+8%)',
+            productName: product.name,
+            actionType: 'price_up',
+            changeDetails: `Raised catalog price from ${currencySymbol}${oldPrice} to ${currencySymbol}${newPrice} (+8%) for margin expansion.`,
+            impactValue: `+8% margin`,
+            previousValue: `${currencySymbol}${oldPrice}`,
+            newValue: `${currencySymbol}${newPrice}`,
+          });
+
           toast({
             title: '📈 Selling Price Optimized (+8%)!',
             description: `Updated selling price of "${product.name}" to ${currencySymbol}${newPrice} in database.`,

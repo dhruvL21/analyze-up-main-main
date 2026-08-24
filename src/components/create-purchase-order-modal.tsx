@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
+import { logBusinessAction } from '@/lib/audit-store';
 import { ShoppingBag, Calendar, PackageCheck, AlertCircle, Loader2 } from 'lucide-react';
 
 interface CreatePurchaseOrderModalProps {
@@ -123,6 +124,18 @@ export function CreatePurchaseOrderModal({
       });
 
       const prod = products.find(p => p.id === productId);
+      const sup = suppliers.find(s => s.id === supplierId);
+
+      logBusinessAction({
+        title: `Purchase Order Issued: ${quantity} units`,
+        productName: prod?.name || 'Product',
+        actionType: 'reorder',
+        changeDetails: `Issued PO for ${quantity} units with "${sup?.name || 'Supplier'}" at ${currencySymbol}${unitCost}/unit. Total spend: ${currencySymbol}${totalCost.toLocaleString('en-IN')}.`,
+        impactValue: `${currencySymbol}${totalCost.toLocaleString('en-IN')}`,
+        previousValue: `Current Stock: ${prod?.stock || 0}`,
+        newValue: `Lead Time: ${expectedLeadDays}d`,
+      });
+
       toast({
         title: '📦 Purchase Order Created Successfully!',
         description: `Issued PO for ${quantity} units of "${prod?.name || 'Product'}" (${currencySymbol}${totalCost.toLocaleString('en-IN')}).`,

@@ -46,7 +46,7 @@ export function QuickActionsBar() {
             className="rounded-xl text-xs gap-1.5 shrink-0 border-primary/30 text-primary hover:bg-primary/10 font-bold h-9 px-3.5"
           >
             <History className="w-4 h-4 text-primary" />
-            View Change Audit Log
+            View Audit Log
           </Button>
 
           <Button

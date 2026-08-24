@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Card,
   CardContent,
@@ -129,7 +129,7 @@ import {
 } from '@/components/ui/sheet';
 
 export default function ExecutiveIntelligencePage() {
-  const { products, transactions, suppliers, orders, returns, businessProfile, activePlan, handleUpgrade, isProcessingPayment } = useData();
+  const { products, transactions, suppliers, orders, returns, businessProfile, activePlan, handleUpgrade, isProcessingPayment, aiQueryCount } = useData();
   const { user } = useUser();
   const { toast } = useToast();
   const router = useRouter();
@@ -192,10 +192,19 @@ export default function ExecutiveIntelligencePage() {
   const [reorderModalOpen, setReorderModalOpen] = useState(false);
   const [selectedReorderProductId, setSelectedReorderProductId] = useState<string | undefined>(undefined);
 
-  // Billing State
-  const [currentPlanKey, setCurrentPlanKey] = useState<PlanType>(
-    activePlan === 'Pro Plan' ? 'PRO' : activePlan === 'Growth Plan' ? 'GROWTH' : 'STARTER'
-  );
+  // Dynamic Plan Key Resolution
+  const resolvedPlanKey: PlanType = useMemo(() => {
+    if (activePlan === 'Enterprise Pro' || activePlan === 'Pro Plan') return 'PRO';
+    if (activePlan === 'Growth Plan') return 'GROWTH';
+    if (activePlan === 'Starter Plan') return 'STARTER';
+    return 'FREE';
+  }, [activePlan]);
+
+  const [currentPlanKey, setCurrentPlanKey] = useState<PlanType>(resolvedPlanKey);
+
+  useEffect(() => {
+    setCurrentPlanKey(resolvedPlanKey);
+  }, [resolvedPlanKey]);
 
   // Team State
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
@@ -274,14 +283,14 @@ export default function ExecutiveIntelligencePage() {
     return getStoredReportSnapshots();
   }, [historyDrawerOpen]);
 
-  // Billing usage calculations
+  // Dynamic Billing usage calculations
   const productCount = products.length;
-  const aiQueryCount = 43;
-  const reportCount = 8;
+  const currentAiQueryCount = aiQueryCount;
+  const reportCount = reportHistory.length || 1;
   const teamMemberCount = members.length;
 
   const productUsage = checkUsageLimit(currentPlanKey, 'products', productCount);
-  const aiUsage = checkUsageLimit(currentPlanKey, 'aiQueries', aiQueryCount);
+  const aiUsage = checkUsageLimit(currentPlanKey, 'aiQueries', currentAiQueryCount);
   const reportUsage = checkUsageLimit(currentPlanKey, 'reports', reportCount);
   const teamUsage = checkUsageLimit(currentPlanKey, 'teamMembers', teamMemberCount);
 

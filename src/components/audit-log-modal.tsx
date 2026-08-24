@@ -73,7 +73,7 @@ export function AuditLogModal({ open, onOpenChange }: AuditLogModalProps) {
       case 'reorder':
         return (
           <Badge className="bg-amber-500/15 text-amber-400 border-amber-500/30 text-xs gap-1 px-2.5 py-0.5 font-bold">
-            <PackagePlus className="w-3.5 h-3.5" /> Reorder PO
+            <PackagePlus className="w-3.5 h-3.5" /> PO
           </Badge>
         );
       case 'import':
@@ -102,13 +102,13 @@ export function AuditLogModal({ open, onOpenChange }: AuditLogModalProps) {
               </div>
               <div>
                 <DialogTitle className="text-xl font-bold flex items-center gap-2.5">
-                  Executed Business Changes & Audit Log
+                  Business Audit Log
                   <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 text-xs px-2.5 py-0.5 font-bold">
                     {logs.length} Actions Logged
                   </Badge>
                 </DialogTitle>
                 <DialogDescription className="text-sm text-muted-foreground mt-0.5">
-                  Complete audit trail of all applied promos, price adjustments, reorders, and founder decisions
+                  Complete audit trail of all purchase orders (POs), clearance promos, price optimizations, and founder decisions
                 </DialogDescription>
               </div>
             </div>
@@ -133,7 +133,7 @@ export function AuditLogModal({ open, onOpenChange }: AuditLogModalProps) {
               { id: 'all', label: 'All Executed Actions' },
               { id: 'discount', label: 'Clearance Promos' },
               { id: 'price_up', label: 'Price Optimizations' },
-              { id: 'reorder', label: 'Reorder POs' },
+              { id: 'reorder', label: 'POs' },
               { id: 'import', label: 'Imports' },
             ].map(tab => (
               <Button

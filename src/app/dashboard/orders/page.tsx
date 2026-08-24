@@ -48,32 +48,55 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
-import { OperationsSubNav } from '@/components/operations-sub-nav';
 import { Label } from '@/components/ui/label';
-import type { PurchaseOrder } from '@/lib/types';
+import { OperationsSubNav } from '@/components/operations-sub-nav';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useData } from '@/context/data-context';
+import { logBusinessAction } from '@/lib/audit-store';
+import type { PurchaseOrder } from '@/lib/types';
 
 type OrderStatus = "Pending" | "Fulfilled" | "Cancelled";
 
 export default function OrdersPage() {
-  const { orders, suppliers, products, addOrder, deleteOrder, updateOrderStatus, isLoading } = useData();
+  const { orders, suppliers, products, addOrder, deleteOrder, updateOrderStatus, isLoading, businessProfile } = useData();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [viewingOrder, setViewingOrder] = useState<PurchaseOrder | null>(null);
+
+  const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
 
   const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    const supplierId = formData.get('supplierId') as string;
+    const productId = formData.get('productId') as string;
+    const quantity = Number(formData.get('quantity'));
+    
+    const prod = products.find(p => p.id === productId);
+    const sup = suppliers.find(s => s.id === supplierId);
+    const unitCost = Number(prod?.costPrice) || Number(prod?.price) * 0.6 || 0;
+    const totalCost = Math.round(unitCost * quantity);
+
     const newOrderData = {
-      supplierId: formData.get('supplierId') as string,
+      supplierId,
       status: 'Pending' as OrderStatus,
       orderDate: new Date().toISOString(),
       expectedDeliveryDate: new Date(new Date().setDate(new Date().getDate() + 7)).toISOString(),
-      quantity: Number(formData.get('quantity')),
-      productId: formData.get('productId') as string,
+      quantity,
+      productId,
     };
     
     addOrder(newOrderData);
+
+    logBusinessAction({
+      title: `Purchase Order Issued: ${quantity} units`,
+      productName: prod?.name || 'Product',
+      actionType: 'reorder',
+      changeDetails: `Issued PO for ${quantity} units to "${sup?.name || 'Supplier'}". Expected delivery in 7 days.`,
+      impactValue: `${currencySymbol}${totalCost.toLocaleString('en-IN')}`,
+      previousValue: `Stock: ${prod?.stock || 0}`,
+      newValue: `Ordered: ${quantity} units`,
+    });
+
     setDialogOpen(false);
   };
 

@@ -66,6 +66,8 @@ interface DataContextProps {
   setIsTourOpen: (show: boolean) => void;
   isLimitExceeded: boolean;
   activePlanLimit: number;
+  aiQueryCount: number;
+  incrementAiQueryCount: (amount?: number) => void;
   handleUpgrade: (planId: string, amount: number, planName: string) => Promise<void>;
 }
 
@@ -120,6 +122,28 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const customAttributes = useMemo(() => uniqueBy(customAttributesData, 'value'), [customAttributesData]);
 
   const [activePlan, setActivePlan] = useState<string>("Pro Plan");
+  const [aiQueryCount, setAiQueryCount] = useState<number>(() => {
+    if (typeof window === 'undefined') return 43;
+    try {
+      const saved = localStorage.getItem('analyzeup_ai_queries_count');
+      return saved ? Math.max(0, parseInt(saved, 10)) : 43;
+    } catch {
+      return 43;
+    }
+  });
+
+  const incrementAiQueryCount = useCallback((amount = 1) => {
+    setAiQueryCount(prev => {
+      const next = prev + amount;
+      try {
+        localStorage.setItem('analyzeup_ai_queries_count', next.toString());
+      } catch (e) {
+        console.error('Error saving AI query count:', e);
+      }
+      return next;
+    });
+  }, []);
+
   const [isProcessingPayment, setIsProcessingPayment] = useState<string | null>(null);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState<boolean>(false);
   const [isTourOpen, setIsTourOpen] = useState<boolean>(false);
@@ -1182,6 +1206,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     setIsTourOpen,
     isLimitExceeded,
     activePlanLimit,
+    aiQueryCount,
+    incrementAiQueryCount,
     handleUpgrade,
   }), [
     products,
@@ -1237,6 +1263,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     setIsTourOpen,
     isLimitExceeded,
     activePlanLimit,
+    aiQueryCount,
+    incrementAiQueryCount,
     handleUpgrade,
   ]);
 
