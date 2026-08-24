@@ -159,15 +159,15 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
             setDetectionReasoning(detectRes.reasoning);
 
             // 2. Fetch Semantic Field Mappings for Detected File Type
-            const initialMapping = profile ? profile.mapping : undefined;
-
-            if (initialMapping) {
-              setFieldMapping(initialMapping);
-            } else {
-              const mapRes = await getSmartMappingForFileType(detectRes.fileType, headers, results.data as Record<string, any>[]);
-              setFieldMapping(mapRes.mapping);
-              setMappingConfidence(mapRes.confidence);
+            const mapRes = await getSmartMappingForFileType(detectRes.fileType, headers, results.data as Record<string, any>[]);
+            const mergedMapping = { ...mapRes.mapping };
+            if (profile?.mapping) {
+              Object.entries(profile.mapping).forEach(([h, targetKey]) => {
+                if (targetKey !== 'skip') mergedMapping[h] = targetKey;
+              });
             }
+            setFieldMapping(mergedMapping);
+            setMappingConfidence(mapRes.confidence);
 
             toast({
               title: `AI Detected: ${detectRes.fileTypeName} ✨`,
@@ -294,14 +294,15 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
         setDetectionConfidence(detectRes.confidence);
         setDetectionReasoning(detectRes.reasoning);
 
-        const initialMapping = profile ? profile.mapping : undefined;
-        if (initialMapping) {
-          setFieldMapping(initialMapping);
-        } else {
-          const mapRes = await getSmartMappingForFileType(detectRes.fileType, parsed.headers, parsed.rows);
-          setFieldMapping(mapRes.mapping);
-          setMappingConfidence(mapRes.confidence);
+        const mapRes = await getSmartMappingForFileType(detectRes.fileType, parsed.headers, parsed.rows);
+        const mergedMapping = { ...mapRes.mapping };
+        if (profile?.mapping) {
+          Object.entries(profile.mapping).forEach(([h, targetKey]) => {
+            if (targetKey !== 'skip') mergedMapping[h] = targetKey;
+          });
         }
+        setFieldMapping(mergedMapping);
+        setMappingConfidence(mapRes.confidence);
 
         toast({
           title: `Excel Ingested: ${detectRes.fileTypeName} ✨`,
@@ -348,15 +349,15 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
           setDetectionReasoning(detectRes.reasoning);
 
           // 2. Fetch Semantic Field Mappings for Detected File Type
-          const initialMapping = profile ? profile.mapping : undefined;
-
-          if (initialMapping) {
-            setFieldMapping(initialMapping);
-          } else {
-            const mapRes = await getSmartMappingForFileType(detectRes.fileType, headers, results.data as Record<string, any>[]);
-            setFieldMapping(mapRes.mapping);
-            setMappingConfidence(mapRes.confidence);
+          const mapRes = await getSmartMappingForFileType(detectRes.fileType, headers, results.data as Record<string, any>[]);
+          const mergedMapping = { ...mapRes.mapping };
+          if (profile?.mapping) {
+            Object.entries(profile.mapping).forEach(([h, targetKey]) => {
+              if (targetKey !== 'skip') mergedMapping[h] = targetKey;
+            });
           }
+          setFieldMapping(mergedMapping);
+          setMappingConfidence(mapRes.confidence);
 
           toast({
             title: `AI Detected: ${detectRes.fileTypeName} ✨`,
@@ -415,13 +416,36 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
         const qty = parseInt((obj.quantity || obj.stock || '1').replace(/[^0-9]/g, ''), 10) || 1;
         const orderNo = obj.orderNumber || `INV-${1000 + idx}`;
         const customer = obj.customerName || 'Retail Customer';
+        const city = obj.city || '';
+        const status = obj.status || 'Completed';
+        const remarks = obj.remarks || '';
+        const paymentMode = obj.paymentMode || 'UPI';
+        const discount = parseFloat((obj.discount || '0').replace(/[^0-9.]/g, '')) || 0;
+        const tax = parseFloat((obj.tax || '0').replace(/[^0-9.]/g, '')) || 0;
         const date = obj.orderDate || new Date().toISOString().split('T')[0];
+        const supplier = obj.supplier || obj.supplierName || '';
 
         if (!name) obj.errors.push('Missing product name');
         if (price <= 0) obj.errors.push('Invalid or zero selling price');
         if (qty <= 0) obj.errors.push('Invalid quantity sold');
 
-        obj.parsed = { name, price, costPrice, qty, orderNo, customer, date, sku: obj.sku || `SKU-${idx + 1}` };
+        obj.parsed = {
+          name,
+          price,
+          costPrice,
+          qty,
+          orderNo,
+          customer,
+          city,
+          status,
+          remarks,
+          paymentMode,
+          discount,
+          tax,
+          supplier,
+          date,
+          sku: obj.sku || `SKU-${idx + 1}`,
+        };
       } else if (detectedFileType === 'INVENTORY_MASTER' || detectedFileType === 'WAREHOUSE_STOCK') {
         const name = obj.name || obj.productName || '';
         const price = parseFloat((obj.price || obj.sellingPrice || '0').replace(/[^0-9.]/g, '')) || 0;
@@ -605,9 +629,13 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
             costPerUnit: costPrice,
             totalCost: costPrice * qty,
             customerName: r.parsed.customer || `Customer #${(idx % 12) + 1}`,
-            transactionDate: d.toISOString().split('T')[0],
-            status: 'Completed',
-            paymentMethod: idx % 2 === 0 ? 'UPI' : 'Credit Card',
+            customerCity: r.parsed.city || '',
+            transactionDate: r.parsed.date || d.toISOString().split('T')[0],
+            status: r.parsed.status || 'Completed',
+            paymentMethod: r.parsed.paymentMode || (idx % 2 === 0 ? 'UPI' : 'Credit Card'),
+            notes: r.parsed.remarks || '',
+            discount: r.parsed.discount || 0,
+            tax: r.parsed.tax || 0,
           });
         }
       });

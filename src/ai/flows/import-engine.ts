@@ -264,30 +264,54 @@ Respond ONLY with valid JSON.
 }
 
 function getFuzzyMatchForFileType(header: string, targetFields: TargetFieldDef[]): string {
-  const h = header.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').trim();
+  const h = header.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 
   for (const field of targetFields) {
     if (field.key === 'skip') continue;
-    const labelLower = field.label.toLowerCase();
+    const labelLower = field.label.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
     const keyLower = field.key.toLowerCase();
 
     if (h === keyLower || h === labelLower) return field.key;
 
-    // Common synonyms
-    if (field.key === 'orderNumber' && (h.includes('invoice') || h.includes('order no') || h.includes('bill no'))) return 'orderNumber';
-    if (field.key === 'productName' && (h.includes('item name') || h.includes('product') || h.includes('item title'))) return 'productName';
-    if (field.key === 'name' && (h.includes('item name') || h.includes('product name') || h.includes('title'))) return 'name';
-    if (field.key === 'sellingPrice' && (h.includes('retail') || h.includes('selling') || h.includes('mrp') || h.includes('sale price'))) return 'sellingPrice';
-    if (field.key === 'price' && (h.includes('retail') || h.includes('selling') || h.includes('mrp') || h.includes('price'))) return 'price';
-    if (field.key === 'costPrice' && (h.includes('purchase') || h.includes('cost') || h.includes('buy price'))) return 'costPrice';
-    if (field.key === 'unitCost' && (h.includes('purchase') || h.includes('cost') || h.includes('unit cost'))) return 'unitCost';
-    if (field.key === 'quantity' && (h.includes('qty') || h.includes('quantity') || h.includes('units') || h.includes('qty sold'))) return 'quantity';
-    if (field.key === 'stock' && (h.includes('stock') || h.includes('quantity') || h.includes('qty'))) return 'stock';
-    if (field.key === 'supplier' && (h.includes('supplier') || h.includes('vendor') || h.includes('wholesaler'))) return 'supplier';
-    if (field.key === 'supplierName' && (h.includes('supplier') || h.includes('vendor'))) return 'supplierName';
-    if (field.key === 'customerName' && (h.includes('customer') || h.includes('buyer'))) return 'customerName';
-    if (field.key === 'sku' && (h.includes('sku') || h.includes('code') || h.includes('barcode'))) return 'sku';
-    if (field.key === 'category' && (h.includes('category') || h.includes('department'))) return 'category';
+    // 1. Order Identification & Dates
+    if (field.key === 'orderNumber' && (h.includes('invoice') || h.includes('order no') || h.includes('order id') || h.includes('order number') || h.includes('bill no') || h.includes('bill') || h.includes('receipt') || h.includes('inv no') || h.includes('transaction id'))) return 'orderNumber';
+    if (field.key === 'orderDate' && (h.includes('order date') || h.includes('invoice date') || h.includes('sale date') || h.includes('bill date') || h.includes('date') || h.includes('timestamp') || h.includes('created at'))) return 'orderDate';
+    if (field.key === 'expectedDate' && (h.includes('expected') || h.includes('delivery date') || h.includes('arrival'))) return 'expectedDate';
+
+    // 2. Customers & Locations
+    if (field.key === 'customerName' && (h.includes('customer name') || h.includes('customer') || h.includes('buyer') || h.includes('client') || h.includes('bill to') || h.includes('sold to') || h.includes('account name'))) return 'customerName';
+    if (field.key === 'city' && (h === 'city' || h.includes('city') || h.includes('location') || h.includes('region') || h.includes('destination') || h.includes('town') || h.includes('place') || h.includes('state'))) return 'city';
+    if (field.key === 'address' && (h.includes('address') || h.includes('street') || h.includes('shipping address'))) return 'address';
+
+    // 3. Products & Items
+    if (field.key === 'productName' && (h === 'item name' || h.includes('item name') || h.includes('product name') || h.includes('item title') || h.includes('product') || h.includes('item') || h.includes('article') || h.includes('description'))) return 'productName';
+    if (field.key === 'name' && (h === 'item name' || h.includes('item name') || h.includes('product name') || h.includes('title') || h.includes('product') || h.includes('item') || h.includes('article') || h.includes('part name'))) return 'name';
+    if (field.key === 'sku' && (h === 'sku' || h.includes('sku') || h.includes('barcode') || h.includes('item code') || h.includes('product code') || h.includes('article no') || h.includes('code') || h.includes('upc') || h.includes('ean'))) return 'sku';
+    if (field.key === 'category' && (h.includes('category') || h.includes('department') || h.includes('dept') || h.includes('group') || h.includes('type') || h.includes('segment') || h.includes('collection'))) return 'category';
+    if (field.key === 'brand' && (h.includes('brand') || h.includes('maker') || h.includes('label'))) return 'brand';
+
+    // 4. Quantities & Inventory
+    if (field.key === 'quantity' && (h.includes('qty') || h.includes('quantity') || h.includes('units sold') || h.includes('units') || h.includes('qty sold') || h.includes('volume') || h.includes('pieces') || h.includes('count'))) return 'quantity';
+    if (field.key === 'stock' && (h.includes('stock') || h.includes('inventory') || h.includes('available') || h.includes('on hand') || h.includes('quantity') || h.includes('qty') || h.includes('units'))) return 'stock';
+    if (field.key === 'minStock' && (h.includes('min stock') || h.includes('reorder') || h.includes('safety stock') || h.includes('threshold') || h.includes('minimum'))) return 'minStock';
+    if (field.key === 'unit' && (h.includes('unit') || h.includes('uom') || h.includes('measure') || h.includes('pack'))) return 'unit';
+
+    // 5. Pricing & Financials
+    if (field.key === 'sellingPrice' && (h.includes('retail price') || h.includes('selling price') || h.includes('retail') || h.includes('selling') || h.includes('mrp') || h.includes('sale price') || h.includes('unit price') || h.includes('price') || h.includes('rate') || h.includes('amount'))) return 'sellingPrice';
+    if (field.key === 'price' && (h.includes('retail price') || h.includes('selling price') || h.includes('retail') || h.includes('selling') || h.includes('mrp') || h.includes('price') || h.includes('rate'))) return 'price';
+    if (field.key === 'costPrice' && (h.includes('purchase price') || h.includes('cost price') || h.includes('purchase') || h.includes('cost') || h.includes('buy price') || h.includes('buying price') || h.includes('unit cost') || h.includes('cogs'))) return 'costPrice';
+    if (field.key === 'unitCost' && (h.includes('purchase') || h.includes('cost') || h.includes('unit cost') || h.includes('buy price'))) return 'unitCost';
+    if (field.key === 'discount' && (h.includes('discount') || h.includes('disc') || h.includes('offer') || h.includes('rebate') || h.includes('markdown'))) return 'discount';
+    if (field.key === 'tax' && (h.includes('tax') || h.includes('gst') || h.includes('vat') || h.includes('duty') || h.includes('cess'))) return 'tax';
+    if (field.key === 'paymentMode' && (h.includes('payment') || h.includes('pay mode') || h.includes('payment method') || h.includes('mode of payment') || h.includes('tender') || h.includes('gateway'))) return 'paymentMode';
+
+    // 6. Status, Suppliers & Remarks
+    if (field.key === 'status' && (h.includes('order status') || h.includes('status') || h.includes('state') || h.includes('delivery status') || h.includes('fulfillment') || h.includes('condition'))) return 'status';
+    if (field.key === 'remarks' && (h.includes('remark') || h.includes('remarks') || h.includes('note') || h.includes('notes') || h.includes('comment') || h.includes('comments') || h.includes('feedback') || h.includes('memo') || h.includes('instruction'))) return 'remarks';
+    if (field.key === 'supplier' && (h.includes('supplier') || h.includes('vendor') || h.includes('wholesaler') || h.includes('distributor') || h.includes('manufacturer') || h.includes('source'))) return 'supplier';
+    if (field.key === 'supplierName' && (h.includes('supplier') || h.includes('vendor') || h.includes('distributor') || h.includes('manufacturer'))) return 'supplierName';
+    if (field.key === 'email' && (h.includes('email') || h.includes('mail'))) return 'email';
+    if (field.key === 'phone' && (h.includes('phone') || h.includes('mobile') || h.includes('contact no') || h.includes('tel'))) return 'phone';
   }
 
   return 'skip';

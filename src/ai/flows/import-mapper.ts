@@ -34,8 +34,11 @@ TARGET INTERNAL SCHEMA FIELDS:
 - "supplier": Supplier Name, Vendor Name, Supplier/Vendor
 - "minStock": Minimum Stock Threshold, Reorder Level
 - "unit": Measurement Unit (Piece, Kg, Box, etc.)
+- "city": Warehouse / Branch City, Location
+- "status": Item Status, Product Status
+- "remarks": Product Remarks, Notes
 - "description": Product Details, Description, Notes
-- "skip": Columns that are irrelevant (e.g. Customer Name, Invoice No, Payment Status, etc.)
+- "skip": Columns that are irrelevant
 
 EXTERNAL CSV HEADERS:
 ${externalHeaders.join(', ')}
@@ -228,13 +231,26 @@ function getFuzzySemanticMatch(header: string): string {
     return 'unit';
   }
 
+  // City / Location
+  if (h === 'city' || h.includes('city') || h.includes('location') || h.includes('region') || h.includes('destination') || h.includes('place')) {
+    return 'city';
+  }
+
+  // Status
+  if (h.includes('status') || h.includes('state') || h.includes('condition')) {
+    return 'status';
+  }
+
+  // Remarks / Notes
+  if (h.includes('remark') || h.includes('notes') || h.includes('comment') || h.includes('feedback')) {
+    return 'remarks';
+  }
+
   // Description
   if (
     h.includes('desc') ||
     h.includes('description') ||
-    h.includes('details') ||
-    h.includes('notes') ||
-    h.includes('remarks')
+    h.includes('details')
   ) {
     return 'description';
   }

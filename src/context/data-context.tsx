@@ -54,6 +54,7 @@ interface DataContextProps {
   getSyncHistory: () => Promise<any[]>;
   getMappingProfiles: () => Promise<any[]>;
   disconnectGoogleDrive: () => Promise<void>;
+  updateGoogleDriveSettings: (settings: Record<string, any>) => Promise<void>;
   recordSyncSuccess: (fileId: string, fileData: Record<string, any>, historyData: Record<string, any>) => Promise<void>;
   saveMappingProfile: (fileId: string, profileData: Record<string, any>) => Promise<void>;
   isLoading: boolean;
@@ -1094,6 +1095,28 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user, firestore]);
 
+  const updateGoogleDriveSettings = useCallback(async (settings: Record<string, any>) => {
+    if (!user || !firestore) return;
+    try {
+      const connRef = doc(firestore, 'users', user.uid, 'integrations', 'google-drive');
+      await setDoc(connRef, {
+        ...cleanObject(settings),
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+      toast({
+        title: 'Auto-Sync Schedule Updated ✨',
+        description: settings.autoSyncEnabled === false ? 'Auto-sync is now paused.' : 'Google Drive will auto-sync on your schedule.',
+      });
+    } catch (e) {
+      console.error('Error updating Google Drive settings:', e);
+      toast({
+        variant: 'destructive',
+        title: 'Update Failed',
+        description: 'Could not save auto-sync schedule.',
+      });
+    }
+  }, [user, firestore, toast]);
+
   const saveMappingProfile = useCallback(async (fileId: string, profileData: Record<string, any>) => {
     if (!user || !firestore) return;
     try {
@@ -1147,6 +1170,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     getSyncHistory,
     getMappingProfiles,
     disconnectGoogleDrive,
+    updateGoogleDriveSettings,
     recordSyncSuccess,
     saveMappingProfile,
     isLoading,
