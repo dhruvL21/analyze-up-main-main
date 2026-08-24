@@ -839,12 +839,11 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
               </p>
             </div>
 
-            {/* Model 1 Universal Data Mapper Header */}
+            {/* Universal Data Mapper Header */}
             <div className="p-3.5 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-foreground">Model 1: Universal Data Mapping AI</span>
-                  <ThreeTierBadge tier="MODEL_2_PREDICTION" size="sm" />
+                  <span className="font-bold text-foreground">Universal Data Mapping AI</span>
                 </div>
                 <p className="text-muted-foreground text-[11px]">
                   Schema: <strong className="text-purple-300 font-mono">analyzeup_v1</strong> • Review detected field associations before validation.
@@ -872,7 +871,7 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
                       <TableHead className="w-1/3">Source Column Header</TableHead>
                       <TableHead className="w-8 text-center">→</TableHead>
                       <TableHead className="w-1/3">Canonical Field (analyzeup_v1)</TableHead>
-                      <TableHead className="w-1/6 text-center">Model 1 Confidence</TableHead>
+                      <TableHead className="w-1/6 text-center">Match Confidence</TableHead>
                       <TableHead className="w-1/4">Sample Data</TableHead>
                     </TableRow>
                   </TableHeader>

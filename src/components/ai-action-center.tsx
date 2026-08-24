@@ -251,7 +251,6 @@ export function AIActionCenter() {
                       >
                         {task.priority} Priority
                       </Badge>
-                      <ThreeTierBadge tier="MODEL_3_RECOMMENDATION" size="sm" />
                       <span className="text-xs font-bold text-foreground">{task.title}</span>
                     </div>
                   </div>
@@ -277,7 +276,7 @@ export function AIActionCenter() {
 
                   <div className="p-3 rounded-xl bg-purple-500/5 border border-purple-500/20 space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-purple-400 uppercase tracking-wider font-bold">3. Model 2 Forecast</span>
+                      <span className="text-[10px] text-purple-400 uppercase tracking-wider font-bold">3. Forecast Projection</span>
                       <ThreeTierBadge tier="MODEL_2_PREDICTION" size="sm" />
                     </div>
                     <p className="text-[11px] text-purple-200/90 leading-relaxed">{task.impact}</p>

@@ -64,14 +64,14 @@ export function ThreeTierBadge({
               } ${className}`}
             >
               <TrendingUp className={isSm ? 'w-2.5 h-2.5 shrink-0' : 'w-3 h-3 shrink-0'} />
-              <span>Model 2 Prediction</span>
+              <span>Forecast Prediction</span>
               {confidence !== undefined && (
                 <span className="ml-0.5 opacity-85 font-mono text-[9px]">({confidence}%)</span>
               )}
             </Badge>
           </TooltipTrigger>
           <TooltipContent className="max-w-xs text-xs">
-            <p className="font-semibold text-purple-400">Predictive Analytics Engine (Model 2)</p>
+            <p className="font-semibold text-purple-400">Predictive Forecasting Engine</p>
             <p className="text-muted-foreground mt-0.5">
               {algorithm ? `Algorithm: ${algorithm}. ` : ''}
               Statistical ML forecasting (Holt-Winters / GBDT autoregressive lags) with mathematical confidence evaluation.
@@ -93,13 +93,13 @@ export function ThreeTierBadge({
             } ${className}`}
           >
             <Sparkles className={isSm ? 'w-2.5 h-2.5 shrink-0' : 'w-3 h-3 shrink-0'} />
-            <span>Model 3 AI Guidance</span>
+            <span>AI Guidance</span>
           </Badge>
         </TooltipTrigger>
         <TooltipContent className="max-w-xs text-xs">
-          <p className="font-semibold text-blue-400">AI Business Analyst (Model 3)</p>
+          <p className="font-semibold text-blue-400">AI Business Analyst</p>
           <p className="text-muted-foreground mt-0.5">
-            LLM business reasoning turning quantitative predictions into actionable 5-part tactical decisions.
+            Decision reasoning turning quantitative predictions into actionable tactical decisions.
           </p>
         </TooltipContent>
       </Tooltip>

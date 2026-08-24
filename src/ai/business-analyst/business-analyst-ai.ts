@@ -164,7 +164,7 @@ Respond ONLY in valid JSON matching this exact structure:
         explanation: {
           what_happened: `Current stock for ${p.product_name} is ${p.current_stock} units.`,
           why_it_matters: `Depletion of inventory will halt sales and impact customer fulfillment.`,
-          prediction_indicated: `Model 2 predicts demand of ${p.demand_forecast['30_days']} units over 30 days with a ${Math.round(p.stockout.probability * 100)}% stockout probability in ${p.stockout.days_until_stockout || 0} days.`,
+          prediction_indicated: `Forecast indicates demand of ${p.demand_forecast['30_days']} units over 30 days with a ${Math.round(p.stockout.probability * 100)}% stockout probability in ${p.stockout.days_until_stockout || 0} days.`,
           recommended_action: `Issue purchase order for ${p.stockout.recommended_reorder_qty} units with ${p.supplier_name || 'supplier'} immediately.`,
           supporting_data: `Current Stock: ${p.current_stock} | 30-Day Demand: ${p.demand_forecast['30_days']} | Lead Time: ${p.supplier_lead_time_days} days.`,
         },

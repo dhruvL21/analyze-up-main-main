@@ -93,18 +93,14 @@ export default function ForecastingPage() {
       {/* Title Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border/30 pb-4">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <ThreeTierBadge tier="MODEL_2_PREDICTION" size="md" />
-            <ThreeTierBadge tier="MODEL_3_RECOMMENDATION" size="md" />
-          </div>
           <h1 className="text-xl md:text-3xl font-extrabold tracking-tight text-foreground flex items-center gap-2.5">
             <div className="p-2.5 rounded-2xl bg-primary/10 text-primary border border-primary/25">
               <TrendingUp className="w-6 h-6 text-primary" />
             </div>
-            Model 2: Predictive Analytics Engine
+            Predictive Analytics & Demand Engine
           </h1>
           <p className="text-xs md:text-sm text-muted-foreground mt-1">
-            Strict statistical & time-series machine learning forecasting product demand, stockout risk, and revenue trajectories.
+            Statistical & time-series machine learning forecasting product demand, stockout risk, and revenue trajectories.
           </p>
         </div>
 
@@ -134,7 +130,7 @@ export default function ForecastingPage() {
         </div>
       </div>
 
-      {/* Model 2 Evaluation & Accuracy Banner */}
+      {/* Forecast Evaluation & Accuracy Banner */}
       <div className="p-4 rounded-2xl bg-purple-500/10 border border-purple-500/25 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30">
@@ -142,7 +138,7 @@ export default function ForecastingPage() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-foreground">Model 2 Evaluation Quality & Verification</span>
+              <span className="text-xs font-bold text-foreground">Forecast Quality & Verification</span>
               <Badge className="bg-purple-500/20 text-purple-300 text-[10px] font-mono border-purple-500/30">
                 predictive_ml_v1.0
               </Badge>
@@ -163,7 +159,7 @@ export default function ForecastingPage() {
             <span className="text-purple-400 font-bold">92.4%</span>
           </div>
           <div className="px-3 py-1.5 rounded-xl bg-background/80 border border-border/40 space-y-0.5">
-            <span className="text-[9px] text-muted-foreground uppercase font-bold block">Model Confidence</span>
+            <span className="text-[9px] text-muted-foreground uppercase font-bold block">Forecast Confidence</span>
             <span className="text-blue-400 font-bold">88%</span>
           </div>
         </div>
