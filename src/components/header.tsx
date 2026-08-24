@@ -138,6 +138,7 @@ export function Header() {
               <Button
                 variant="ghost"
                 size="icon"
+                data-tour="notification-bell"
                 className="rounded-full relative"
                 onClick={() => setNotifDrawerOpen(true)}
               >
@@ -159,7 +160,7 @@ export function Header() {
         {/* Account Avatar Dropdown Menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="relative h-9 w-9 rounded-full p-0">
+            <Button variant="ghost" data-tour="settings-btn" className="relative h-9 w-9 rounded-full p-0">
               <Avatar className="h-9 w-9 border border-border/50">
                 <AvatarImage src={user?.photoURL || ''} alt="User avatar" />
                 <AvatarFallback className="bg-primary/20 text-primary font-bold text-xs">

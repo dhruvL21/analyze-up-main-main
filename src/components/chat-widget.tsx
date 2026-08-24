@@ -367,6 +367,7 @@ export function ChatWidget() {
 
       {/* Floating Trigger Button */}
       <button
+        data-tour="chat-widget"
         onClick={() => setIsOpen(!isOpen)}
         className="group relative flex h-12 w-12 items-center justify-center rounded-2xl bg-transparent hover:bg-secondary/50 text-foreground transition-all duration-300 hover:scale-105 active:scale-95 border border-border/40 backdrop-blur-md shadow-lg"
       >

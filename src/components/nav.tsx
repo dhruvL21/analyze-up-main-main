@@ -115,6 +115,7 @@ export default function Nav({ isMobile = false }: { isMobile?: boolean }) {
             <SheetClose key={item.href} asChild>
               <Link
                 href={item.href}
+                data-tour={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
                 onClick={(e) => handleNavClick(e, item.href)}
                 className={cn("flex items-center gap-3 rounded-lg px-3 py-2 text-foreground/70 transition-all hover:text-primary",
                   active && "text-primary bg-primary/10"
