@@ -14,8 +14,8 @@ service cloud.firestore {
       allow create: if request.auth != null;
     }
 
-    // All user-specific collections are only accessible by the owner.
-    match /users/{userId}/{collection}/{docId} {
+    // All user-specific collections and sub-documents are only accessible by the owner.
+    match /users/{userId}/{document=**} {
       allow read, write: if isOwner(userId);
     }
   }
