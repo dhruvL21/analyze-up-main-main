@@ -1,9 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+function getOAuthRedirectUri(req: NextRequest): string {
+  const url = new URL(req.url);
+  const proto = req.headers.get('x-forwarded-proto') || (url.protocol.startsWith('https') ? 'https' : 'http');
+  const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || url.host;
+  const currentOrigin = `${proto}://${host}`;
+
+  // If explicit GOOGLE_REDIRECT_URI matches current environment host, prioritize it
+  if (process.env.GOOGLE_REDIRECT_URI) {
+    try {
+      const configured = new URL(process.env.GOOGLE_REDIRECT_URI);
+      if (configured.host === host) {
+        return process.env.GOOGLE_REDIRECT_URI;
+      }
+    } catch (e) {}
+  }
+
+  return `${currentOrigin}/api/drive/callback`;
+}
 
 export async function GET(req: NextRequest) {
-  const origin = new URL(req.url).origin;
-  const { searchParams } = new URL(req.url);
+  const url = new URL(req.url);
+  const proto = req.headers.get('x-forwarded-proto') || (url.protocol.startsWith('https') ? 'https' : 'http');
+  const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || url.host;
+  const origin = `${proto}://${host}`;
+
+  const { searchParams } = url;
   const errorParam = searchParams.get('error');
   const code = searchParams.get('code');
   const userId = searchParams.get('state'); // state holds our userId
@@ -19,9 +41,9 @@ export async function GET(req: NextRequest) {
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI;
+  const redirectUri = getOAuthRedirectUri(req);
 
-  if (!clientId || !clientSecret || !redirectUri) {
+  if (!clientId || !clientSecret) {
     return NextResponse.redirect(`${origin}/dashboard/integrations?error=${encodeURIComponent('OAuth credentials missing on server.')}`);
   }
 
