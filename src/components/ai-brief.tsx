@@ -260,9 +260,9 @@ export function AIBrief() {
         </div>
 
         {/* Footer Banner */}
-        <div data-tour="ai-suggestions" className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3 rounded-2xl border border-blue-500/25 bg-gradient-to-r from-blue-950/50 via-indigo-950/30 to-zinc-900/70 shadow-sm transition-all duration-300 ${!isPaid ? 'blur-[5px] select-none pointer-events-none opacity-40' : (isPending ? 'opacity-60' : 'opacity-100')}`}>
-          <div className="flex items-center gap-3 min-w-0 flex-wrap">
-            <ThreeTierBadge tier="MODEL_3_RECOMMENDATION" size="sm" />
+        <div data-tour="ai-suggestions" className={`flex items-center justify-between px-4 py-3 rounded-2xl border border-blue-500/25 bg-gradient-to-r from-blue-950/50 via-indigo-950/30 to-zinc-900/70 shadow-sm transition-all duration-300 ${!isPaid ? 'blur-[5px] select-none pointer-events-none opacity-40' : (isPending ? 'opacity-60' : 'opacity-100')}`}>
+          <div className="flex items-center gap-2.5 font-bold text-foreground">
+            <Coins className="h-4 w-4 text-blue-400 shrink-0" />
             <div className="flex items-center gap-1.5 text-xs sm:text-sm">
               <span className="text-zinc-300 font-medium">Cash Locked in Inventory:</span>
               <span className="font-bold text-white font-mono text-sm sm:text-base">
@@ -270,10 +270,6 @@ export function AIBrief() {
               </span>
             </div>
           </div>
-          <span className="text-[11px] font-semibold text-blue-400/80 shrink-0 flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
-            Optimized via 3-Model AI Architecture
-          </span>
         </div>
 
         {/* Paywall Overlay */}
