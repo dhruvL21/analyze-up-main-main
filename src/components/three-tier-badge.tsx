@@ -33,11 +33,11 @@ export function ThreeTierBadge({
           <TooltipTrigger asChild>
             <Badge
               variant="outline"
-              className={`inline-flex items-center gap-1 font-semibold border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-all ${
+              className={`inline-flex items-center gap-1 font-semibold border-emerald-500/25 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 whitespace-nowrap shrink-0 transition-all rounded-full ${
                 isSm ? 'text-[10px] px-2 py-0.5' : 'text-xs px-2.5 py-1'
               } ${className}`}
             >
-              <Database className={isSm ? 'w-2.5 h-2.5' : 'w-3 h-3'} />
+              <Database className={isSm ? 'w-2.5 h-2.5 shrink-0' : 'w-3 h-3 shrink-0'} />
               <span>Actual Data</span>
             </Badge>
           </TooltipTrigger>
@@ -59,11 +59,11 @@ export function ThreeTierBadge({
           <TooltipTrigger asChild>
             <Badge
               variant="outline"
-              className={`inline-flex items-center gap-1 font-semibold border-purple-500/30 bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 transition-all ${
+              className={`inline-flex items-center gap-1 font-semibold border-purple-500/25 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 whitespace-nowrap shrink-0 transition-all rounded-full ${
                 isSm ? 'text-[10px] px-2 py-0.5' : 'text-xs px-2.5 py-1'
               } ${className}`}
             >
-              <TrendingUp className={isSm ? 'w-2.5 h-2.5' : 'w-3 h-3'} />
+              <TrendingUp className={isSm ? 'w-2.5 h-2.5 shrink-0' : 'w-3 h-3 shrink-0'} />
               <span>Model 2 Prediction</span>
               {confidence !== undefined && (
                 <span className="ml-0.5 opacity-85 font-mono text-[9px]">({confidence}%)</span>
@@ -88,11 +88,11 @@ export function ThreeTierBadge({
         <TooltipTrigger asChild>
           <Badge
             variant="outline"
-            className={`inline-flex items-center gap-1 font-semibold border-blue-500/30 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-all ${
+            className={`inline-flex items-center gap-1 font-semibold border-blue-500/25 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 whitespace-nowrap shrink-0 transition-all rounded-full ${
               isSm ? 'text-[10px] px-2 py-0.5' : 'text-xs px-2.5 py-1'
             } ${className}`}
           >
-            <Sparkles className={isSm ? 'w-2.5 h-2.5' : 'w-3 h-3'} />
+            <Sparkles className={isSm ? 'w-2.5 h-2.5 shrink-0' : 'w-3 h-3 shrink-0'} />
             <span>Model 3 AI Guidance</span>
           </Badge>
         </TooltipTrigger>
