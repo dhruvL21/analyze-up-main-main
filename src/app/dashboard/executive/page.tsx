@@ -264,8 +264,9 @@ export default function ExecutiveIntelligencePage() {
   }, [forecastingReport, activeScenario]);
 
   const filteredProjections = useMemo(() => {
-    return forecastingReport.stockoutProjections.filter(
-      p => p.productName.toLowerCase().includes(searchQuery.toLowerCase()) || p.sku.toLowerCase().includes(searchQuery.toLowerCase())
+    const query = (searchQuery || '').toLowerCase().trim();
+    return (forecastingReport.stockoutProjections || []).filter(
+      p => !query || (p.productName || '').toLowerCase().includes(query) || (p.sku || '').toLowerCase().includes(query)
     );
   }, [forecastingReport.stockoutProjections, searchQuery]);
 

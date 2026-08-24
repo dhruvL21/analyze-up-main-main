@@ -69,13 +69,15 @@ export default function ForecastingPage() {
     return evaluateScenario(report, scenario);
   }, [report, scenario]);
 
-  // Filter stockout projections
+  // Filter stockout projections (Safe against undefined properties)
   const filteredProjections = useMemo(() => {
-    return report.stockoutProjections.filter(item => {
-      const matchesSearch =
-        item.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.preferredSupplierName.toLowerCase().includes(searchTerm.toLowerCase());
+    const term = (searchTerm || '').toLowerCase().trim();
+    return (report.stockoutProjections || []).filter(item => {
+      if (!item) return false;
+      const matchesSearch = !term ||
+        (item.productName || '').toLowerCase().includes(term) ||
+        (item.sku || '').toLowerCase().includes(term) ||
+        (item.preferredSupplierName || '').toLowerCase().includes(term);
 
       const matchesRisk =
         selectedRiskFilter === 'ALL' || item.stockoutRiskLevel === selectedRiskFilter;
