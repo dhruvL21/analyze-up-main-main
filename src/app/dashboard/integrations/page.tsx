@@ -11,10 +11,27 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 import { useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
 import { useUser, useFirestore } from '@/firebase';
-import { doc, onSnapshot, collection, setDoc, addDoc, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  getClientDriveToken,
+  formatScheduleSummary,
+  getNextSyncTimeDisplay,
+  isAutoSyncDue,
+  formatTime12h,
+} from '@/lib/drive-helper';
 import { ImportDialog } from '@/components/import-dialog';
 import { findMatchingImportProfile } from '@/lib/import-profile-store';
 import Papa from 'papaparse';
@@ -36,6 +53,15 @@ import {
   Check,
   AlertTriangle,
   Folder,
+  ArrowRightLeft,
+  Mail,
+  HardDrive,
+  Users,
+  Star,
+  Clock,
+  Pencil,
+  Settings,
+  X,
 } from 'lucide-react';
 import {
   Dialog,
@@ -141,7 +167,15 @@ export default function IntegrationsPage() {
     addCategory,
     addSupplier,
     bulkAddProducts,
-    bulkAddTransactions
+    bulkAddTransactions,
+    subscribeGoogleDriveConnection,
+    getGoogleDriveFiles,
+    getSyncHistory,
+    getMappingProfiles,
+    disconnectGoogleDrive,
+    updateGoogleDriveSettings,
+    recordSyncSuccess,
+    saveMappingProfile,
   } = useData();
   const { user } = useUser();
   const firestore = useFirestore();
@@ -159,12 +193,22 @@ export default function IntegrationsPage() {
   const [isLoadingFolders, setIsLoadingFolders] = useState(false);
   const [isLoadingScan, setIsLoadingScan] = useState(false);
   
+  // Auto-Sync Scheduling States
+  const [showAutoSyncModal, setShowAutoSyncModal] = useState(false);
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(true);
+  const [autoSyncFrequency, setAutoSyncFrequency] = useState<'1_hour' | '6_hours' | '12_hours' | 'daily' | 'weekly'>('daily');
+  const [autoSyncTime, setAutoSyncTime] = useState('09:00');
+  const [autoSyncDay, setAutoSyncDay] = useState('monday');
+  const [isSavingSchedule, setIsSavingSchedule] = useState(false);
+
   // UI Dialog/Modals States
   const [showFolderModal, setShowFolderModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [isFolderCreating, setIsFolderCreating] = useState(false);
   const [syncState, setSyncState] = useState<'idle' | 'scanning' | 'syncing' | 'success'>('idle');
   const [isSyncingFileId, setIsSyncingFileId] = useState<string | null>(null);
+  const [folderSearchTerm, setFolderSearchTerm] = useState('');
+  const [folderSection, setFolderSection] = useState<'all' | 'mydrive' | 'shared' | 'starred' | 'recent'>('all');
 
   // Preset file for ImportDialog integration
   const [presetFile, setPresetFile] = useState<{ name: string; content: string; driveFileId?: string } | null>(null);
@@ -180,23 +224,123 @@ export default function IntegrationsPage() {
 
   // 1. Subscribe to real Google Drive connection state
   useEffect(() => {
-    if (!user || !firestore) {
+    setIsLoadingConnection(true);
+    const unsubscribe = subscribeGoogleDriveConnection((conn) => {
+      setDriveConnection(conn);
       setIsLoadingConnection(false);
-      return;
-    }
-
-    const docRef = doc(firestore, 'users', user.uid, 'integrations', 'google-drive');
-    const unsubscribe = onSnapshot(docRef, (snap) => {
-      if (snap.exists() && snap.data().connectionStatus === 'Connected') {
-        setDriveConnection(snap.data());
-      } else {
-        setDriveConnection(null);
+      if (conn) {
+        setAutoSyncEnabled(conn.autoSyncEnabled !== false);
+        setAutoSyncFrequency(conn.autoSyncFrequency || 'daily');
+        setAutoSyncTime(conn.autoSyncTime || '09:00');
+        setAutoSyncDay(conn.autoSyncDay || 'monday');
       }
-      setIsLoadingConnection(false);
     });
 
     return () => unsubscribe();
-  }, [user, firestore]);
+  }, [subscribeGoogleDriveConnection]);
+
+  // 1.05 Recurring background auto-sync scheduler (checks every 60 seconds)
+  useEffect(() => {
+    if (!driveConnection || !driveConnection.selectedFolderId || !user) return;
+    if (driveConnection.autoSyncEnabled === false) return;
+
+    const intervalId = setInterval(() => {
+      if (isAutoSyncDue(driveConnection) && !isLoadingScan && !isSyncingFileId) {
+        console.log('Automated sync trigger:', formatScheduleSummary(driveConnection));
+        scanDriveFolder(driveConnection.selectedFolderId, driveConnection.selectedFolderName);
+      }
+    }, 60 * 1000);
+
+    return () => clearInterval(intervalId);
+  }, [driveConnection, user, isLoadingScan, isSyncingFileId]);
+
+  const handleSaveAutoSyncSchedule = async () => {
+    setIsSavingSchedule(true);
+    try {
+      await updateGoogleDriveSettings({
+        autoSyncEnabled,
+        autoSyncFrequency,
+        autoSyncTime,
+        autoSyncDay,
+      });
+      setShowAutoSyncModal(false);
+    } finally {
+      setIsSavingSchedule(false);
+    }
+  };
+
+  // 1.1 Handle OAuth callback payload / status / error query params in URL
+  useEffect(() => {
+    if (typeof window === 'undefined' || !user || !firestore) return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const oauthDataRaw = urlParams.get('oauth_data');
+    const status = urlParams.get('status');
+    const error = urlParams.get('error');
+
+    if (oauthDataRaw) {
+      try {
+        const decodedStr = atob(decodeURIComponent(oauthDataRaw));
+        const oauthData = JSON.parse(decodedStr);
+
+        const saveConnection = async () => {
+          const connectionRef = doc(firestore, 'users', user.uid, 'integrations', 'google-drive');
+          const connectionSnap = await getDoc(connectionRef);
+          const existingData = connectionSnap.exists() ? connectionSnap.data() : null;
+
+          const finalRefreshToken = oauthData.refreshToken || (existingData ? existingData.refreshToken : '');
+
+          await setDoc(
+            connectionRef,
+            {
+              userId: user.uid,
+              provider: 'google-drive',
+              googleEmail: oauthData.googleEmail || '',
+              googleAccountId: oauthData.googleAccountId || '',
+              accessToken: oauthData.accessToken,
+              refreshToken: finalRefreshToken,
+              tokenExpiry: Date.now() + (oauthData.expiresIn || 3600) * 1000,
+              connectionStatus: 'Connected',
+              createdAt: existingData ? existingData.createdAt : new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+            { merge: true }
+          );
+
+          toast({
+            title: 'Google Drive Connected! 🎉',
+            description: 'Your account is linked. Select or create a folder to begin syncing.',
+          });
+          window.history.replaceState({}, '', window.location.pathname);
+        };
+
+        saveConnection().catch((err) => {
+          console.error('Failed to save connection in client Firestore:', err);
+          toast({
+            variant: 'destructive',
+            title: 'Connection Save Error',
+            description: err?.message || 'Could not save connection details.',
+          });
+          window.history.replaceState({}, '', window.location.pathname);
+        });
+      } catch (err: any) {
+        console.error('Failed to parse OAuth data:', err);
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    } else if (status === 'success') {
+      toast({
+        title: 'Google Drive Connected! 🎉',
+        description: 'Your account is linked. Select or create a folder to begin syncing.',
+      });
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Google Drive Connection Failed',
+        description: decodeURIComponent(error),
+      });
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [user, firestore, toast]);
 
   // 2. Fetch scanned files list and stats on connection changes
   useEffect(() => {
@@ -208,17 +352,15 @@ export default function IntegrationsPage() {
   }, [driveConnection, user]);
 
   const loadStats = async () => {
-    if (!user || !firestore) return;
     try {
-      const filesSnap = await getDocs(collection(firestore, 'users', user.uid, 'google_drive_files'));
+      const files = await getGoogleDriveFiles();
       let rows = 0;
-      let files = 0;
+      let filesCount = 0;
       let errors = 0;
       let duplicates = 0;
 
-      filesSnap.forEach(doc => {
-        const d = doc.data();
-        files++;
+      files.forEach((d: any) => {
+        filesCount++;
         if (d.status === 'Synced') {
           rows += d.validRows || 0;
         } else if (d.status === 'Needs Review') {
@@ -228,7 +370,7 @@ export default function IntegrationsPage() {
       });
 
       setSyncStats({
-        filesCount: files,
+        filesCount,
         rowsCount: rows,
         duplicatesCount: duplicates,
         errorsCount: errors
@@ -239,13 +381,8 @@ export default function IntegrationsPage() {
   };
 
   const loadSyncHistory = async () => {
-    if (!user || !firestore) return;
     try {
-      const snap = await getDocs(collection(firestore, 'users', user.uid, 'sync_history'));
-      const historyList = snap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })).sort((a: any, b: any) => new Date(b.syncedAt).getTime() - new Date(a.syncedAt).getTime());
+      const historyList = await getSyncHistory();
       setSyncHistory(historyList);
     } catch (e) {
       console.error(e);
@@ -255,48 +392,50 @@ export default function IntegrationsPage() {
   // 3. Authenticate with Google Drive (Redirect to Server OAuth API)
   const connectGoogleDrive = () => {
     if (!user) return;
-    window.location.href = `/api/drive/auth?userId=${user.uid}`;
+    window.location.href = `/api/drive/auth?userId=${user.uid}&prompt=select_account%20consent`;
+  };
+
+  // 3.1 Switch or connect a different Google Account
+  const switchGoogleAccount = () => {
+    if (!user) return;
+    window.location.href = `/api/drive/auth?userId=${user.uid}&prompt=select_account%20consent`;
   };
 
   // 4. Disconnect Google Drive connection
-  const disconnectGoogleDrive = async () => {
-    if (!user || !firestore) return;
+  const handleDisconnectGoogleDrive = async () => {
     if (!window.confirm('Are you sure you want to disconnect Google Drive? This will clear connection credentials.')) return;
-
-    try {
-      const docRef = doc(firestore, 'users', user.uid, 'integrations', 'google-drive');
-      await deleteDoc(docRef);
-      setDriveConnection(null);
-      setDriveFiles([]);
-      toast({
-        title: 'Google Drive Disconnected',
-        description: 'Successfully revoked credentials from AnalyzeUp workspace.',
-      });
-    } catch (e) {
-      toast({
-        variant: 'destructive',
-        title: 'Disconnection Failed',
-        description: 'Failed to delete connection document.',
-      });
-    }
+    await disconnectGoogleDrive();
+    setDriveConnection(null);
+    setDriveFiles([]);
   };
 
   // 5. Scan Folder for files
-  const scanDriveFolder = async () => {
+  const scanDriveFolder = async (overrideFolderId?: string, overrideFolderName?: string) => {
     if (!user) return;
     setIsLoadingScan(true);
     setSyncState('scanning');
     try {
-      const res = await fetch('/api/drive/scan', {
+      const token = await getClientDriveToken(driveConnection, user, firestore);
+      if (!token) return;
+
+      const folderId = overrideFolderId || driveConnection?.selectedFolderId;
+      const folderName = overrideFolderName || driveConnection?.selectedFolderName || '';
+
+      const folderQuery = folderId
+        ? `?folderId=${encodeURIComponent(folderId)}&folderName=${encodeURIComponent(folderName)}`
+        : '';
+
+      const res = await fetch(`/api/drive/scan${folderQuery}`, {
         headers: {
-          'x-user-uid': user.uid
-        }
+          Authorization: `Bearer ${token}`,
+          'x-user-uid': user.uid,
+        },
       });
       const data = await res.json();
       if (res.ok && data.success) {
         setDriveFiles(data.files || []);
         loadStats();
-      } else {
+      } else if (!data?.folderNotSelected) {
         toast({
           variant: 'destructive',
           title: 'Folder Scan Failed',
@@ -316,10 +455,14 @@ export default function IntegrationsPage() {
     if (!user) return;
     setIsLoadingFolders(true);
     try {
+      const token = await getClientDriveToken(driveConnection, user, firestore);
+      if (!token) return;
+
       const res = await fetch('/api/drive/folders', {
         headers: {
-          'x-user-uid': user.uid
-        }
+          Authorization: `Bearer ${token}`,
+          'x-user-uid': user.uid,
+        },
       });
       const data = await res.json();
       if (res.ok) {
@@ -338,25 +481,42 @@ export default function IntegrationsPage() {
     if (!folderId) setIsFolderCreating(true);
 
     try {
+      const token = await getClientDriveToken(driveConnection, user, firestore);
+      if (!token) throw new Error('Could not obtain valid Google Drive token');
+
       const res = await fetch('/api/drive/folders', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-uid': user.uid
+          Authorization: `Bearer ${token}`,
+          'x-user-uid': user.uid,
         },
-        body: JSON.stringify({ folderId, folderName })
+        body: JSON.stringify({ folderId, folderName }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        if (firestore) {
+          const connectionRef = doc(firestore, 'users', user.uid, 'integrations', 'google-drive');
+          await updateDoc(connectionRef, {
+            selectedFolderId: data.folderId,
+            selectedFolderName: data.folderName,
+            updatedAt: new Date().toISOString(),
+          });
+        }
         setShowFolderModal(false);
         toast({
           title: folderId ? 'Folder Synced' : 'AnalyzeUp Sync Folder Created! 📁',
           description: `Ingestion scoped to directory "${data.folderName}".`,
         });
-        scanDriveFolder();
+        scanDriveFolder(data.folderId, data.folderName);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      toast({
+        variant: 'destructive',
+        title: 'Folder Selection Failed',
+        description: e?.message || 'Could not configure folder.',
+      });
     } finally {
       setIsFolderCreating(false);
     }
@@ -364,18 +524,22 @@ export default function IntegrationsPage() {
 
   // 8. Silent Sync or Manual Mapping Ingestion Flow
   const syncFile = async (file: any) => {
-    if (!user || !firestore) return;
+    if (!user) return;
     setIsSyncingFileId(file.id);
     setSyncState('syncing');
 
     try {
+      const token = await getClientDriveToken(driveConnection, user, firestore);
+      if (!token) throw new Error('Could not obtain valid Google Drive token');
+
       const res = await fetch('/api/drive/sync', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-uid': user.uid
+          Authorization: `Bearer ${token}`,
+          'x-user-uid': user.uid,
         },
-        body: JSON.stringify({ fileId: file.id, fileName: file.name })
+        body: JSON.stringify({ fileId: file.id, fileName: file.name }),
       });
 
       const data = await res.json();
@@ -383,7 +547,7 @@ export default function IntegrationsPage() {
         throw new Error(data.error || 'Failed to download file content.');
       }
 
-      // Check if there is an existing mapping profile signature in Firestore
+      // Check if there is an existing mapping profile signature in DataContext
       const results = Papa.parse(data.csvContent, { header: true, skipEmptyLines: true });
       const rawRows = results.data as Record<string, any>[];
       if (rawRows.length === 0) {
@@ -392,11 +556,10 @@ export default function IntegrationsPage() {
 
       const headers = Object.keys(rawRows[0]);
       
-      // Load saved mapping profiles from Firestore
-      const profilesSnap = await getDocs(collection(firestore, 'users', user.uid, 'mapping_profiles'));
-      const profiles = profilesSnap.docs.map(d => d.data());
+      // Load saved mapping profiles from DataContext
+      const profiles = await getMappingProfiles();
       const currentSignature = headers.slice().sort().join('|').toLowerCase();
-      const matchedProfile = profiles.find(p => p.headersSignature === currentSignature);
+      const matchedProfile = profiles.find((p: any) => p.headersSignature === currentSignature);
 
       if (matchedProfile) {
         // Auto Sync: Run direct ingestion silently on the client side
@@ -424,7 +587,7 @@ export default function IntegrationsPage() {
 
   // 9. Client-side silent normalization & ingestion
   const runSilentIngestion = async (fileId: string, fileName: string, csvContent: string, profile: any) => {
-    if (!user || !firestore) return;
+    if (!user) return;
     try {
       const results = Papa.parse(csvContent, { header: true, skipEmptyLines: true });
       const rawRows = results.data as Record<string, any>[];
@@ -454,13 +617,30 @@ export default function IntegrationsPage() {
           const qty = parseInt((obj.quantity || obj.stock || '1').replace(/[^0-9]/g, ''), 10) || 1;
           const orderNo = obj.orderNumber || `INV-${1000 + idx}`;
           const customer = obj.customerName || 'Retail Customer';
+          const city = obj.city || '';
+          const status = obj.status || 'Completed';
+          const remarks = obj.remarks || '';
+          const paymentMode = obj.paymentMode || 'UPI';
           const date = obj.orderDate || new Date().toISOString().split('T')[0];
 
           if (!name) obj.errors.push('Missing product name');
           if (price <= 0) obj.errors.push('Invalid price');
           if (qty <= 0) obj.errors.push('Invalid quantity');
 
-          obj.parsed = { name, price, costPrice, qty, orderNo, customer, date, sku: obj.sku || `SKU-${idx + 1}` };
+          obj.parsed = {
+            name,
+            price,
+            costPrice,
+            qty,
+            orderNo,
+            customer,
+            city,
+            status,
+            remarks,
+            paymentMode,
+            date,
+            sku: obj.sku || `SKU-${idx + 1}`,
+          };
         } else if (fileType === 'INVENTORY_MASTER' || fileType === 'WAREHOUSE_STOCK') {
           const name = obj.name || obj.productName || '';
           const price = parseFloat((obj.price || obj.sellingPrice || '0').replace(/[^0-9.]/g, '')) || 0;
@@ -541,7 +721,7 @@ export default function IntegrationsPage() {
 
         await bulkAddProducts(productsToImport, true); // overwriteStock = true
       } else if (fileType === 'SALES_REPORT') {
-        const transactionsToImport = validRows.map((r, idx) => ({
+        const transactionsToImport = validRows.map((r) => ({
           type: 'Sale' as const,
           productId: `prod-${r.parsed.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
           productName: r.parsed.name,
@@ -551,40 +731,36 @@ export default function IntegrationsPage() {
           costPerUnit: r.parsed.costPrice && r.parsed.costPrice > 0 ? r.parsed.costPrice : Math.round(r.parsed.price * 0.6),
           totalCost: (r.parsed.costPrice && r.parsed.costPrice > 0 ? r.parsed.costPrice : Math.round(r.parsed.price * 0.6)) * r.parsed.qty,
           customerName: r.parsed.customer,
+          customerCity: r.parsed.city || '',
           transactionDate: r.parsed.date,
-          status: 'Completed',
-          paymentMethod: 'UPI',
+          status: r.parsed.status || 'Completed',
+          paymentMethod: r.parsed.paymentMode || 'UPI',
+          notes: r.parsed.remarks || '',
         }));
 
         await bulkAddTransactions(transactionsToImport);
       }
 
-      // Track Google Drive file synced version in Firestore
-      const fileRef = doc(firestore, 'users', user.uid, 'google_drive_files', fileId);
-      await setDoc(fileRef, {
-        id: fileId,
-        fileName,
-        status: 'Synced',
-        lastProcessedAt: new Date().toISOString(),
-        validRows: validRows.length,
-        size: csvContent.length,
-        modifiedTime: new Date().toISOString(),
-      }, { merge: true });
-
-      // Save to Sync History log
-      await addDoc(collection(firestore, 'users', user.uid, 'sync_history'), {
-        syncedAt: new Date().toISOString(),
-        filesCount: 1,
-        rowsCount: validRows.length,
-        status: 'Completed',
-        files: [fileName],
-      });
-
-      // Update Drive lastSyncAt
-      const connRef = doc(firestore, 'users', user.uid, 'integrations', 'google-drive');
-      await updateDoc(connRef, {
-        lastSyncAt: new Date().toISOString(),
-      });
+      // Track Google Drive file and sync history via DataContext
+      await recordSyncSuccess(
+        fileId,
+        {
+          id: fileId,
+          fileName,
+          status: 'Synced',
+          lastProcessedAt: new Date().toISOString(),
+          validRows: validRows.length,
+          size: csvContent.length,
+          modifiedTime: new Date().toISOString(),
+        },
+        {
+          syncedAt: new Date().toISOString(),
+          filesCount: 1,
+          rowsCount: validRows.length,
+          status: 'Completed',
+          files: [fileName],
+        }
+      );
 
       toast({
         title: 'File Synced Successfully ✨',
@@ -604,49 +780,42 @@ export default function IntegrationsPage() {
 
   // 10. Open Mapping Dialog callback to register the mapping profile in Firestore
   const handleImportComplete = async (summary: any) => {
-    if (!user || !firestore || !presetFile) return;
+    if (!user || !presetFile) return;
 
     try {
       const fileId = presetFile.driveFileId || `custom-${Date.now()}`;
       
-      // Save Mapping Profile in Firestore so that subsequent syncs run automatically
+      // Save Mapping Profile via DataContext so that subsequent syncs run automatically
       const currentSignature = rawHeadersSignature(presetFile.content);
-      const profileRef = doc(firestore, 'users', user.uid, 'mapping_profiles', `profile-${fileId}`);
-      await setDoc(profileRef, {
+      await saveMappingProfile(fileId, {
         id: `profile-${fileId}`,
         profileName: `Auto Map for ${presetFile.name}`,
         fileType: summary.fileType,
         headersSignature: currentSignature,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
-      }, { merge: true });
-
-      // Track Drive file synced version in Firestore
-      const fileRef = doc(firestore, 'users', user.uid, 'google_drive_files', fileId);
-      await setDoc(fileRef, {
-        id: fileId,
-        fileName: presetFile.name,
-        status: 'Synced',
-        lastProcessedAt: new Date().toISOString(),
-        validRows: summary.importedCount,
-        size: presetFile.content.length,
-        modifiedTime: new Date().toISOString(),
-      }, { merge: true });
-
-      // Add to Sync History log
-      await addDoc(collection(firestore, 'users', user.uid, 'sync_history'), {
-        syncedAt: new Date().toISOString(),
-        filesCount: 1,
-        rowsCount: summary.importedCount,
-        status: 'Completed',
-        files: [presetFile.name],
       });
 
-      // Update Drive lastSyncAt
-      const connRef = doc(firestore, 'users', user.uid, 'integrations', 'google-drive');
-      await updateDoc(connRef, {
-        lastSyncAt: new Date().toISOString(),
-      });
+      // Track Drive file and sync history via DataContext
+      await recordSyncSuccess(
+        fileId,
+        {
+          id: fileId,
+          fileName: presetFile.name,
+          status: 'Synced',
+          lastProcessedAt: new Date().toISOString(),
+          validRows: summary.importedCount,
+          size: presetFile.content.length,
+          modifiedTime: new Date().toISOString(),
+        },
+        {
+          syncedAt: new Date().toISOString(),
+          filesCount: 1,
+          rowsCount: summary.importedCount,
+          status: 'Completed',
+          files: [presetFile.name],
+        }
+      );
 
       setPresetFile(null);
       scanDriveFolder();
@@ -675,6 +844,30 @@ export default function IntegrationsPage() {
   };
 
   const isShopifyConnected = businessProfile?.shopifyStatus === 'Connected';
+
+  // Google Drive folder categorization and search filtering
+  const myDriveFolders = driveFolders.filter(f => !f.shared || f.owners?.[0]?.me);
+  const sharedFolders = driveFolders.filter(f => f.shared || (f.owners && f.owners.length > 0 && !f.owners[0]?.me));
+  const starredFolders = driveFolders.filter(f => Boolean(f.starred));
+
+  const filteredDriveFolders = driveFolders
+    .filter(folder => {
+      if (folderSection === 'mydrive' && (folder.shared && !folder.owners?.[0]?.me)) return false;
+      if (folderSection === 'shared' && (!folder.shared && (!folder.owners || folder.owners[0]?.me))) return false;
+      if (folderSection === 'starred' && !folder.starred) return false;
+
+      if (!folderSearchTerm) return true;
+      const term = folderSearchTerm.toLowerCase();
+      const nameMatch = (folder.name || '').toLowerCase().includes(term);
+      const ownerMatch = (folder.owners?.[0]?.displayName || folder.owners?.[0]?.emailAddress || '').toLowerCase().includes(term);
+      return nameMatch || ownerMatch;
+    })
+    .sort((a, b) => {
+      if (folderSection === 'recent') {
+        return new Date(b.modifiedTime || 0).getTime() - new Date(a.modifiedTime || 0).getTime();
+      }
+      return (a.name || '').localeCompare(b.name || '');
+    });
 
   return (
     <div className="space-y-6 pb-12">
@@ -781,31 +974,57 @@ export default function IntegrationsPage() {
           {/* Real Google Drive Card */}
           <Card className="ios-glass border-blue-500/30 hover:border-blue-500/60 transition-all rounded-2xl overflow-hidden relative group flex flex-col h-full">
             <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="text-3xl p-2 rounded-2xl bg-blue-500/10 border border-blue-500/20">
+              <div className="flex items-start sm:items-center justify-between gap-2.5">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="text-3xl p-2 rounded-2xl bg-blue-500/10 border border-blue-500/20 shrink-0">
                     📁
                   </div>
-                  <div>
-                    <CardTitle className="text-base font-bold flex items-center gap-2">
-                      Google Drive
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-base font-bold whitespace-nowrap">
+                        Google Drive
+                      </CardTitle>
                       {isLoadingConnection ? (
-                        <Badge variant="outline" className="text-zinc-500 text-[10px] gap-1 py-0 px-2">
+                        <Badge variant="outline" className="text-zinc-500 text-[10px] gap-1 py-0 px-2 shrink-0">
                           <Loader2 className="w-3 h-3 animate-spin" /> Loading
                         </Badge>
                       ) : driveConnection ? (
-                        <Badge className="bg-blue-500/20 text-blue-500 border-blue-500/30 text-[10px] gap-1 py-0 px-2 font-bold">
-                          <Check className="w-3.5 h-3.5" /> Connected
-                        </Badge>
+                        <span className="relative flex h-2.5 w-2.5 shrink-0 ml-0.5" title="Connected & Active">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                        </span>
                       ) : (
-                        <Badge variant="outline" className="text-blue-500 border-blue-500/30 text-[10px]">
+                        <Badge variant="outline" className="text-blue-500 border-blue-500/30 text-[10px] shrink-0">
                           Available
                         </Badge>
                       )}
-                    </CardTitle>
-                    <CardDescription className="text-xs">Cloud Folder & Sheet Sync</CardDescription>
+                    </div>
+                    <CardDescription className="text-xs truncate mt-0.5">
+                      Cloud Folder & Sheet Sync
+                    </CardDescription>
                   </div>
                 </div>
+
+                {/* Top Right Corner Google Account Pill */}
+                {driveConnection && (
+                  <div className="flex items-center gap-1.5 bg-zinc-900/90 border border-blue-500/20 rounded-xl px-2.5 py-1 text-xs shadow-inner shrink-0">
+                    <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 text-white font-bold flex items-center justify-center text-[10px] shrink-0 shadow-sm">
+                      {driveConnection.googleEmail ? driveConnection.googleEmail.charAt(0).toUpperCase() : 'G'}
+                    </div>
+                    <span className="text-xs font-semibold text-zinc-100 max-w-[100px] sm:max-w-[160px] truncate" title={driveConnection.googleEmail}>
+                      {driveConnection.googleEmail || 'Google Drive'}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={switchGoogleAccount}
+                      className="h-6 w-6 p-0 text-blue-400 hover:text-blue-300 hover:bg-blue-500/15 rounded-lg ml-0.5 shrink-0"
+                      title="Switch Google Account"
+                    >
+                      <ArrowRightLeft className="w-3 h-3" />
+                    </Button>
+                  </div>
+                )}
               </div>
             </CardHeader>
             <CardContent className="space-y-4 flex-1 flex flex-col justify-between">
@@ -835,25 +1054,26 @@ export default function IntegrationsPage() {
                     <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                     <div>
                       <p className="font-semibold text-amber-500">Folder Required</p>
-                      <p className="text-muted-foreground mt-0.5">Please select or create a sync folder to scan files.</p>
+                      <p className="text-muted-foreground mt-0.5">Please select a sync folder to scan spreadsheets.</p>
                     </div>
                   </div>
-                  <div className="flex gap-2">
+
+                  <div className="flex items-center gap-2 pt-1">
                     <Button
-                      variant="outline"
+                      variant="default"
                       onClick={() => {
                         setShowFolderModal(true);
                         fetchFolders();
                       }}
-                      className="flex-1 rounded-xl text-xs font-semibold gap-1.5"
+                      className="flex-1 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold gap-1.5"
                     >
                       <FolderOpen className="w-3.5 h-3.5" />
                       Select Sync Folder
                     </Button>
                     <Button
-                      onClick={disconnectGoogleDrive}
+                      onClick={handleDisconnectGoogleDrive}
                       variant="ghost"
-                      className="text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 rounded-xl text-xs px-3"
+                      className="text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 rounded-xl text-xs px-3 shrink-0"
                     >
                       Disconnect
                     </Button>
@@ -861,52 +1081,41 @@ export default function IntegrationsPage() {
                 </div>
               ) : (
                 // State 3: Connected & Active Folder Selected
-                <div className="space-y-4 flex-1 flex flex-col justify-between">
-                  <div className="p-3.5 rounded-2xl bg-blue-500/15 border border-blue-500/20 text-xs space-y-2">
-                    <div className="flex items-center justify-between text-blue-400 font-bold">
-                      <span className="flex items-center gap-1.5">
-                        <Folder className="w-4 h-4 text-blue-400" />
-                        Folder: {driveConnection.selectedFolderName}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20">
-                        Auto-Sync Off
-                      </span>
-                    </div>
+                <div className="space-y-3.5 flex-1 flex flex-col justify-between">
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      Connected to folder <span className="font-semibold text-blue-400">"{driveConnection.selectedFolderName || 'AnalyzeUp'}"</span>
+                    </p>
 
-                    <div className="grid grid-cols-2 gap-2 text-[10px] border-t border-blue-500/20 pt-2 text-zinc-300">
-                      <div>
-                        <span className="text-zinc-500">Last Sync: </span>
-                        <span className="font-semibold">
-                          {driveConnection.lastSyncAt
-                            ? new Date(driveConnection.lastSyncAt).toLocaleString('en-IN', {
-                                month: 'short',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })
-                            : 'Never'}
+                    {/* Interactive Auto-Sync Schedule Badge */}
+                    <div className="flex items-center justify-between gap-2 flex-wrap pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setShowAutoSyncModal(true)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/25 text-xs text-blue-400 font-medium transition-all group cursor-pointer"
+                        title="Click to customize auto-sync schedule"
+                      >
+                        <span className={cn(
+                          "w-2 h-2 rounded-full",
+                          (driveConnection.autoSyncEnabled !== false) ? "bg-emerald-400 animate-pulse" : "bg-zinc-500"
+                        )} />
+                        <span>
+                          Auto-Sync: <strong className="text-blue-300 font-semibold">{formatScheduleSummary(driveConnection)}</strong>
                         </span>
-                      </div>
-                      <div>
-                        <span className="text-zinc-500">Files Detected: </span>
-                        <span className="font-semibold">{syncStats.filesCount}</span>
-                      </div>
-                      <div>
-                        <span className="text-zinc-500">Rows Synced: </span>
-                        <span className="font-semibold text-emerald-400">{syncStats.rowsCount}</span>
-                      </div>
-                      <div>
-                        <span className="text-zinc-500">Duplicates: </span>
-                        <span className="font-semibold text-zinc-400">{syncStats.duplicatesCount} skipped</span>
-                      </div>
+                        <Pencil className="w-3 h-3 ml-0.5 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      </button>
+
+                      <span className="text-[11px] text-zinc-400 font-mono">
+                        {getNextSyncTimeDisplay(driveConnection)}
+                      </span>
                     </div>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="flex items-center gap-2 pt-2">
                     <Button
-                      onClick={scanDriveFolder}
+                      onClick={() => scanDriveFolder()}
                       disabled={isLoadingScan}
-                      className="flex-1 rounded-xl text-xs gap-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold"
+                      className="flex-1 rounded-xl text-xs gap-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-md h-9"
                     >
                       {isLoadingScan ? (
                         <>
@@ -918,36 +1127,23 @@ export default function IntegrationsPage() {
                         </>
                       )}
                     </Button>
-                    <div className="flex gap-2 shrink-0">
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setShowFolderModal(true);
-                          fetchFolders();
-                        }}
-                        className="rounded-xl text-xs font-semibold"
-                      >
-                        Change Folder
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setShowHistoryModal(true);
-                          loadSyncHistory();
-                        }}
-                        className="rounded-xl text-xs p-2 text-zinc-400 hover:text-white"
-                        title="Sync History log"
-                      >
-                        <HistoryIcon className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        onClick={disconnectGoogleDrive}
-                        variant="ghost"
-                        className="text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 rounded-xl text-xs px-2.5"
-                      >
-                        Disconnect
-                      </Button>
-                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setShowFolderModal(true);
+                        fetchFolders();
+                      }}
+                      className="rounded-xl text-xs font-semibold h-9 px-3 shrink-0"
+                    >
+                      Change Folder
+                    </Button>
+                    <Button
+                      onClick={handleDisconnectGoogleDrive}
+                      variant="ghost"
+                      className="text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 rounded-xl text-xs h-9 px-3 shrink-0"
+                    >
+                      Disconnect
+                    </Button>
                   </div>
                 </div>
               )}
@@ -969,15 +1165,30 @@ export default function IntegrationsPage() {
                 Manage and sync spreadsheets detected inside your connected folder.
               </p>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={scanDriveFolder}
-              disabled={isLoadingScan}
-              className="rounded-xl text-xs gap-1.5 h-8 font-semibold border-blue-500/20 text-blue-400 hover:bg-blue-500/10"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingScan ? 'animate-spin' : ''}`} /> Scan Folder
-            </Button>
+            <div className="flex items-center gap-2">
+              {driveConnection.googleEmail && (
+                <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-blue-500/10 border border-blue-500/20 text-[11px] text-zinc-300">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span className="font-medium">{driveConnection.googleEmail}</span>
+                  <button
+                    onClick={switchGoogleAccount}
+                    className="text-blue-400 hover:text-blue-300 underline ml-1 font-semibold cursor-pointer"
+                    title="Switch Google account"
+                  >
+                    Switch
+                  </button>
+                </div>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => scanDriveFolder()}
+                disabled={isLoadingScan}
+                className="rounded-xl text-xs gap-1.5 h-8 font-semibold border-blue-500/20 text-blue-400 hover:bg-blue-500/10"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingScan ? 'animate-spin' : ''}`} /> Scan Folder
+              </Button>
+            </div>
           </div>
 
           {isLoadingScan && driveFiles.length === 0 ? (
@@ -1136,22 +1347,23 @@ export default function IntegrationsPage() {
 
       {/* Dialog 1: Folder Selector Modal */}
       <Dialog open={showFolderModal} onOpenChange={setShowFolderModal}>
-        <DialogContent className="sm:max-w-md bg-zinc-950/90 border border-blue-500/20 rounded-3xl ios-glass text-white shadow-2xl p-6">
-          <DialogHeader>
-            <DialogTitle className="text-base font-bold flex items-center gap-2">
+        <DialogContent className="sm:max-w-lg bg-zinc-950/95 border border-blue-500/20 rounded-3xl ios-glass text-white shadow-2xl p-6 max-h-[85vh] flex flex-col">
+          <DialogHeader className="pb-2 border-b border-zinc-800/60">
+            <DialogTitle className="text-base font-bold flex items-center gap-2 text-zinc-100">
               <Folder className="w-5 h-5 text-blue-400" />
               Configure Sync Folder
             </DialogTitle>
             <DialogDescription className="text-xs text-zinc-400">
-              Select an existing folder from Google Drive or auto-create the recommended sync directory.
+              Select or search the Google Drive folder containing your business spreadsheets.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3 py-3 text-xs">
+          <div className="space-y-3.5 py-3 text-xs flex-1 overflow-hidden flex flex-col">
+            {/* Auto Create Button */}
             <Button
               onClick={() => selectFolder()}
               disabled={isFolderCreating}
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold gap-1.5 py-4"
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold gap-2 py-3.5 shrink-0 shadow-md"
             >
               {isFolderCreating ? (
                 <>
@@ -1159,32 +1371,211 @@ export default function IntegrationsPage() {
                 </>
               ) : (
                 <>
-                  <FolderOpen className="w-4 h-4" /> Create "AnalyzeUp_Data_Sync" Folder
+                  <FolderOpen className="w-4 h-4" /> Create "AnalyzeUp_Data_Sync" Recommended Folder
                 </>
               )}
             </Button>
 
-            <div className="border-t border-zinc-800/40 my-3 pt-3">
-              <p className="font-semibold text-zinc-400 mb-2">Or select from existing Drive folders:</p>
+            {/* Divider with label */}
+            <div className="flex items-center gap-2 pt-1">
+              <div className="h-px bg-zinc-800/80 flex-1" />
+              <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
+                Or Browse Existing Folders
+              </span>
+              <div className="h-px bg-zinc-800/80 flex-1" />
+            </div>
+
+            {/* Search Input Box */}
+            <div className="relative shrink-0">
+              <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-2.5" />
+              <Input
+                placeholder="Search folders by name or owner..."
+                value={folderSearchTerm}
+                onChange={(e) => setFolderSearchTerm(e.target.value)}
+                className="pl-9 pr-8 text-xs bg-zinc-900/90 border-zinc-800 rounded-xl h-9 text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-blue-500"
+              />
+              {folderSearchTerm && (
+                <button
+                  onClick={() => setFolderSearchTerm('')}
+                  className="absolute right-2.5 top-2.5 text-zinc-400 hover:text-zinc-200"
+                  title="Clear search"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Google Drive Location Filter Tabs */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 shrink-0 scrollbar-none">
+              <Button
+                variant={folderSection === 'all' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setFolderSection('all')}
+                className={`h-7 px-2.5 text-[11px] rounded-lg gap-1.5 font-medium shrink-0 ${
+                  folderSection === 'all'
+                    ? 'bg-blue-600 text-white font-bold'
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                }`}
+              >
+                <span>All</span>
+                <span className="text-[10px] opacity-75">({driveFolders.length})</span>
+              </Button>
+              <Button
+                variant={folderSection === 'mydrive' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setFolderSection('mydrive')}
+                className={`h-7 px-2.5 text-[11px] rounded-lg gap-1.5 font-medium shrink-0 ${
+                  folderSection === 'mydrive'
+                    ? 'bg-blue-600 text-white font-bold'
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                }`}
+              >
+                <HardDrive className="w-3 h-3" />
+                <span>My Drive</span>
+                <span className="text-[10px] opacity-75">({myDriveFolders.length})</span>
+              </Button>
+              <Button
+                variant={folderSection === 'shared' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setFolderSection('shared')}
+                className={`h-7 px-2.5 text-[11px] rounded-lg gap-1.5 font-medium shrink-0 ${
+                  folderSection === 'shared'
+                    ? 'bg-blue-600 text-white font-bold'
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                }`}
+              >
+                <Users className="w-3 h-3" />
+                <span>Shared with me</span>
+                <span className="text-[10px] opacity-75">({sharedFolders.length})</span>
+              </Button>
+              <Button
+                variant={folderSection === 'starred' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setFolderSection('starred')}
+                className={`h-7 px-2.5 text-[11px] rounded-lg gap-1.5 font-medium shrink-0 ${
+                  folderSection === 'starred'
+                    ? 'bg-blue-600 text-white font-bold'
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                }`}
+              >
+                <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
+                <span>Starred</span>
+                <span className="text-[10px] opacity-75">({starredFolders.length})</span>
+              </Button>
+              <Button
+                variant={folderSection === 'recent' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setFolderSection('recent')}
+                className={`h-7 px-2.5 text-[11px] rounded-lg gap-1.5 font-medium shrink-0 ${
+                  folderSection === 'recent'
+                    ? 'bg-blue-600 text-white font-bold'
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                }`}
+              >
+                <Clock className="w-3 h-3" />
+                <span>Recent</span>
+              </Button>
+            </div>
+
+            {/* Folder List with distinctions */}
+            <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 min-h-[160px] max-h-[300px]">
               {isLoadingFolders ? (
-                <div className="py-6 flex justify-center">
+                <div className="py-12 flex flex-col items-center justify-center space-y-2">
                   <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+                  <p className="text-xs text-zinc-400">Loading your Drive folders...</p>
                 </div>
-              ) : driveFolders.length === 0 ? (
-                <p className="text-[11px] text-zinc-500 italic text-center py-4">No folders found in Google Drive root.</p>
+              ) : filteredDriveFolders.length === 0 ? (
+                <div className="py-12 text-center space-y-2 border border-dashed border-zinc-800 rounded-2xl">
+                  <Folder className="w-8 h-8 text-zinc-600 mx-auto" />
+                  <p className="text-xs font-semibold text-zinc-400">
+                    {folderSearchTerm ? `No folders match "${folderSearchTerm}"` : 'No folders found in this section.'}
+                  </p>
+                  {folderSearchTerm && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setFolderSearchTerm('')}
+                      className="text-blue-400 text-xs h-7"
+                    >
+                      Clear search
+                    </Button>
+                  )}
+                </div>
               ) : (
-                <div className="max-h-48 overflow-y-auto space-y-1.5 scrollbar-none pr-1">
-                  {driveFolders.map(folder => (
+                filteredDriveFolders.map(folder => {
+                  const isSelected = driveConnection?.selectedFolderId === folder.id;
+                  const isShared = Boolean(folder.shared) || (folder.owners && folder.owners.length > 0 && !folder.owners[0]?.me);
+                  const ownerName = folder.owners?.[0]?.displayName || folder.owners?.[0]?.emailAddress || 'Shared User';
+                  const dateStr = folder.modifiedTime
+                    ? new Date(folder.modifiedTime).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })
+                    : null;
+
+                  return (
                     <div
                       key={folder.id}
                       onClick={() => selectFolder(folder.id, folder.name)}
-                      className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-blue-500/40 hover:bg-blue-500/5 cursor-pointer transition-all flex items-center justify-between text-zinc-200"
+                      className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 group ${
+                        isSelected
+                          ? 'bg-blue-500/15 border-blue-500/60 ring-1 ring-blue-500/40'
+                          : 'bg-zinc-900/80 border-zinc-800/80 hover:border-blue-500/40 hover:bg-zinc-800/60'
+                      }`}
                     >
-                      <span className="font-semibold truncate pr-2">{folder.name}</span>
-                      <ArrowRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div
+                          className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                            isShared
+                              ? 'bg-purple-500/15 text-purple-400 border border-purple-500/20'
+                              : 'bg-blue-500/15 text-blue-400 border border-blue-500/20'
+                          }`}
+                        >
+                          {isShared ? <Users className="w-4 h-4" /> : <Folder className="w-4 h-4" />}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-zinc-100 truncate text-xs group-hover:text-blue-300 transition-colors">
+                              {folder.name}
+                            </span>
+                            {folder.starred && (
+                              <Star className="w-3 h-3 text-amber-400 fill-amber-400 shrink-0" />
+                            )}
+                            {isSelected && (
+                              <Badge className="bg-blue-500 text-white text-[9px] px-1.5 py-0 h-4 font-bold">
+                                Current
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-[10px] text-zinc-400 mt-0.5">
+                            <span
+                              className={`inline-flex items-center gap-1 font-medium ${
+                                isShared ? 'text-purple-400' : 'text-zinc-400'
+                              }`}
+                            >
+                              {isShared ? <Users className="w-2.5 h-2.5" /> : <HardDrive className="w-2.5 h-2.5" />}
+                              {isShared ? `Shared by ${ownerName}` : 'My Drive'}
+                            </span>
+                            {dateStr && (
+                              <>
+                                <span className="text-zinc-600">•</span>
+                                <span className="text-zinc-500">{dateStr}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {isSelected ? (
+                          <div className="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center shadow-md">
+                            <Check className="w-3.5 h-3.5" />
+                          </div>
+                        ) : (
+                          <div className="w-6 h-6 rounded-full bg-zinc-800 text-zinc-400 group-hover:text-blue-400 group-hover:bg-blue-500/20 flex items-center justify-center transition-all">
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  ))}
-                </div>
+                  );
+                })
               )}
             </div>
           </div>
@@ -1241,9 +1632,166 @@ export default function IntegrationsPage() {
 
       {/* Dialog 3: Silent Sync loading screen */}
       <Dialog open={syncState === 'syncing'} onOpenChange={() => {}}>
-        <DialogContent className="max-w-xs bg-zinc-950/90 border border-blue-500/20 rounded-3xl ios-glass text-white shadow-2xl p-6 flex flex-col items-center justify-center space-y-4">
-          <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
-          <p className="text-sm font-semibold text-zinc-300 text-center">Processing file data & updating Firestore...</p>
+        <DialogContent className="max-w-xs bg-zinc-950/95 border border-blue-500/20 rounded-3xl ios-glass text-white shadow-2xl p-6 flex flex-col items-center justify-center space-y-3">
+          <DialogHeader className="items-center text-center space-y-2">
+            <DialogTitle className="text-sm font-bold flex items-center gap-2 text-zinc-100">
+              <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+              Syncing File Data
+            </DialogTitle>
+            <DialogDescription className="text-xs text-zinc-400 text-center">
+              Processing spreadsheet records and updating business intelligence...
+            </DialogDescription>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog 4: Auto-Sync Schedule Configuration Modal */}
+      <Dialog open={showAutoSyncModal} onOpenChange={setShowAutoSyncModal}>
+        <DialogContent className="sm:max-w-md bg-zinc-950/95 border border-blue-500/20 rounded-3xl ios-glass text-white shadow-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold flex items-center gap-2">
+              <Clock className="w-5 h-5 text-blue-400" />
+              Auto-Sync Schedule
+            </DialogTitle>
+            <DialogDescription className="text-xs text-zinc-400">
+              Configure when AnalyzeUp should automatically scan and sync files from your connected Google Drive folder.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Active Toggle Switch */}
+            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-zinc-900/90 border border-zinc-800 shadow-inner">
+              <div className="space-y-0.5">
+                <Label htmlFor="auto-sync-toggle" className="text-xs font-bold text-zinc-100 cursor-pointer">
+                  Enable Automatic Sync
+                </Label>
+                <p className="text-[11px] text-zinc-400">
+                  Automatically import new spreadsheets on a recurring schedule
+                </p>
+              </div>
+              <Switch
+                id="auto-sync-toggle"
+                checked={autoSyncEnabled}
+                onCheckedChange={setAutoSyncEnabled}
+              />
+            </div>
+
+            {autoSyncEnabled && (
+              <div className="space-y-4 animate-in fade-in-50 duration-200">
+                {/* Frequency Selector */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-zinc-300">Sync Frequency</Label>
+                  <Select
+                    value={autoSyncFrequency}
+                    onValueChange={(val: any) => setAutoSyncFrequency(val)}
+                  >
+                    <SelectTrigger className="w-full bg-zinc-900 border-zinc-800 rounded-xl text-xs text-white">
+                      <SelectValue placeholder="Select Frequency" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-zinc-950 border-zinc-800 text-white rounded-xl">
+                      <SelectItem value="1_hour">Every 1 Hour</SelectItem>
+                      <SelectItem value="6_hours">Every 6 Hours</SelectItem>
+                      <SelectItem value="12_hours">Every 12 Hours</SelectItem>
+                      <SelectItem value="daily">Daily (Once per day)</SelectItem>
+                      <SelectItem value="weekly">Weekly (Once per week)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Day of Week Selector (Weekly only) */}
+                {autoSyncFrequency === 'weekly' && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-zinc-300">Sync Day of Week</Label>
+                    <Select value={autoSyncDay} onValueChange={setAutoSyncDay}>
+                      <SelectTrigger className="w-full bg-zinc-900 border-zinc-800 rounded-xl text-xs text-white capitalize">
+                        <SelectValue placeholder="Select Day" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-zinc-950 border-zinc-800 text-white rounded-xl">
+                        <SelectItem value="monday">Every Monday</SelectItem>
+                        <SelectItem value="tuesday">Every Tuesday</SelectItem>
+                        <SelectItem value="wednesday">Every Wednesday</SelectItem>
+                        <SelectItem value="thursday">Every Thursday</SelectItem>
+                        <SelectItem value="friday">Every Friday</SelectItem>
+                        <SelectItem value="saturday">Every Saturday</SelectItem>
+                        <SelectItem value="sunday">Every Sunday</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {/* Time of Day Picker (Daily & Weekly) */}
+                {(autoSyncFrequency === 'daily' || autoSyncFrequency === 'weekly') && (
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold text-zinc-300">Sync Time (Local)</Label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                      {[
+                        { label: '9:00 AM', value: '09:00' },
+                        { label: '12:00 PM', value: '12:00' },
+                        { label: '6:00 PM', value: '18:00' },
+                        { label: '11:59 PM', value: '23:59' },
+                      ].map(preset => (
+                        <button
+                          key={preset.value}
+                          type="button"
+                          onClick={() => setAutoSyncTime(preset.value)}
+                          className={cn(
+                            "py-2 px-2 rounded-xl text-xs font-medium border text-center transition-all cursor-pointer",
+                            autoSyncTime === preset.value
+                              ? "bg-blue-600 border-blue-500 text-white font-bold shadow-sm"
+                              : "bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800"
+                          )}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2 pt-1">
+                      <span className="text-[11px] text-zinc-400">Or custom time:</span>
+                      <Input
+                        type="time"
+                        value={autoSyncTime}
+                        onChange={(e) => setAutoSyncTime(e.target.value)}
+                        className="h-8 w-32 bg-zinc-900 border-zinc-800 text-xs rounded-xl text-white"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Live Preview Pill */}
+                <div className="p-3 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-xs flex items-center gap-2 text-blue-300">
+                  <Zap className="w-4 h-4 text-blue-400 shrink-0" />
+                  <span>
+                    Schedule: <strong className="text-white">{formatScheduleSummary({ autoSyncEnabled, autoSyncFrequency, autoSyncTime, autoSyncDay })}</strong>
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowAutoSyncModal(false)}
+              className="rounded-xl text-xs"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSaveAutoSyncSchedule}
+              disabled={isSavingSchedule}
+              className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold gap-1.5"
+            >
+              {isSavingSchedule ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving...
+                </>
+              ) : (
+                'Save Schedule'
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

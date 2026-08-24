@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { logBusinessAction } from '@/lib/audit-store';
 import { AuditLogModal } from '@/components/audit-log-modal';
+import { ThreeTierBadge } from '@/components/three-tier-badge';
 import {
   Sparkles,
   ArrowRight,
@@ -238,39 +239,64 @@ export function AIActionCenter() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <Badge
                         className={
                           task.priority === 'High'
-                            ? 'bg-rose-500/15 text-rose-400 border-rose-500/30 font-semibold'
+                            ? 'bg-rose-500/15 text-rose-400 border-rose-500/30 font-semibold text-[10px]'
                             : task.priority === 'Medium'
-                            ? 'bg-amber-500/15 text-amber-400 border-amber-500/30 font-semibold'
-                            : 'bg-muted text-muted-foreground border-border font-semibold'
+                            ? 'bg-amber-500/15 text-amber-400 border-amber-500/30 font-semibold text-[10px]'
+                            : 'bg-muted text-muted-foreground border-border font-semibold text-[10px]'
                         }
                       >
                         {task.priority} Priority
                       </Badge>
+                      <ThreeTierBadge tier="MODEL_3_RECOMMENDATION" size="sm" />
                       <span className="text-xs font-bold text-foreground">{task.title}</span>
                     </div>
-                    <p className="text-xs text-muted-foreground leading-relaxed">{task.problem}</p>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                  <div className="p-2.5 rounded-xl bg-background/80 border border-border/40 space-y-0.5">
-                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold block">Root Cause</span>
-                    <p className="text-[11px] text-foreground">{task.reason}</p>
+                {/* 5-Part Structured Explanation Breakdown */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                  <div className="p-3 rounded-xl bg-background/80 border border-border/40 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">1. Observed Fact</span>
+                      <ThreeTierBadge tier="ACTUAL_DATA" size="sm" />
+                    </div>
+                    <p className="text-[11px] text-foreground leading-relaxed">{task.problem}</p>
                   </div>
-                  <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 space-y-0.5">
-                    <span className="text-[10px] text-emerald-400 uppercase tracking-wider font-semibold block">Estimated Benefit</span>
-                    <p className="text-[11px] text-emerald-300 font-bold">{task.estimatedBenefit}</p>
+
+                  <div className="p-3 rounded-xl bg-background/80 border border-border/40 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">2. Root Cause / Impact</span>
+                      <span className="text-[10px] font-mono text-muted-foreground font-semibold">Operational</span>
+                    </div>
+                    <p className="text-[11px] text-foreground leading-relaxed">{task.reason}</p>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-purple-500/5 border border-purple-500/20 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-purple-400 uppercase tracking-wider font-bold">3. Model 2 Forecast</span>
+                      <ThreeTierBadge tier="MODEL_2_PREDICTION" size="sm" />
+                    </div>
+                    <p className="text-[11px] text-purple-200/90 leading-relaxed">{task.impact}</p>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-emerald-400 uppercase tracking-wider font-bold">4. Estimated Benefit</span>
+                      <span className="text-[10px] text-emerald-400 font-semibold font-mono">Value Added</span>
+                    </div>
+                    <p className="text-[11px] text-emerald-300 font-bold leading-relaxed">{task.estimatedBenefit}</p>
                   </div>
                 </div>
 
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-2 border-t border-border/40 gap-3">
-                  <p className="text-[11px] text-muted-foreground">
-                    <span className="font-semibold text-foreground">Recommendation:</span> {task.recommendation}
-                  </p>
+                  <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
+                    <span className="font-semibold text-foreground">5. Recommended Action:</span>
+                    <span className="text-foreground/90 font-medium">{task.recommendation}</span>
+                  </div>
 
                   <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
                     <Button

@@ -169,6 +169,7 @@ export interface Supplier {
   leadTimeDays?: number;
   paymentTerms?: string;
   performanceScore?: number;
+  rating?: number;
   createdAt: string | FieldValue;
   updatedAt: string | FieldValue;
   userId?: string;

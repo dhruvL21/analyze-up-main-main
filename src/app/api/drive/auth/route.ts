@@ -20,8 +20,11 @@ export async function GET(req: NextRequest) {
 
   const scopes = [
     'https://www.googleapis.com/auth/drive.readonly',
+    'https://www.googleapis.com/auth/drive.file',
     'https://www.googleapis.com/auth/userinfo.email',
   ].join(' ');
+
+  const promptParam = searchParams.get('prompt') || 'select_account consent';
 
   const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
     `client_id=${encodeURIComponent(clientId)}&` +
@@ -29,7 +32,7 @@ export async function GET(req: NextRequest) {
     `response_type=code&` +
     `scope=${encodeURIComponent(scopes)}&` +
     `access_type=offline&` +
-    `prompt=consent&` +
+    `prompt=${encodeURIComponent(promptParam)}&` +
     `state=${encodeURIComponent(userId)}`;
 
   return NextResponse.redirect(authUrl);

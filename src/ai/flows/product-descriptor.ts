@@ -1,11 +1,12 @@
 'use server';
 
 import { openai } from '@/ai/openai';
+import { z } from 'zod';
+
+const ProductNameSchema = z.string().min(1, 'Product name is required to generate a description.');
 
 export async function generateProductDescription(productName: string): Promise<string> {
-  if (!productName || productName.trim().length === 0) {
-    throw new Error('Product name is required to generate a description.');
-  }
+  const validatedName = ProductNameSchema.parse(productName);
 
   const prompt = `
 Generate a professional, creative, and compelling 2-3 sentence product description for a product named "${productName}". 

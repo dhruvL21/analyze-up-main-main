@@ -3,6 +3,12 @@
 import { openai } from '@/ai/openai';
 import { z } from 'zod';
 
+const ReportInputSchema = z.object({
+  chartTitle: z.string(),
+  metric: z.string(),
+  data: z.array(z.record(z.any())).default([]),
+});
+
 const ReportInsightsSchema = z.object({
   summary: z.string().describe('A 2-3 sentence summary of the data performance.'),
   keyObservations: z.array(z.string()).describe('3-5 key observations or trends found in the data.'),
@@ -14,16 +20,17 @@ export type ReportInsights = z.infer<typeof ReportInsightsSchema>;
 export async function generateReportInsights(
   chartTitle: string,
   metric: string,
-  data: any[]
+  data: Record<string, any>[] = []
 ): Promise<ReportInsights> {
-  const dataString = JSON.stringify(data.slice(-12)); // Take last 12 points for context
+  const validated = ReportInputSchema.parse({ chartTitle, metric, data });
+  const dataString = JSON.stringify(validated.data.slice(-12)); // Take last 12 points for context
 
   const prompt = `
 You are a senior business analyst for AnalyzeUp, an advanced inventory and sales management platform.
 Your task is to analyze the following chart data and provide professional insights.
 
-Chart Title: ${chartTitle}
-Metric Analyzed: ${metric}
+Chart Title: ${validated.chartTitle}
+Metric Analyzed: ${validated.metric}
 Data (JSON): ${dataString}
 
 INSTRUCTIONS:

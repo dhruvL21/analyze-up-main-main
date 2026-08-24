@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, ReactNode, useMemo, useCall
 import type { Product, PurchaseOrder, Supplier, Transaction, Category, ProductReturn, CustomAttribute, BusinessProfile, BusinessType, BusinessSize } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { useUser, useFirestore } from '@/firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, writeBatch, setDoc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, writeBatch, setDoc, getDoc, onSnapshot, getDocs } from 'firebase/firestore';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -48,6 +48,15 @@ interface DataContextProps {
   bulkUpdateProducts: (updates: (Partial<Product> & { id: string })[]) => Promise<void>;
   bulkAddTransactions: (transactions: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>[]) => Promise<void>;
   clearAllData: () => Promise<void>;
+  // Google Drive & Integration Helpers
+  subscribeGoogleDriveConnection: (onUpdate: (data: any) => void) => () => void;
+  getGoogleDriveFiles: () => Promise<any[]>;
+  getSyncHistory: () => Promise<any[]>;
+  getMappingProfiles: () => Promise<any[]>;
+  disconnectGoogleDrive: () => Promise<void>;
+  updateGoogleDriveSettings: (settings: Record<string, any>) => Promise<void>;
+  recordSyncSuccess: (fileId: string, fileData: Record<string, any>, historyData: Record<string, any>) => Promise<void>;
+  saveMappingProfile: (fileId: string, profileData: Record<string, any>) => Promise<void>;
   isLoading: boolean;
   activePlan: string;
   isProcessingPayment: string | null;
@@ -982,6 +991,142 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user, clearAllData, productsLoading, isLoading]);
 
+  const subscribeGoogleDriveConnection = useCallback((onUpdate: (data: any) => void) => {
+    if (!user || !firestore) {
+      onUpdate(null);
+      return () => {};
+    }
+    const docRef = doc(firestore, 'users', user.uid, 'integrations', 'google-drive');
+    const unsubscribe = onSnapshot(docRef, (snap) => {
+      if (snap.exists() && snap.data().connectionStatus === 'Connected') {
+        onUpdate(snap.data());
+      } else {
+        onUpdate(null);
+      }
+    }, (error) => {
+      console.error('Error subscribing to Google Drive connection:', error);
+      const contextualError = new FirestorePermissionError({
+        operation: 'get',
+        path: `users/${user.uid}/integrations/google-drive`,
+      });
+      errorEmitter.emit('permission-error', contextualError);
+      onUpdate(null);
+    });
+
+    return unsubscribe;
+  }, [user, firestore]);
+
+  const getGoogleDriveFiles = useCallback(async (): Promise<any[]> => {
+    if (!user || !firestore) return [];
+    try {
+      const filesSnap = await getDocs(collection(firestore, 'users', user.uid, 'google_drive_files'));
+      return filesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch (e) {
+      console.error('Error loading Google Drive files:', e);
+      return [];
+    }
+  }, [user, firestore]);
+
+  const getSyncHistory = useCallback(async (): Promise<any[]> => {
+    if (!user || !firestore) return [];
+    try {
+      const snap = await getDocs(collection(firestore, 'users', user.uid, 'sync_history'));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a: any, b: any) => new Date(b.syncedAt).getTime() - new Date(a.syncedAt).getTime());
+    } catch (e) {
+      console.error('Error loading sync history:', e);
+      return [];
+    }
+  }, [user, firestore]);
+
+  const getMappingProfiles = useCallback(async (): Promise<any[]> => {
+    if (!user || !firestore) return [];
+    try {
+      const snap = await getDocs(collection(firestore, 'users', user.uid, 'mapping_profiles'));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch (e) {
+      console.error('Error loading mapping profiles:', e);
+      return [];
+    }
+  }, [user, firestore]);
+
+  const disconnectGoogleDrive = useCallback(async () => {
+    if (!user || !firestore) return;
+    try {
+      const docRef = doc(firestore, 'users', user.uid, 'integrations', 'google-drive');
+      await deleteDoc(docRef);
+      toast({
+        title: 'Google Drive Disconnected',
+        description: 'Successfully revoked credentials from AnalyzeUp workspace.',
+      });
+    } catch (e) {
+      console.error('Disconnection error:', e);
+      const contextualError = new FirestorePermissionError({
+        operation: 'delete',
+        path: `users/${user.uid}/integrations/google-drive`,
+      });
+      errorEmitter.emit('permission-error', contextualError);
+      toast({
+        variant: 'destructive',
+        title: 'Disconnection Failed',
+        description: 'Failed to delete connection document.',
+      });
+    }
+  }, [user, firestore, toast]);
+
+  const recordSyncSuccess = useCallback(async (fileId: string, fileData: Record<string, any>, historyData: Record<string, any>) => {
+    if (!user || !firestore) return;
+    try {
+      const fileRef = doc(firestore, 'users', user.uid, 'google_drive_files', fileId);
+      await setDoc(fileRef, cleanObject(fileData), { merge: true });
+      await addDoc(collection(firestore, 'users', user.uid, 'sync_history'), cleanObject(historyData));
+      const connRef = doc(firestore, 'users', user.uid, 'integrations', 'google-drive');
+      await updateDoc(connRef, {
+        lastSyncAt: new Date().toISOString(),
+        lastSyncStatus: 'Success',
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error('Error recording sync success:', e);
+      const contextualError = new FirestorePermissionError({
+        operation: 'write',
+        path: `users/${user.uid}/google_drive_files`,
+      });
+      errorEmitter.emit('permission-error', contextualError);
+    }
+  }, [user, firestore]);
+
+  const updateGoogleDriveSettings = useCallback(async (settings: Record<string, any>) => {
+    if (!user || !firestore) return;
+    try {
+      const connRef = doc(firestore, 'users', user.uid, 'integrations', 'google-drive');
+      await setDoc(connRef, {
+        ...cleanObject(settings),
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+      toast({
+        title: 'Auto-Sync Schedule Updated ✨',
+        description: settings.autoSyncEnabled === false ? 'Auto-sync is now paused.' : 'Google Drive will auto-sync on your schedule.',
+      });
+    } catch (e) {
+      console.error('Error updating Google Drive settings:', e);
+      toast({
+        variant: 'destructive',
+        title: 'Update Failed',
+        description: 'Could not save auto-sync schedule.',
+      });
+    }
+  }, [user, firestore, toast]);
+
+  const saveMappingProfile = useCallback(async (fileId: string, profileData: Record<string, any>) => {
+    if (!user || !firestore) return;
+    try {
+      const profileRef = doc(firestore, 'users', user.uid, 'mapping_profiles', `profile-${fileId}`);
+      await setDoc(profileRef, cleanObject(profileData), { merge: true });
+    } catch (e) {
+      console.error('Error saving mapping profile:', e);
+    }
+  }, [user, firestore]);
+
   const value = useMemo(() => ({
     products,
     orders,
@@ -1020,6 +1165,14 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     bulkUpdateProducts,
     bulkAddTransactions,
     clearAllData,
+    subscribeGoogleDriveConnection,
+    getGoogleDriveFiles,
+    getSyncHistory,
+    getMappingProfiles,
+    disconnectGoogleDrive,
+    updateGoogleDriveSettings,
+    recordSyncSuccess,
+    saveMappingProfile,
     isLoading,
     activePlan,
     isProcessingPayment,
@@ -1069,6 +1222,13 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     bulkUpdateProducts,
     bulkAddTransactions,
     clearAllData,
+    subscribeGoogleDriveConnection,
+    getGoogleDriveFiles,
+    getSyncHistory,
+    getMappingProfiles,
+    disconnectGoogleDrive,
+    recordSyncSuccess,
+    saveMappingProfile,
     activePlan,
     isProcessingPayment,
     showSubscriptionModal,

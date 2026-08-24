@@ -4,40 +4,40 @@ import { doc, getDoc, getDocs, collection } from 'firebase/firestore';
 import { getValidAccessToken } from '@/lib/drive-helper';
 
 export async function GET(req: NextRequest) {
+  let token = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || req.headers.get('x-drive-token');
   const userId = req.headers.get('x-user-uid');
-  if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized: Missing User UID' }, { status: 401 });
+  const { searchParams } = new URL(req.url);
+  let selectedFolderId = searchParams.get('folderId');
+  let selectedFolderName = searchParams.get('folderName') || '';
+
+  if (!token && userId) {
+    const { firestore } = initializeFirebase();
+    if (firestore) {
+      token = await getValidAccessToken(userId, firestore);
+      if (!selectedFolderId) {
+        const connectionRef = doc(firestore, 'users', userId, 'integrations', 'google-drive');
+        const connectionSnap = await getDoc(connectionRef).catch(() => null);
+        if (connectionSnap && connectionSnap.exists()) {
+          selectedFolderId = connectionSnap.data()?.selectedFolderId || null;
+          selectedFolderName = connectionSnap.data()?.selectedFolderName || '';
+        }
+      }
+    }
   }
 
-  const { firestore } = initializeFirebase();
-  if (!firestore) {
-    return NextResponse.json({ error: 'Firebase initialization failed' }, { status: 500 });
+  if (!token) {
+    return NextResponse.json({ error: 'Disconnected: Google Drive token refresh failed' }, { status: 401 });
   }
-
-  const connectionRef = doc(firestore, 'users', userId, 'integrations', 'google-drive');
-  const connectionSnap = await getDoc(connectionRef);
-
-  if (!connectionSnap.exists()) {
-    return NextResponse.json({ error: 'Google Drive connection not found' }, { status: 404 });
-  }
-
-  const connData = connectionSnap.data();
-  const { selectedFolderId, selectedFolderName } = connData;
 
   if (!selectedFolderId) {
-    return NextResponse.json({ error: 'No sync folder selected', folderNotSelected: true });
-  }
-
-  const token = await getValidAccessToken(userId, firestore);
-  if (!token) {
-    return NextResponse.json({ error: 'Disconnected: Google Drive token refresh failed' }, { status: 400 });
+    return NextResponse.json({ success: true, files: [], folderNotSelected: true, folderId: null, folderName: null });
   }
 
   try {
     // 1. Fetch files in selected folder
     const qStr = `'${selectedFolderId}' in parents and trashed = false`;
     const driveRes = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(qStr)}&fields=files(id,name,mimeType,size,modifiedTime)&orderBy=name`,
+      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(qStr)}&fields=files(id,name,mimeType,size,modifiedTime)&orderBy=name&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true`,
       {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -56,19 +56,41 @@ export async function GET(req: NextRequest) {
     const driveData = await driveRes.json();
     const rawFiles = driveData.files || [];
 
-    // Filter only supported spreadsheet/CSV files
+    // Filter supported data files (Google Sheets, Excel, CSV, TSV, text) - exclude subfolders and Google Docs/Slides
     const supportedFiles = rawFiles.filter((f: any) => {
       const name = (f.name || '').toLowerCase();
-      return name.endsWith('.csv') || name.endsWith('.xlsx') || name.endsWith('.xls');
+      const mime = (f.mimeType || '').toLowerCase();
+
+      // Exclude sub-folders and Google Docs/Presentations/Drawings
+      if (mime === 'application/vnd.google-apps.folder') return false;
+      if (mime.includes('document') || mime.includes('presentation') || mime.includes('drawing') || mime.includes('form')) return false;
+
+      const isGoogleSheet = mime === 'application/vnd.google-apps.spreadsheet';
+      const isSpreadsheetMime = mime.includes('spreadsheet') || mime.includes('excel') || mime.includes('ms-excel') || mime.includes('officedocument');
+      const isTextOrCsv = mime.includes('csv') || mime.includes('comma-separated') || mime.includes('tab-separated') || mime.includes('text/plain') || mime.includes('octet-stream');
+      const hasSpreadsheetExt = name.endsWith('.csv') || name.endsWith('.xlsx') || name.endsWith('.xls') || name.endsWith('.tsv') || name.endsWith('.txt');
+
+      return isGoogleSheet || isSpreadsheetMime || isTextOrCsv || hasSpreadsheetExt || !mime.startsWith('application/vnd.google-apps');
     });
 
-    // 2. Fetch previously tracked files from Firestore
-    const filesCollectionRef = collection(firestore, 'users', userId, 'google_drive_files');
-    const filesSnap = await getDocs(filesCollectionRef);
+    // 2. Fetch previously tracked files from Firestore if available
     const trackedFilesMap = new Map<string, any>();
-    filesSnap.forEach(d => {
-      trackedFilesMap.set(d.id, d.data());
-    });
+    if (userId) {
+      try {
+        const { firestore } = initializeFirebase();
+        if (firestore) {
+          const filesCollectionRef = collection(firestore, 'users', userId, 'google_drive_files');
+          const filesSnap = await getDocs(filesCollectionRef).catch(() => null);
+          if (filesSnap) {
+            filesSnap.forEach(d => {
+              trackedFilesMap.set(d.id, d.data());
+            });
+          }
+        }
+      } catch (e) {
+        // Handled silently
+      }
+    }
 
     // 3. Compute status for each file
     const filesList = supportedFiles.map((f: any) => {

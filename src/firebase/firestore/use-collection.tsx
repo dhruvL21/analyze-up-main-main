@@ -1,4 +1,3 @@
-
 'use client';
 
 import {
@@ -9,6 +8,7 @@ import {
 import { useEffect, useState } from 'react';
 import { errorEmitter } from '../error-emitter';
 import { FirestorePermissionError } from '../errors';
+import { serializePlainData } from '@/lib/utils';
 
 type UseCollectionState<T> = {
   data: T[] | null;
@@ -25,24 +25,27 @@ export function useCollection<T>(ref: Query | CollectionReference | null) {
 
   useEffect(() => {
     if (!ref) {
-        setState({ data: [], loading: false });
-        return;
-    };
+      setState({ data: [], loading: false });
+      return;
+    }
     
     const unsubscribe = onSnapshot(
       ref,
       (snapshot) => {
-        const data = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as T[];
+        const data = snapshot.docs.map((doc) => {
+          const raw = {
+            id: doc.id,
+            ...doc.data(),
+          };
+          return serializePlainData<T>(raw);
+        });
         setState({ data, loading: false });
       },
       (serverError) => {
         console.error('Error listening to collection:', serverError);
         const permissionError = new FirestorePermissionError({
-            path: path || 'query',
-            operation: 'list',
+          path: path || 'query',
+          operation: 'list',
         });
         errorEmitter.emit('permission-error', permissionError);
         setState({ data: null, loading: false });

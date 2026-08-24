@@ -6,6 +6,9 @@ import { Sparkles, AlertTriangle, Coins, Loader2, RefreshCw, Lock } from 'lucide
 import { Progress } from '@/components/ui/progress';
 import { generateAIBrief, AIBriefOutput } from '@/ai/flows/ai-brief-generator';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ThreeTierBadge } from '@/components/three-tier-badge';
+import { serializePlainData } from '@/lib/utils';
+import type { Product, Transaction } from '@/lib/types';
 
 export function AIBrief() {
   const { products, transactions, activePlan, setShowSubscriptionModal, returns = [], isLoading } = useData();
@@ -33,39 +36,9 @@ export function AIBrief() {
     if (!isPaid) return;
     startTransition(async () => {
       try {
-        const simplifiedProducts = products.map((p) => ({
-          name: p.name,
-          sku: p.sku || '',
-          stock: p.stock || 0,
-          price: p.price || 0,
-          costPrice: p.costPrice || p.price * 0.6 || 0,
-          averageDailySales: p.averageDailySales || 0,
-          leadTimeDays: p.leadTimeDays || 7,
-        }));
-
-        const simplifiedTransactions = (transactions || []).slice(0, 30).map((t) => {
-          let dateStr = 'Recent';
-          if (t.transactionDate) {
-            if (typeof t.transactionDate === 'object' && t.transactionDate !== null && 'seconds' in t.transactionDate) {
-              dateStr = new Date((t.transactionDate as any).seconds * 1000).toLocaleDateString();
-            } else if (t.transactionDate instanceof Date) {
-              dateStr = t.transactionDate.toLocaleDateString();
-            } else {
-              dateStr = String(t.transactionDate);
-            }
-          }
-
-          return {
-            productName: t.productName || '',
-            sku: t.sku || '',
-            type: t.type,
-            quantity: t.quantity || 0,
-            price: t.price || 0,
-            date: dateStr,
-          };
-        });
-
-        const result = await generateAIBrief(simplifiedProducts, simplifiedTransactions);
+        const cleanProducts = serializePlainData<Product[]>(products);
+        const cleanTransactions = serializePlainData<Transaction[]>(transactions);
+        const result = await generateAIBrief(cleanProducts, cleanTransactions);
         setBrief(result);
       } catch (err) {
         console.error('Failed to generate AI Brief:', err);
@@ -198,11 +171,14 @@ export function AIBrief() {
           {/* Left Column: Stockout Risk */}
           <div className="relative group flex gap-3 p-3.5 rounded-2xl border border-rose-500/25 bg-rose-500/10 hover:bg-rose-500/15 transition-all duration-200 flex-1 flex-col justify-between">
             <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-rose-500/20 text-rose-400">
-                  <AlertTriangle className="h-4 w-4" />
+              <div className="flex items-center justify-between gap-1 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-rose-500/20 text-rose-400">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400">Stockout Risk</span>
                 </div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-rose-400">Stockout Risk</span>
+                <ThreeTierBadge tier="MODEL_2_PREDICTION" size="sm" />
               </div>
               <h4 className="font-bold text-sm text-foreground leading-snug line-clamp-2">{activeBrief.stockoutItem.name}</h4>
               <div className="space-y-0.5 text-xs">
@@ -216,11 +192,14 @@ export function AIBrief() {
           {/* Middle Column: Dead Stock / Slow Sales */}
           <div className="relative group flex gap-3 p-3.5 rounded-2xl border border-amber-500/25 bg-amber-500/10 hover:bg-amber-500/15 transition-all duration-200 flex-1 flex-col justify-between">
             <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-500/20 text-amber-400">
-                  <Coins className="h-4 w-4" />
+              <div className="flex items-center justify-between gap-1 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-amber-500/20 text-amber-400">
+                    <Coins className="h-3.5 w-3.5" />
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">Slow-Moving</span>
                 </div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400">Slow-Moving</span>
+                <ThreeTierBadge tier="MODEL_2_PREDICTION" size="sm" />
               </div>
               <h4 className="font-bold text-sm text-foreground leading-snug line-clamp-2">{activeBrief.slowMovingItem.name}</h4>
               <div className="space-y-0.5 text-xs">
@@ -234,11 +213,14 @@ export function AIBrief() {
           {/* Right Column: Customer Returns */}
           <div className="relative group flex gap-3 p-3.5 rounded-2xl border border-border/40 bg-secondary/30 hover:bg-secondary/40 transition-all duration-200 flex-1 flex-col justify-between">
             <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
-                  <RefreshCw className="h-4 w-4 text-emerald-400" />
+              <div className="flex items-center justify-between gap-1 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
+                    <RefreshCw className="h-3.5 w-3.5 text-emerald-400" />
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Returns</span>
                 </div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">Returns</span>
+                <ThreeTierBadge tier="ACTUAL_DATA" size="sm" />
               </div>
               <h4 className="font-bold text-sm text-foreground leading-snug line-clamp-2">
                 {returnedQty > 0 ? `${returnedQty} Items Returned` : 'No Recent Returns'}
@@ -260,15 +242,12 @@ export function AIBrief() {
         </div>
 
         {/* Footer Banner */}
-        <div data-tour="ai-suggestions" className={`flex items-center justify-between p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-xs md:text-sm font-bold transition-all duration-300 ${!isPaid ? 'blur-[5px] select-none pointer-events-none opacity-40' : (isPending ? 'opacity-60' : 'opacity-100')}`}>
+        <div data-tour="ai-suggestions" className={`flex items-center justify-between p-3 rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-400 text-xs md:text-sm font-bold transition-all duration-300 ${!isPaid ? 'blur-[5px] select-none pointer-events-none opacity-40' : (isPending ? 'opacity-60' : 'opacity-100')}`}>
           <div className="flex items-center gap-2">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
+            <ThreeTierBadge tier="MODEL_3_RECOMMENDATION" size="sm" />
             <span>{activeBrief.savingsText}</span>
           </div>
-          <span className="text-xs font-semibold text-emerald-400/80 hidden sm:inline">Optimized via AI Copilot</span>
+          <span className="text-xs font-semibold text-blue-400/80 hidden sm:inline">Optimized via 3-Model AI Architecture</span>
         </div>
 
         {/* Paywall Overlay */}

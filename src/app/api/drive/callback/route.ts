@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { initializeFirebase } from '@/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+
 
 export async function GET(req: NextRequest) {
+  const origin = new URL(req.url).origin;
   const { searchParams } = new URL(req.url);
+  const errorParam = searchParams.get('error');
   const code = searchParams.get('code');
   const userId = searchParams.get('state'); // state holds our userId
 
+  if (errorParam) {
+    console.warn('Google OAuth error from provider:', errorParam);
+    return NextResponse.redirect(`${origin}/dashboard/integrations?error=${encodeURIComponent(errorParam)}`);
+  }
+
   if (!code || !userId) {
-    return NextResponse.json({ error: 'Missing code or state parameters' }, { status: 400 });
+    return NextResponse.redirect(`${origin}/dashboard/integrations?error=${encodeURIComponent('Missing authorization code or user session state.')}`);
   }
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -16,7 +22,7 @@ export async function GET(req: NextRequest) {
   const redirectUri = process.env.GOOGLE_REDIRECT_URI;
 
   if (!clientId || !clientSecret || !redirectUri) {
-    return NextResponse.json({ error: 'OAuth credentials missing on server.' }, { status: 500 });
+    return NextResponse.redirect(`${origin}/dashboard/integrations?error=${encodeURIComponent('OAuth credentials missing on server.')}`);
   }
 
   try {
@@ -38,58 +44,47 @@ export async function GET(req: NextRequest) {
     if (!tokenRes.ok) {
       const errorData = await tokenRes.json().catch(() => ({}));
       console.error('Google token exchange error:', errorData);
-      return NextResponse.json({ error: 'Token exchange failed', details: errorData }, { status: tokenRes.status });
+      const errMsg = errorData.error_description || errorData.error || 'Token exchange failed';
+      return NextResponse.redirect(`${origin}/dashboard/integrations?error=${encodeURIComponent(errMsg)}`);
     }
 
     const tokens = await tokenRes.json();
     const { access_token, refresh_token, expires_in } = tokens;
 
     // 2. Fetch Google profile info
-    const profileRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-      headers: {
-        Authorization: `Bearer ${access_token}`,
-      },
-    });
-
     let googleEmail = '';
     let googleAccountId = '';
+    try {
+      const profileRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+        headers: {
+          Authorization: `Bearer ${access_token}`,
+        },
+      });
 
-    if (profileRes.ok) {
-      const profile = await profileRes.json();
-      googleEmail = profile.email || '';
-      googleAccountId = profile.id || '';
+      if (profileRes.ok) {
+        const profile = await profileRes.json();
+        googleEmail = profile.email || '';
+        googleAccountId = profile.id || '';
+      }
+    } catch (e) {
+      console.warn('Could not fetch user profile info:', e);
     }
 
-    // 3. Save connection parameters in Firestore
-    const { firestore } = initializeFirebase();
-    if (!firestore) {
-      return NextResponse.json({ error: 'Firebase Firestore initialization failed' }, { status: 500 });
-    }
-
-    const connectionRef = doc(firestore, 'users', userId, 'integrations', 'google-drive');
-    const connectionSnap = await getDoc(connectionRef);
-    const existingData = connectionSnap.exists() ? connectionSnap.data() : null;
-
-    // Keep the old refresh token if Google didn't return a new one
-    const finalRefreshToken = refresh_token || (existingData ? existingData.refreshToken : '');
-
-    await setDoc(connectionRef, {
+    // 3. Prepare payload for client-side persistence
+    const oauthPayload = {
       userId,
       provider: 'google-drive',
       googleEmail,
       googleAccountId,
       accessToken: access_token,
-      refreshToken: finalRefreshToken,
-      tokenExpiry: Date.now() + (expires_in || 3600) * 1000,
-      connectionStatus: 'Connected',
-      createdAt: existingData ? existingData.createdAt : new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }, { merge: true });
+      refreshToken: refresh_token || '',
+      expiresIn: expires_in || 3600,
+    };
 
-    const origin = new URL(req.url).origin;
-    return NextResponse.redirect(`${origin}/dashboard/integrations?status=success`);
+    const encoded = Buffer.from(JSON.stringify(oauthPayload)).toString('base64');
+    return NextResponse.redirect(`${origin}/dashboard/integrations?oauth_data=${encodeURIComponent(encoded)}`);
   } catch (err: any) {
     console.error('OAuth Callback Error:', err);
-    return NextResponse.json({ error: 'OAuth Callback Failed', details: err?.message || err }, { status: 500 });
+    return NextResponse.redirect(`${origin}/dashboard/integrations?error=${encodeURIComponent(err?.message || 'OAuth Callback Failed')}`);
   }
 }

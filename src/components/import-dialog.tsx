@@ -49,6 +49,8 @@ import {
 } from '@/ai/flows/import-mapper-constants';
 import { detectBusinessFileType, getSmartMappingForFileType } from '@/ai/flows/import-engine';
 import { findMatchingImportProfile, saveImportProfile, ImportProfile } from '@/lib/import-profile-store';
+import { parseExcelBuffer } from '@/lib/ingestion/excel-parser';
+import { ThreeTierBadge } from '@/components/three-tier-badge';
 
 interface ImportDialogProps {
   open: boolean;
@@ -157,15 +159,15 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
             setDetectionReasoning(detectRes.reasoning);
 
             // 2. Fetch Semantic Field Mappings for Detected File Type
-            const initialMapping = profile ? profile.mapping : undefined;
-
-            if (initialMapping) {
-              setFieldMapping(initialMapping);
-            } else {
-              const mapRes = await getSmartMappingForFileType(detectRes.fileType, headers, results.data as Record<string, any>[]);
-              setFieldMapping(mapRes.mapping);
-              setMappingConfidence(mapRes.confidence);
+            const mapRes = await getSmartMappingForFileType(detectRes.fileType, headers, results.data as Record<string, any>[]);
+            const mergedMapping = { ...mapRes.mapping };
+            if (profile?.mapping) {
+              Object.entries(profile.mapping).forEach(([h, targetKey]) => {
+                if (targetKey !== 'skip') mergedMapping[h] = targetKey;
+              });
             }
+            setFieldMapping(mergedMapping);
+            setMappingConfidence(mapRes.confidence);
 
             toast({
               title: `AI Detected: ${detectRes.fileTypeName} ✨`,
@@ -257,13 +259,64 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
     toast({ title: 'Template Downloaded', description: 'AnalyzeUp CSV template saved to your downloads folder.' });
   };
 
-  // Stage 1: File Upload & AI Detection
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Stage 1: File Upload & AI Detection (CSV & Excel)
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setFileName(file.name);
     setIsProcessing(true);
+
+    const isExcel = file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls');
+
+    if (isExcel) {
+      try {
+        const buffer = await file.arrayBuffer();
+        const parsed = parseExcelBuffer(buffer);
+
+        if (!parsed.rows || parsed.rows.length === 0) {
+          toast({ variant: 'destructive', title: 'Empty Excel Sheet', description: 'No data rows found in spreadsheet.' });
+          setIsProcessing(false);
+          return;
+        }
+
+        setRawHeaders(parsed.headers);
+        setRawRows(parsed.rows);
+
+        const profile = findMatchingImportProfile(parsed.headers);
+        if (profile) setMatchedProfile(profile);
+
+        setStage(2);
+        setIsAiDetecting(true);
+
+        const detectRes = await detectBusinessFileType(parsed.headers, parsed.rows);
+        setDetectedFileType(detectRes.fileType);
+        setDetectionConfidence(detectRes.confidence);
+        setDetectionReasoning(detectRes.reasoning);
+
+        const mapRes = await getSmartMappingForFileType(detectRes.fileType, parsed.headers, parsed.rows);
+        const mergedMapping = { ...mapRes.mapping };
+        if (profile?.mapping) {
+          Object.entries(profile.mapping).forEach(([h, targetKey]) => {
+            if (targetKey !== 'skip') mergedMapping[h] = targetKey;
+          });
+        }
+        setFieldMapping(mergedMapping);
+        setMappingConfidence(mapRes.confidence);
+
+        toast({
+          title: `Excel Ingested: ${detectRes.fileTypeName} ✨`,
+          description: `${detectRes.confidence}% Confidence — ${detectRes.reasoning}`,
+        });
+      } catch (err) {
+        console.error('Excel Parsing Error:', err);
+        toast({ variant: 'destructive', title: 'Excel Error', description: 'Failed to read .xlsx spreadsheet.' });
+      } finally {
+        setIsAiDetecting(false);
+        setIsProcessing(false);
+      }
+      return;
+    }
 
     Papa.parse(file, {
       header: true,
@@ -296,15 +349,15 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
           setDetectionReasoning(detectRes.reasoning);
 
           // 2. Fetch Semantic Field Mappings for Detected File Type
-          const initialMapping = profile ? profile.mapping : undefined;
-
-          if (initialMapping) {
-            setFieldMapping(initialMapping);
-          } else {
-            const mapRes = await getSmartMappingForFileType(detectRes.fileType, headers, results.data as Record<string, any>[]);
-            setFieldMapping(mapRes.mapping);
-            setMappingConfidence(mapRes.confidence);
+          const mapRes = await getSmartMappingForFileType(detectRes.fileType, headers, results.data as Record<string, any>[]);
+          const mergedMapping = { ...mapRes.mapping };
+          if (profile?.mapping) {
+            Object.entries(profile.mapping).forEach(([h, targetKey]) => {
+              if (targetKey !== 'skip') mergedMapping[h] = targetKey;
+            });
           }
+          setFieldMapping(mergedMapping);
+          setMappingConfidence(mapRes.confidence);
 
           toast({
             title: `AI Detected: ${detectRes.fileTypeName} ✨`,
@@ -363,13 +416,36 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
         const qty = parseInt((obj.quantity || obj.stock || '1').replace(/[^0-9]/g, ''), 10) || 1;
         const orderNo = obj.orderNumber || `INV-${1000 + idx}`;
         const customer = obj.customerName || 'Retail Customer';
+        const city = obj.city || '';
+        const status = obj.status || 'Completed';
+        const remarks = obj.remarks || '';
+        const paymentMode = obj.paymentMode || 'UPI';
+        const discount = parseFloat((obj.discount || '0').replace(/[^0-9.]/g, '')) || 0;
+        const tax = parseFloat((obj.tax || '0').replace(/[^0-9.]/g, '')) || 0;
         const date = obj.orderDate || new Date().toISOString().split('T')[0];
+        const supplier = obj.supplier || obj.supplierName || '';
 
         if (!name) obj.errors.push('Missing product name');
         if (price <= 0) obj.errors.push('Invalid or zero selling price');
         if (qty <= 0) obj.errors.push('Invalid quantity sold');
 
-        obj.parsed = { name, price, costPrice, qty, orderNo, customer, date, sku: obj.sku || `SKU-${idx + 1}` };
+        obj.parsed = {
+          name,
+          price,
+          costPrice,
+          qty,
+          orderNo,
+          customer,
+          city,
+          status,
+          remarks,
+          paymentMode,
+          discount,
+          tax,
+          supplier,
+          date,
+          sku: obj.sku || `SKU-${idx + 1}`,
+        };
       } else if (detectedFileType === 'INVENTORY_MASTER' || detectedFileType === 'WAREHOUSE_STOCK') {
         const name = obj.name || obj.productName || '';
         const price = parseFloat((obj.price || obj.sellingPrice || '0').replace(/[^0-9.]/g, '')) || 0;
@@ -553,9 +629,13 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
             costPerUnit: costPrice,
             totalCost: costPrice * qty,
             customerName: r.parsed.customer || `Customer #${(idx % 12) + 1}`,
-            transactionDate: d.toISOString().split('T')[0],
-            status: 'Completed',
-            paymentMethod: idx % 2 === 0 ? 'UPI' : 'Credit Card',
+            customerCity: r.parsed.city || '',
+            transactionDate: r.parsed.date || d.toISOString().split('T')[0],
+            status: r.parsed.status || 'Completed',
+            paymentMethod: r.parsed.paymentMode || (idx % 2 === 0 ? 'UPI' : 'Credit Card'),
+            notes: r.parsed.remarks || '',
+            discount: r.parsed.discount || 0,
+            tax: r.parsed.tax || 0,
           });
         }
       });
@@ -748,6 +828,26 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
               </p>
             </div>
 
+            {/* Model 1 Universal Data Mapper Header */}
+            <div className="p-3.5 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-foreground">Model 1: Universal Data Mapping AI</span>
+                  <ThreeTierBadge tier="MODEL_2_PREDICTION" size="sm" />
+                </div>
+                <p className="text-muted-foreground text-[11px]">
+                  Schema: <strong className="text-purple-300 font-mono">analyzeup_v1</strong> • Review detected field associations before validation.
+                </p>
+              </div>
+
+              {Object.values(mappingConfidence).some(c => c < 80) && (
+                <Badge variant="outline" className="bg-amber-500/15 text-amber-300 border-amber-500/30 text-[10px] gap-1">
+                  <AlertCircle className="w-3 h-3 text-amber-400" />
+                  User Review Recommended
+                </Badge>
+              )}
+            </div>
+
             {isAiDetecting ? (
               <div className="py-12 text-center space-y-3">
                 <Loader2 className="w-8 h-8 text-emerald-400 animate-spin mx-auto" />
@@ -758,10 +858,10 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
                 <Table className="text-xs">
                   <TableHeader className="bg-secondary/80 sticky top-0 z-10">
                     <TableRow>
-                      <TableHead className="w-1/3">CSV Column Header</TableHead>
+                      <TableHead className="w-1/3">Source Column Header</TableHead>
                       <TableHead className="w-8 text-center">→</TableHead>
-                      <TableHead className="w-1/3">Mapped Target Field</TableHead>
-                      <TableHead className="w-1/6 text-center">AI Confidence</TableHead>
+                      <TableHead className="w-1/3">Canonical Field (analyzeup_v1)</TableHead>
+                      <TableHead className="w-1/6 text-center">Model 1 Confidence</TableHead>
                       <TableHead className="w-1/4">Sample Data</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -774,7 +874,12 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
 
                       return (
                         <TableRow key={header} className={mappedKey !== 'skip' ? 'bg-emerald-500/5' : 'opacity-60'}>
-                          <TableCell className="font-semibold text-foreground">{header}</TableCell>
+                          <TableCell className="font-semibold text-foreground">
+                            <div className="flex items-center gap-1.5">
+                              <ThreeTierBadge tier="ACTUAL_DATA" size="sm" />
+                              <span>{header}</span>
+                            </div>
+                          </TableCell>
                           <TableCell className="text-center font-bold text-emerald-400">→</TableCell>
                           <TableCell>
                             <Select
@@ -795,8 +900,17 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
                           </TableCell>
                           <TableCell className="text-center">
                             {mappedKey !== 'skip' ? (
-                              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[10px]">
-                                {conf}% AI
+                              <Badge
+                                variant="outline"
+                                className={`text-[10px] ${
+                                  conf >= 90
+                                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                    : conf >= 80
+                                    ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                                    : 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                                }`}
+                              >
+                                {conf}% {conf < 80 ? '⚠️ Review' : 'AI'}
                               </Badge>
                             ) : (
                               <Badge variant="outline" className="bg-secondary text-muted-foreground text-[10px]">
