@@ -158,13 +158,16 @@ export default function SuppliersPage() {
     };
   }, [suppliers, supplierMetricsMap, procurementSavings]);
 
-  // Filtered Suppliers List
+  // Filtered Suppliers List (Safe against undefined properties)
   const filteredSuppliers = useMemo(() => {
-    return suppliers.filter(s => {
+    const query = (searchQuery || '').toLowerCase().trim();
+    return (suppliers || []).filter(s => {
+      if (!s) return false;
       const metrics = supplierMetricsMap.get(s.id);
-      const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (s.contactName && s.contactName.toLowerCase().includes(searchQuery.toLowerCase()));
+      const name = (s.name || '').toLowerCase();
+      const email = (s.email || '').toLowerCase();
+      const contact = (s.contactName || '').toLowerCase();
+      const matchesSearch = !query || name.includes(query) || email.includes(query) || contact.includes(query);
 
       if (!matchesSearch) return false;
 
@@ -175,25 +178,6 @@ export default function SuppliersPage() {
       return true;
     });
   }, [suppliers, searchQuery, riskFilter, supplierMetricsMap]);
-
-  // Scroll reveal animation effect
-  useEffect(() => {
-    if (isLoading || suppliers.length === 0) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("revealed");
-            observer.unobserve(entry.target);
-          }
-        });
-      },
-      { root: null, threshold: 0.1 }
-    );
-    const items = document.querySelectorAll(".scroll-reveal-item");
-    items.forEach(el => observer.observe(el));
-    return () => items.forEach(el => observer.unobserve(el));
-  }, [suppliers, isLoading]);
 
   const activeSupplierMetrics = activeProfileSupplier ? supplierMetricsMap.get(activeProfileSupplier.id) : null;
 
@@ -385,7 +369,7 @@ export default function SuppliersPage() {
                   return (
                     <Card
                       key={supplier.id}
-                      className="scroll-reveal-item hover:border-primary/50 transition-all cursor-pointer group space-y-3 p-5"
+                      className="hover:border-primary/50 transition-all cursor-pointer group space-y-3 p-5 rounded-2xl bg-card/70 border border-border/60 shadow-md"
                       onClick={() => setActiveProfileSupplier(supplier)}
                     >
                       <div className="flex items-start justify-between">

@@ -213,12 +213,14 @@ export default function ReturnsPage() {
       .sort((a, b) => b.rate - a.rate);
   }, [returns, transactions, products]);
 
-  // Filtered Returns
-  const filteredReturns = returns.filter(r => {
-    const matchesSearch = 
-      r.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.productName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.id.toLowerCase().includes(searchQuery.toLowerCase());
+  // Filtered Returns (Safe against undefined properties)
+  const filteredReturns = (returns || []).filter(r => {
+    if (!r) return false;
+    const query = (searchQuery || '').toLowerCase().trim();
+    const matchesSearch = !query ||
+      (r.customerName || '').toLowerCase().includes(query) ||
+      (r.productName || '').toLowerCase().includes(query) ||
+      (r.id || '').toLowerCase().includes(query);
       
     const matchesReason = reasonFilter === 'all' || r.reason === reasonFilter;
     const matchesStatus = statusFilter === 'all' || r.refundStatus === statusFilter;
