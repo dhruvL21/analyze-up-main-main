@@ -86,30 +86,7 @@ export default function ReturnsPage() {
   }, [selectedProductId, quantity, products]);
 
   // Scroll reveal animation trigger
-  useEffect(() => {
-    if (isLoading || returns.length === 0) return;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("revealed");
-            observer.unobserve(entry.target);
-          }
-        });
-      },
-      {
-        root: null,
-        threshold: 0.1,
-        rootMargin: "0px 0px -10% 0px"
-      }
-    );
-
-    const items = document.querySelectorAll(".scroll-reveal-item");
-    items.forEach(el => observer.observe(el));
-
-    return () => items.forEach(el => observer.unobserve(el));
-  }, [returns, isLoading]);
 
   // Stats Calculations
   const stats = React.useMemo(() => {
@@ -291,7 +268,7 @@ export default function ReturnsPage() {
 
         {/* Stats Grid */}
         <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-          <Card className="scroll-reveal-item relative overflow-hidden">
+          <Card className="relative overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Returns</CardTitle>
               <ClipboardList className="h-4 w-4 text-muted-foreground" />
@@ -304,7 +281,7 @@ export default function ReturnsPage() {
             </CardContent>
           </Card>
 
-          <Card className="scroll-reveal-item relative overflow-hidden">
+          <Card className="relative overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Return Rate</CardTitle>
               <Activity className="h-4 w-4 text-muted-foreground" />
@@ -317,7 +294,7 @@ export default function ReturnsPage() {
             </CardContent>
           </Card>
 
-          <Card className="scroll-reveal-item relative overflow-hidden">
+          <Card className="relative overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Refunds Issued</CardTitle>
               <DollarSign className="h-4 w-4 text-primary" />
@@ -332,7 +309,7 @@ export default function ReturnsPage() {
             </CardContent>
           </Card>
 
-          <Card className="scroll-reveal-item relative overflow-hidden">
+          <Card className="relative overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Write-Off Losses</CardTitle>
               <AlertCircle className="h-4 w-4 text-destructive" />
@@ -350,7 +327,7 @@ export default function ReturnsPage() {
 
         {/* Quality Alerts (if any) */}
         {qualityAlerts.length > 0 && (
-          <Card className="border-amber-500/20 bg-amber-500/5 scroll-reveal-item">
+          <Card className="border-amber-500/20 bg-amber-500/5">
             <CardHeader className="pb-3 flex flex-row items-start gap-4">
               <div className="p-2 bg-amber-500/10 text-amber-600 rounded-xl shrink-0">
                 <ShieldAlert className="h-5 w-5" />
@@ -390,7 +367,7 @@ export default function ReturnsPage() {
         {/* Main Grid: Returns History & Analytics */}
         <div className="grid gap-8 grid-cols-1 xl:grid-cols-3 items-start">
           {/* Returns Log */}
-          <Card className="xl:col-span-2 scroll-reveal-item">
+          <Card className="xl:col-span-2">
             <CardHeader className="pb-4">
               <CardTitle>Returned Orders Log</CardTitle>
               <CardDescription>View, search, and update details for customer returns.</CardDescription>
@@ -566,7 +543,7 @@ export default function ReturnsPage() {
           {/* Return Analytics Sidebar */}
           <div className="flex flex-col gap-8">
             {/* Reason Breakdown */}
-            <Card className="scroll-reveal-item">
+            <Card>
               <CardHeader>
                 <CardTitle>Return Reasons Breakdown</CardTitle>
                 <CardDescription>Weekly return volume breakdown by reason.</CardDescription>
@@ -596,7 +573,7 @@ export default function ReturnsPage() {
             </Card>
 
             {/* Fulfill Policy Summary */}
-            <Card className="scroll-reveal-item bg-muted/20 border-border/60">
+            <Card className="bg-muted/20 border-border/60">
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
                   <CheckCircle className="h-4 w-4 text-primary" />

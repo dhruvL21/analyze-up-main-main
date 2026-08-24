@@ -23,6 +23,7 @@ import {
   Info,
   ExternalLink,
   Zap,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -44,7 +45,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -58,10 +58,17 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Progress } from '@/components/ui/progress';
 import { useData } from '@/context/data-context';
 import { AddSupplierModal } from '@/components/add-supplier-modal';
 import { CreatePurchaseOrderModal } from '@/components/create-purchase-order-modal';
@@ -83,6 +90,7 @@ export default function SuppliersPage() {
   const { suppliers, products, orders, transactions, deleteSupplier, isLoading, businessProfile } = useData();
   const { toast } = useToast();
 
+  const [activeTab, setActiveTab] = useState<'suppliers' | 'savings'>('suppliers');
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [poModalOpen, setPoModalOpen] = useState(false);
   const [selectedSupplierForPo, setSelectedSupplierForPo] = useState<string | undefined>(undefined);
@@ -178,6 +186,20 @@ export default function SuppliersPage() {
       return true;
     });
   }, [suppliers, searchQuery, riskFilter, supplierMetricsMap]);
+
+  // Filtered Savings List (Safe against undefined properties)
+  const filteredSavingsList = useMemo(() => {
+    const query = (searchQuery || '').toLowerCase().trim();
+    return (procurementSavings.savingsList || []).filter(item => {
+      if (!item) return false;
+      if (!query) return true;
+      const prod = (item.productName || '').toLowerCase();
+      const sku = (item.sku || '').toLowerCase();
+      const currentSup = (item.currentSupplierName || '').toLowerCase();
+      const altSup = (item.alternativeSupplierName || '').toLowerCase();
+      return prod.includes(query) || sku.includes(query) || currentSup.includes(query) || altSup.includes(query);
+    });
+  }, [procurementSavings.savingsList, searchQuery]);
 
   const activeSupplierMetrics = activeProfileSupplier ? supplierMetricsMap.get(activeProfileSupplier.id) : null;
 
@@ -314,7 +336,7 @@ export default function SuppliersPage() {
         )}
 
         {/* Main Content Tabs */}
-        <Tabs defaultValue="suppliers" className="space-y-4">
+        <Tabs value={activeTab} onValueChange={(val: any) => setActiveTab(val)} className="space-y-4">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-secondary/30 p-2 rounded-2xl border border-border/40">
             <TabsList className="bg-secondary/60">
               <TabsTrigger value="suppliers" className="text-xs font-bold gap-1.5">
@@ -332,8 +354,18 @@ export default function SuppliersPage() {
                   placeholder="Search vendor name, email..."
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
-                  className="pl-8 text-xs h-8 bg-background/80"
+                  className="pl-8 pr-8 text-xs h-8 bg-background/80"
                 />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-2 text-muted-foreground hover:text-foreground p-0.5"
+                    title="Clear search"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
               </div>
               <select
                 value={riskFilter}
@@ -358,6 +390,19 @@ export default function SuppliersPage() {
                   <h3 className="font-bold text-foreground text-sm">No suppliers match criteria</h3>
                   <p className="text-xs text-muted-foreground">Try clearing search query or adjusting risk filter.</p>
                 </div>
+                {(searchQuery || riskFilter !== 'all') && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs font-bold rounded-xl"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setRiskFilter('all');
+                    }}
+                  >
+                    Reset Filters
+                  </Button>
+                )}
               </Card>
             ) : (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -368,7 +413,7 @@ export default function SuppliersPage() {
 
                   return (
                     <Card
-                      key={supplier.id}
+                      key={supplier.id || supplier.name}
                       className="hover:border-primary/50 transition-all cursor-pointer group space-y-3 p-5 rounded-2xl bg-card/70 border border-border/60 shadow-md"
                       onClick={() => setActiveProfileSupplier(supplier)}
                     >
@@ -512,15 +557,29 @@ export default function SuppliersPage() {
               </div>
             </div>
 
-            {procurementSavings.savingsList.length === 0 ? (
-              <Card className="p-8 text-center space-y-2">
+            {filteredSavingsList.length === 0 ? (
+              <Card className="p-8 text-center space-y-3">
                 <Coins className="w-10 h-10 text-muted-foreground mx-auto" />
-                <h4 className="font-bold text-foreground text-sm">No alternative supplier cost benchmark available</h4>
-                <p className="text-xs text-muted-foreground">Add more suppliers or product catalog items to unlock potential procurement savings.</p>
+                <div className="space-y-1">
+                  <h4 className="font-bold text-foreground text-sm">No alternative supplier cost benchmark found</h4>
+                  <p className="text-xs text-muted-foreground">
+                    {searchQuery ? 'No savings opportunities match your search query.' : 'Add more suppliers or product catalog items to unlock potential procurement savings.'}
+                  </p>
+                </div>
+                {searchQuery && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs font-bold rounded-xl"
+                    onClick={() => setSearchQuery('')}
+                  >
+                    Clear Search
+                  </Button>
+                )}
               </Card>
             ) : (
               <div className="grid gap-3 md:grid-cols-2">
-                {procurementSavings.savingsList.map((item, idx) => (
+                {filteredSavingsList.map((item, idx) => (
                   <Card key={idx} className="p-4 space-y-3 border border-border/40 hover:border-primary/40 transition-all">
                     <div className="flex items-start justify-between">
                       <div>

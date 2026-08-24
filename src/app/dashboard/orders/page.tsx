@@ -61,32 +61,6 @@ export default function OrdersPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [viewingOrder, setViewingOrder] = useState<PurchaseOrder | null>(null);
 
-  useEffect(() => {
-    if (isLoading || orders.length === 0) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("revealed");
-            observer.unobserve(entry.target);
-          }
-        });
-      },
-      {
-        root: null,
-        threshold: 0.1,
-        rootMargin: "0px 0px -10% 0px"
-      }
-    );
-
-    const items = document.querySelectorAll(".scroll-reveal-item");
-    items.forEach(el => observer.observe(el));
-
-    return () => items.forEach(el => observer.unobserve(el));
-  }, [orders, isLoading]);
-
-
   const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -160,7 +134,7 @@ export default function OrdersPage() {
                 </TableHeader>
                 <TableBody>
                   {orders.map((order) => (
-                    <TableRow key={order.id} className="scroll-reveal-item">
+                    <TableRow key={order.id}>
                       <TableCell className="font-medium">{order.id.substring(0,8)}...</TableCell>
                       <TableCell>{suppliers.find(s => s.id === order.supplierId)?.name || order.supplierId}</TableCell>
                       <TableCell>
