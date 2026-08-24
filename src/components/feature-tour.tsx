@@ -205,11 +205,16 @@ export function FeatureTour() {
     const element = document.querySelector(currentStep.selector);
     if (element) {
       const rect = element.getBoundingClientRect();
+      // Scroll into view if outside the visible safe zone
+      if (rect.top < 60 || rect.bottom > window.innerHeight - 80) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      const updated = element.getBoundingClientRect();
       setTargetRect({
-        top: rect.top,
-        left: rect.left,
-        width: rect.width,
-        height: rect.height,
+        top: updated.top,
+        left: updated.left,
+        width: updated.width,
+        height: updated.height,
       });
     } else {
       // Fallback center position if element is mobile hidden or not present
@@ -303,44 +308,46 @@ export function FeatureTour() {
     setCurrentStepIndex(0);
   };
 
-  // Compute pointer positioning
-  const pointerX = targetRect ? targetRect.left + targetRect.width / 2 : window.innerWidth / 2;
-  const pointerY = targetRect ? targetRect.top + targetRect.height + 12 : window.innerHeight / 2;
-
   // Calculate card positioning inside window bounds
   const getCardStyle = () => {
-    if (!targetRect) {
+    if (!targetRect || typeof window === 'undefined') {
       return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
     }
 
-    const cardWidth = 380;
-    const cardHeight = 240;
-    const margin = 20;
+    const cardWidth = Math.min(380, window.innerWidth - 32);
+    const cardHeight = 290;
+    const margin = 16;
 
     let left = targetRect.left + targetRect.width / 2 - cardWidth / 2;
-    let top = targetRect.top + targetRect.height + 24;
+    left = Math.max(margin, Math.min(left, window.innerWidth - cardWidth - margin));
 
-    // Adjust left bounds
-    if (left + cardWidth > window.innerWidth - margin) {
-      left = window.innerWidth - cardWidth - margin;
-    }
-    if (left < margin) {
-      left = margin;
+    const spaceBelow = window.innerHeight - (targetRect.top + targetRect.height) - margin;
+    const spaceAbove = targetRect.top - margin;
+
+    let top: number;
+
+    // If more space above or target is in lower half of viewport
+    if (spaceBelow < cardHeight + 20 && spaceAbove > spaceBelow) {
+      top = targetRect.top - cardHeight - 16;
+    } else {
+      top = targetRect.top + targetRect.height + 16;
     }
 
-    // Adjust top bounds if element is near bottom
-    if (top + cardHeight > window.innerHeight - margin) {
-      top = targetRect.top - cardHeight - 24;
-    }
-    if (top < margin) {
-      top = margin;
-    }
+    // Strictly clamp top within visible viewport bounds
+    top = Math.max(margin, Math.min(top, window.innerHeight - cardHeight - margin));
 
     return {
       top: `${top}px`,
       left: `${left}px`,
     };
   };
+
+  // Compute pointer positioning relative to target
+  const isTargetInLowerHalf = targetRect ? targetRect.top > window.innerHeight / 2 : false;
+  const pointerX = targetRect ? targetRect.left + targetRect.width / 2 : (typeof window !== 'undefined' ? window.innerWidth / 2 : 200);
+  const pointerY = targetRect 
+    ? (isTargetInLowerHalf ? targetRect.top - 24 : targetRect.top + targetRect.height + 8) 
+    : (typeof window !== 'undefined' ? window.innerHeight / 2 : 200);
 
   const StepIcon = currentStep.icon;
 
@@ -426,7 +433,7 @@ export function FeatureTour() {
           exit={{ opacity: 0, scale: 0.92, y: -15 }}
           transition={{ type: 'spring', stiffness: 320, damping: 28 }}
           style={getCardStyle()}
-          className="fixed z-[102] w-[370px] max-w-[calc(100vw-2rem)] rounded-2xl border border-primary/30 bg-card/95 p-5 text-card-foreground shadow-[0_16px_50px_rgba(0,0,0,0.6)] backdrop-blur-2xl"
+          className="fixed z-[102] w-[370px] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-32px)] overflow-y-auto rounded-2xl border border-primary/30 bg-card/95 p-5 text-card-foreground shadow-[0_16px_50px_rgba(0,0,0,0.6)] backdrop-blur-2xl"
         >
           {/* Top subtle glow strip */}
           <div className="absolute top-0 left-0 right-0 h-[3px] rounded-t-2xl bg-gradient-to-r from-primary/20 via-primary to-amber-400/80" />
