@@ -59,39 +59,6 @@ export default function InsightsPage() {
   const [dateRange, setDateRange] = useState<DateRange>('30');
   const [activeTab, setActiveTab] = useState<'insights' | 'health'>('insights');
 
-  useEffect(() => {
-    if (isLoading) return;
-
-    const timer = setTimeout(() => {
-      const observer = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              entry.target.classList.add('revealed');
-              observer.unobserve(entry.target);
-            }
-          });
-        },
-        {
-          root: null,
-          threshold: 0.05,
-        }
-      );
-
-      const items = document.querySelectorAll('.scroll-reveal-item');
-      items.forEach((el) => {
-        const rect = el.getBoundingClientRect();
-        if (rect.top < window.innerHeight + 100 && rect.bottom > -100) {
-          el.classList.add('revealed');
-        } else {
-          observer.observe(el);
-        }
-      });
-    }, 50);
-
-    return () => clearTimeout(timer);
-  }, [isLoading, reportType, dateRange, activeTab]);
-
   const getFilteredTransactions = () => {
     if (dateRange === 'all') return transactions;
     
@@ -299,7 +266,7 @@ export default function InsightsPage() {
          <>
            {/* Inventory Cards */}
            <div className="grid gap-4 md:grid-cols-3">
-             <Card className="scroll-reveal-item">
+             <Card className="">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                  <CardTitle className="text-sm font-medium">Total Inventory Value</CardTitle>
                  <IndianRupee className="h-4 w-4 text-primary" />
@@ -315,7 +282,7 @@ export default function InsightsPage() {
                  <p className="text-xs text-muted-foreground">Total retail value of stock</p>
                </CardContent>
              </Card>
-             <Card className="scroll-reveal-item">
+             <Card className="">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                  <CardTitle className="text-sm font-medium">Products in Stock</CardTitle>
                  <Package className="h-4 w-4 text-muted-foreground" />
@@ -325,7 +292,7 @@ export default function InsightsPage() {
                  <p className="text-xs text-muted-foreground">Total unit volume across stock</p>
                </CardContent>
              </Card>
-             <Card className="scroll-reveal-item">
+             <Card className="">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                  <CardTitle className="text-sm font-medium">Low Stock Items</CardTitle>
                  <Package className="h-4 w-4 text-destructive" />
@@ -339,7 +306,7 @@ export default function InsightsPage() {
 
            {/* Inventory Chart & Details Table */}
            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-stretch">
-             <Card className="scroll-reveal-item">
+             <Card className="">
                <CardHeader>
                  <CardTitle>Inventory Breakdown</CardTitle>
                  <CardDescription>Value breakdown by category.</CardDescription>
@@ -349,7 +316,7 @@ export default function InsightsPage() {
                </CardContent>
              </Card>
              
-             <Card className="scroll-reveal-item relative">
+             <Card className=" relative">
                <CardHeader>
                  <CardTitle>Inventory Overview</CardTitle>
                  <CardDescription>Stock status details of your product lines.</CardDescription>
@@ -405,7 +372,7 @@ export default function InsightsPage() {
          <>
            {/* Sales Cards */}
            <div className="grid gap-4 md:grid-cols-3">
-             <Card className="scroll-reveal-item">
+             <Card className="">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                  <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
                  <IndianRupee className="h-4 w-4 text-primary" />
@@ -423,7 +390,7 @@ export default function InsightsPage() {
                  </p>
                </CardContent>
              </Card>
-             <Card className="scroll-reveal-item">
+             <Card className="">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                  <CardTitle className="text-sm font-medium">Net Profit</CardTitle>
                  <IndianRupee className="h-4 w-4 text-primary" />
@@ -439,7 +406,7 @@ export default function InsightsPage() {
                  <p className="text-xs text-muted-foreground">Sales minus Cost of Goods Sold</p>
                </CardContent>
              </Card>
-             <Card className="scroll-reveal-item">
+             <Card className="">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                  <CardTitle className="text-sm font-medium">Total Sales Count</CardTitle>
                  <ShoppingCart className="h-4 w-4 text-muted-foreground" />
@@ -455,7 +422,7 @@ export default function InsightsPage() {
 
            {/* Sales Chart & Top Selling Table */}
            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-stretch">
-             <Card className="scroll-reveal-item">
+             <Card className="">
                <CardHeader>
                  <CardTitle>Sales Overview</CardTitle>
                  <CardDescription>Your sales trend over the last 12 months.</CardDescription>
@@ -464,7 +431,7 @@ export default function InsightsPage() {
                  <SalesChart />
                </CardContent>
              </Card>
-             <Card className="scroll-reveal-item relative">
+             <Card className=" relative">
                <CardHeader>
                  <CardTitle>Top Selling Products</CardTitle>
                  <CardDescription>
@@ -524,7 +491,7 @@ export default function InsightsPage() {
          <>
            {/* Transaction Cards */}
            <div className="grid gap-4 md:grid-cols-3">
-             <Card className="scroll-reveal-item">
+             <Card className="">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                  <CardTitle className="text-sm font-medium">Total Expenses</CardTitle>
                  <IndianRupee className="h-4 w-4 text-destructive" />
@@ -540,7 +507,7 @@ export default function InsightsPage() {
                  <p className="text-xs text-muted-foreground">Total cost of acquisitions</p>
                </CardContent>
              </Card>
-             <Card className="scroll-reveal-item">
+             <Card className="">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                  <CardTitle className="text-sm font-medium">Total Sales Revenue</CardTitle>
                  <IndianRupee className="h-4 w-4 text-primary" />
@@ -556,7 +523,7 @@ export default function InsightsPage() {
                  <p className="text-xs text-muted-foreground">Total revenue from sales</p>
                </CardContent>
              </Card>
-             <Card className="scroll-reveal-item">
+             <Card className="">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                  <CardTitle className="text-sm font-medium">Total Transactions</CardTitle>
                  <ShoppingCart className="h-4 w-4 text-muted-foreground" />
@@ -569,7 +536,7 @@ export default function InsightsPage() {
            </div>
 
            {/* Transaction Ledger Table */}
-           <Card className="scroll-reveal-item relative w-full">
+           <Card className=" relative w-full">
              <CardHeader>
                <CardTitle>Transaction Ledger</CardTitle>
                <CardDescription>A comprehensive audit trail of inventory movements.</CardDescription>

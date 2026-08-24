@@ -103,36 +103,7 @@ export function DataVisualizer() {
     return getMonthlySalesData(transactions, products);
   }, [transactions, products, categories, metric, chartType, isLoading]);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const observer = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              entry.target.classList.add('revealed');
-              observer.unobserve(entry.target);
-            }
-          });
-        },
-        {
-          root: null,
-          threshold: 0.05,
-        }
-      );
 
-      const items = document.querySelectorAll('.scroll-reveal-item');
-      items.forEach((el) => {
-        const rect = el.getBoundingClientRect();
-        if (rect.top < window.innerHeight + 100 && rect.bottom > -100) {
-          el.classList.add('revealed');
-        } else {
-          observer.observe(el);
-        }
-      });
-    }, 50);
-
-    return () => clearTimeout(timer);
-  }, [data]); // Re-observe when data changes
 
   const handleExport = useCallback(async (action: 'download' | 'share') => {
     if (!chartRef.current || data.length === 0) return;
@@ -556,7 +527,7 @@ export function DataVisualizer() {
           </div>
         </div>
       </div>
-      <Card className="scroll-reveal-item">
+      <Card>
         <CardHeader>
           <CardTitle>Sales Data Visualization</CardTitle>
           <CardDescription>
