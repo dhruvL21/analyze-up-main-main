@@ -34,9 +34,9 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Check, Loader2, X, Sparkles, Building2, Zap, Trash2, RefreshCw, LogOut, Sun, Moon } from "lucide-react";
+import { Check, Loader2, X, Sparkles, Building2, Zap, Trash2, RefreshCw, LogOut, Sun, Moon, KeyRound, Lock, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { useUser, useAuth } from "@/firebase";
-import { signOut } from "@/firebase/auth/auth-service";
+import { signOut, updateUserPassword } from "@/firebase/auth/auth-service";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 
@@ -85,6 +85,54 @@ export default function SettingsPage() {
       country: country,
       industry: INDUSTRY_CONFIGS[bizType]?.label || "General Business",
     });
+  };
+
+  // Password Change State
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [updatingPassword, setUpdatingPassword] = useState(false);
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) {
+      toast({ variant: "destructive", title: "Authentication Required", description: "Please sign in to update your password." });
+      return;
+    }
+
+    if (!newPassword || newPassword.length < 6) {
+      toast({ variant: "destructive", title: "Invalid Password", description: "Password must be at least 6 characters long." });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      toast({ variant: "destructive", title: "Passwords Do Not Match", description: "Please ensure both password fields match." });
+      return;
+    }
+
+    setUpdatingPassword(true);
+    try {
+      await updateUserPassword(user, newPassword);
+      setNewPassword("");
+      setConfirmPassword("");
+      toast({
+        title: "🔒 Password Updated Successfully!",
+        description: "Your account password has been changed securely.",
+      });
+    } catch (err: any) {
+      console.error("Password update error:", err);
+      let desc = "Failed to update password. You may need to log out and log back in to verify your identity.";
+      if (err.code === "auth/requires-recent-login") {
+        desc = "This operation is sensitive and requires recent authentication. Please log out and sign in again before changing password.";
+      }
+      toast({
+        variant: "destructive",
+        title: "Password Update Failed",
+        description: desc,
+      });
+    } finally {
+      setUpdatingPassword(false);
+    }
   };
 
   const handleResetWorkspace = async () => {
@@ -360,6 +408,79 @@ export default function SettingsPage() {
                 <span className="text-[11px] font-bold">System Default</span>
               </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Security & Password Management Card */}
+        <Card className="ios-glass rounded-2xl border-border/50">
+          <CardHeader>
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <KeyRound className="w-5 h-5 text-primary" />
+              Security & Password Management
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Update your account password or change your login credentials securely.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <form onSubmit={handleUpdatePassword} className="space-y-4 max-w-xl">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="newPassword" className="text-xs font-semibold">New Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="newPassword"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="At least 6 characters"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="pr-10 h-10 rounded-xl bg-secondary/30 border-border/50 text-xs"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="confirmPassword" className="text-xs font-semibold">Confirm New Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="confirmPassword"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Repeat new password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="pr-10 h-10 rounded-xl bg-secondary/30 border-border/50 text-xs"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
+                <p className="text-[11px] text-muted-foreground">
+                  Must be at least 6 characters long.
+                </p>
+                <Button
+                  type="submit"
+                  disabled={updatingPassword || !newPassword || !confirmPassword}
+                  className="rounded-xl text-xs gap-1.5 bg-primary text-primary-foreground font-bold shadow-md h-9 px-4"
+                >
+                  {updatingPassword ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <ShieldCheck className="w-4 h-4" />
+                  )}
+                  Update Password
+                </Button>
+              </div>
+            </form>
           </CardContent>
         </Card>
 

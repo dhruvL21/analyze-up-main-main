@@ -1,12 +1,12 @@
-
-'use client';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   updateProfile,
   sendPasswordResetEmail,
+  updatePassword,
   type Auth,
+  type User,
 } from 'firebase/auth';
 
 export const signUp = async (
@@ -31,3 +31,8 @@ export const signOut = async (auth: Auth) => {
 export const resetPassword = async (auth: Auth, email: string) => {
   return sendPasswordResetEmail(auth, email);
 };
+
+export const updateUserPassword = async (user: User, newPassword: string) => {
+  return updatePassword(user, newPassword);
+};
+
