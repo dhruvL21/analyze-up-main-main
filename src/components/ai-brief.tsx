@@ -242,12 +242,11 @@ export function AIBrief() {
         </div>
 
         {/* Footer Banner */}
-        <div data-tour="ai-suggestions" className={`flex items-center justify-between p-3 rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-400 text-xs md:text-sm font-bold transition-all duration-300 ${!isPaid ? 'blur-[5px] select-none pointer-events-none opacity-40' : (isPending ? 'opacity-60' : 'opacity-100')}`}>
-          <div className="flex items-center gap-2">
-            <ThreeTierBadge tier="MODEL_3_RECOMMENDATION" size="sm" />
-            <span>{activeBrief.savingsText}</span>
+        <div data-tour="ai-suggestions" className={`flex items-center justify-between p-3.5 rounded-xl border border-blue-500/25 bg-blue-500/10 text-xs md:text-sm transition-all duration-300 ${!isPaid ? 'blur-[5px] select-none pointer-events-none opacity-40' : (isPending ? 'opacity-60' : 'opacity-100')}`}>
+          <div className="flex items-center gap-2.5 font-bold text-foreground">
+            <Coins className="h-4 w-4 text-blue-400 shrink-0" />
+            <span className="text-sm font-bold tracking-tight text-foreground">{activeBrief.savingsText}</span>
           </div>
-          <span className="text-xs font-semibold text-blue-400/80 hidden sm:inline">Optimized via 3-Model AI Architecture</span>
         </div>
 
         {/* Paywall Overlay */}
