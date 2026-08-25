@@ -7,12 +7,6 @@ import {
   CanonicalProductSchema,
   CanonicalSale,
   CanonicalSaleSchema,
-  CanonicalSupplier,
-  CanonicalSupplierSchema,
-  CanonicalPurchaseOrder,
-  CanonicalPurchaseOrderSchema,
-  CanonicalReturn,
-  CanonicalReturnSchema,
 } from '@/schemas/canonical';
 import { NormalizationOutput } from '@/schemas/mapping-contract';
 

@@ -7,7 +7,6 @@ import { Badge } from '@/components/ui/badge';
 import { generateActionTasks, ActionTask } from '@/lib/command-center-engine';
 import { useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
-import { useRouter } from 'next/navigation';
 import { logBusinessAction } from '@/lib/audit-store';
 import { AuditLogModal } from '@/components/audit-log-modal';
 import { ThreeTierBadge } from '@/components/three-tier-badge';
@@ -31,7 +30,6 @@ import {
 export function AIActionCenter() {
   const { products, transactions, suppliers, orders, businessProfile, updateProduct, addOrder, addTransaction } = useData();
   const { toast } = useToast();
-  const router = useRouter();
 
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
 

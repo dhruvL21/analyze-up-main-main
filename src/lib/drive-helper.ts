@@ -184,8 +184,6 @@ export function getNextSyncTimeDisplay(connection: any): string {
   }
 
   if (freq === 'weekly') {
-    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    const targetDayIdx = dayNames.indexOf((connection.autoSyncDay || 'monday').toLowerCase());
     const dayDisplay = connection.autoSyncDay ? connection.autoSyncDay.charAt(0).toUpperCase() + connection.autoSyncDay.slice(1) : 'Monday';
     
     return `Every ${dayDisplay} at ${formatTime12h(timeStr)}`;
@@ -195,7 +193,36 @@ export function getNextSyncTimeDisplay(connection: any): string {
 }
 
 /**
- * Checks if auto-sync is due based on lastSyncAt and schedule configuration
+ * Human-friendly last sync time display
+ */
+export function formatLastSyncTime(lastSyncAt?: string | null): string {
+  if (!lastSyncAt) return 'Never synced yet';
+  try {
+    const date = new Date(lastSyncAt);
+    if (isNaN(date.getTime())) return 'Never synced yet';
+
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    const yesterday = new Date();
+    yesterday.setDate(now.getDate() - 1);
+    const isYesterday = date.toDateString() === yesterday.toDateString();
+
+    const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+
+    if (isToday) {
+      return `Today at ${timeStr}`;
+    }
+    if (isYesterday) {
+      return `Yesterday at ${timeStr}`;
+    }
+    return `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} at ${timeStr}`;
+  } catch {
+    return 'Never synced yet';
+  }
+}
+
+/**
+ * Checks if auto-sync is due based on lastSyncAt, schedule configuration, and schedule updates
  */
 export function isAutoSyncDue(connection: any): boolean {
   if (!connection || connection.autoSyncEnabled === false || !connection.selectedFolderId) {
@@ -207,8 +234,13 @@ export function isAutoSyncDue(connection: any): boolean {
   const elapsedMs = now - lastSync;
   const freq = connection.autoSyncFrequency || 'daily';
 
-  // Minimum 5-minute cooldown to prevent rapid spamming
-  if (elapsedMs < 5 * 60 * 1000) {
+  // Never synced yet -> due immediately
+  if (!lastSync) {
+    return true;
+  }
+
+  // Minimum 1-minute cooldown between automated background syncs
+  if (elapsedMs < 60 * 1000) {
     return false;
   }
 
@@ -222,9 +254,47 @@ export function isAutoSyncDue(connection: any): boolean {
     return elapsedMs >= 12 * 60 * 60 * 1000;
   }
 
-  if (freq === 'daily' || freq === 'weekly') {
-    // If it's been more than 24h since last sync
+  if (freq === 'daily') {
+    const timeStr = connection.autoSyncTime || '09:00';
+    const [targetH, targetM] = timeStr.split(':').map((n: string) => parseInt(n, 10) || 0);
+    const targetToday = new Date();
+    targetToday.setHours(targetH, targetM, 0, 0);
+    const targetTime = targetToday.getTime();
+
+    // 1. Current time is past today's scheduled time and last sync was before today's scheduled time
+    if (now >= targetTime && lastSync < targetTime) {
+      return true;
+    }
+
+    // 2. Schedule settings were updated after the last sync and the target time for today has passed
+    const settingsUpdated = connection.updatedAt ? new Date(connection.updatedAt).getTime() : 0;
+    if (settingsUpdated > lastSync && now >= targetTime) {
+      return true;
+    }
+
+    // 3. More than 24 hours have elapsed since the last sync
     if (elapsedMs >= 24 * 60 * 60 * 1000) {
+      return true;
+    }
+  }
+
+  if (freq === 'weekly') {
+    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const currentDay = days[new Date().getDay()];
+    const targetDay = (connection.autoSyncDay || 'monday').toLowerCase();
+
+    if (currentDay === targetDay) {
+      const timeStr = connection.autoSyncTime || '09:00';
+      const [targetH, targetM] = timeStr.split(':').map((n: string) => parseInt(n, 10) || 0);
+      const targetToday = new Date();
+      targetToday.setHours(targetH, targetM, 0, 0);
+      const targetTime = targetToday.getTime();
+
+      if (now >= targetTime && lastSync < targetTime) {
+        return true;
+      }
+    }
+    if (elapsedMs >= 7 * 24 * 60 * 60 * 1000) {
       return true;
     }
   }

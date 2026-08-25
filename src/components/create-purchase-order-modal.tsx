@@ -58,7 +58,7 @@ export function CreatePurchaseOrderModal({
       setSupplierId(suppliers[0].id);
     }
     if (defaultProductId) setProductId(defaultProductId);
-  }, [defaultSupplierId, defaultProductId, open, suppliers]);
+  }, [defaultSupplierId, defaultProductId, open, suppliers, supplierId]);
 
   // Reset confirmation state when modal opens/closes
   useEffect(() => {

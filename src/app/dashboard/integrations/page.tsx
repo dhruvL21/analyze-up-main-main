@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card,
   CardContent,
@@ -31,6 +31,7 @@ import {
   getNextSyncTimeDisplay,
   isAutoSyncDue,
   formatTime12h,
+  formatLastSyncTime,
 } from '@/lib/drive-helper';
 import { ImportDialog } from '@/components/import-dialog';
 import { findMatchingImportProfile } from '@/lib/import-profile-store';
@@ -239,20 +240,85 @@ export default function IntegrationsPage() {
     return () => unsubscribe();
   }, [subscribeGoogleDriveConnection]);
 
-  // 1.05 Recurring background auto-sync scheduler (checks every 60 seconds)
-  useEffect(() => {
-    if (!driveConnection || !driveConnection.selectedFolderId || !user) return;
-    if (driveConnection.autoSyncEnabled === false) return;
+  const loadStats = useCallback(async () => {
+    try {
+      const files = await getGoogleDriveFiles();
+      let rows = 0;
+      let filesCount = 0;
+      let errors = 0;
+      let duplicates = 0;
 
-    const intervalId = setInterval(() => {
-      if (isAutoSyncDue(driveConnection) && !isLoadingScan && !isSyncingFileId) {
-        console.log('Automated sync trigger:', formatScheduleSummary(driveConnection));
-        scanDriveFolder(driveConnection.selectedFolderId, driveConnection.selectedFolderName);
+      files.forEach((d: any) => {
+        filesCount++;
+        if (d.status === 'Synced') {
+          rows += d.validRows || 0;
+        } else if (d.status === 'Needs Review') {
+          errors += d.errorRows || 0;
+        }
+        duplicates += d.skippedDuplicates || 0;
+      });
+
+      setSyncStats({
+        filesCount,
+        rowsCount: rows,
+        duplicatesCount: duplicates,
+        errorsCount: errors
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  }, [getGoogleDriveFiles]);
+
+  const loadSyncHistory = useCallback(async () => {
+    try {
+      const historyList = await getSyncHistory();
+      setSyncHistory(historyList);
+    } catch (e) {
+      console.error(e);
+    }
+  }, [getSyncHistory]);
+
+  // 5. Scan Folder for files
+  const scanDriveFolder = useCallback(async (overrideFolderId?: string, overrideFolderName?: string) => {
+    if (!user) return;
+    setIsLoadingScan(true);
+    setSyncState('scanning');
+    try {
+      const token = await getClientDriveToken(driveConnection, user, firestore);
+      if (!token) return;
+
+      const folderId = overrideFolderId || driveConnection?.selectedFolderId;
+      const folderName = overrideFolderName || driveConnection?.selectedFolderName || '';
+
+      const folderQuery = folderId
+        ? `?folderId=${encodeURIComponent(folderId)}&folderName=${encodeURIComponent(folderName)}`
+        : '';
+
+      const res = await fetch(`/api/drive/scan${folderQuery}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'x-user-uid': user.uid,
+        },
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setDriveFiles(data.files || []);
+        loadStats();
+      } else if (!data?.folderNotSelected) {
+        toast({
+          variant: 'destructive',
+          title: 'Folder Scan Failed',
+          description: data.error || 'Could not list files in the sync folder.',
+        });
       }
-    }, 60 * 1000);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoadingScan(false);
+      setSyncState('idle');
+    }
+  }, [user, driveConnection, firestore, loadStats, toast]);
 
-    return () => clearInterval(intervalId);
-  }, [driveConnection, user, isLoadingScan, isSyncingFileId]);
 
   const handleSaveAutoSyncSchedule = async () => {
     setIsSavingSchedule(true);
@@ -349,45 +415,7 @@ export default function IntegrationsPage() {
       loadSyncHistory();
       loadStats();
     }
-  }, [driveConnection, user]);
-
-  const loadStats = async () => {
-    try {
-      const files = await getGoogleDriveFiles();
-      let rows = 0;
-      let filesCount = 0;
-      let errors = 0;
-      let duplicates = 0;
-
-      files.forEach((d: any) => {
-        filesCount++;
-        if (d.status === 'Synced') {
-          rows += d.validRows || 0;
-        } else if (d.status === 'Needs Review') {
-          errors += d.errorRows || 0;
-        }
-        duplicates += d.skippedDuplicates || 0;
-      });
-
-      setSyncStats({
-        filesCount,
-        rowsCount: rows,
-        duplicatesCount: duplicates,
-        errorsCount: errors
-      });
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const loadSyncHistory = async () => {
-    try {
-      const historyList = await getSyncHistory();
-      setSyncHistory(historyList);
-    } catch (e) {
-      console.error(e);
-    }
-  };
+  }, [driveConnection, user, scanDriveFolder, loadSyncHistory, loadStats]);
 
   // 3. Authenticate with Google Drive (Redirect to Server OAuth API)
   const connectGoogleDrive = () => {
@@ -407,47 +435,6 @@ export default function IntegrationsPage() {
     await disconnectGoogleDrive();
     setDriveConnection(null);
     setDriveFiles([]);
-  };
-
-  // 5. Scan Folder for files
-  const scanDriveFolder = async (overrideFolderId?: string, overrideFolderName?: string) => {
-    if (!user) return;
-    setIsLoadingScan(true);
-    setSyncState('scanning');
-    try {
-      const token = await getClientDriveToken(driveConnection, user, firestore);
-      if (!token) return;
-
-      const folderId = overrideFolderId || driveConnection?.selectedFolderId;
-      const folderName = overrideFolderName || driveConnection?.selectedFolderName || '';
-
-      const folderQuery = folderId
-        ? `?folderId=${encodeURIComponent(folderId)}&folderName=${encodeURIComponent(folderName)}`
-        : '';
-
-      const res = await fetch(`/api/drive/scan${folderQuery}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'x-user-uid': user.uid,
-        },
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setDriveFiles(data.files || []);
-        loadStats();
-      } else if (!data?.folderNotSelected) {
-        toast({
-          variant: 'destructive',
-          title: 'Folder Scan Failed',
-          description: data.error || 'Could not list files in the sync folder.',
-        });
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsLoadingScan(false);
-      setSyncState('idle');
-    }
   };
 
   // 6. Fetch Available Folders for selection
@@ -522,71 +509,67 @@ export default function IntegrationsPage() {
     }
   };
 
-  // 8. Silent Sync or Manual Mapping Ingestion Flow
-  const syncFile = async (file: any) => {
-    if (!user) return;
-    setIsSyncingFileId(file.id);
-    setSyncState('syncing');
+  // Universal Heuristic Auto-Detection for spreadsheet columns
+  const autoDetectMapping = (headers: string[]): { fileType: string; mapping: Record<string, string> } | null => {
+    const lower = headers.map(h => h.toLowerCase().trim());
 
-    try {
-      const token = await getClientDriveToken(driveConnection, user, firestore);
-      if (!token) throw new Error('Could not obtain valid Google Drive token');
+    const hasOrder = lower.some(h => h.includes('order') || h.includes('invoice') || h.includes('bill') || h.includes('trans'));
+    const hasCust = lower.some(h => h.includes('cust') || h.includes('client') || h.includes('buyer'));
+    const hasQty = lower.some(h => h.includes('qty') || h.includes('quantity') || h.includes('units') || h.includes('count'));
+    const hasPrice = lower.some(h => h.includes('price') || h.includes('amount') || h.includes('rate') || h.includes('total') || h.includes('revenue') || h.includes('mrp'));
+    const hasProd = lower.some(h => h.includes('product') || h.includes('item') || h.includes('name') || h.includes('title') || h.includes('desc'));
 
-      const res = await fetch('/api/drive/sync', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-          'x-user-uid': user.uid,
-        },
-        body: JSON.stringify({ fileId: file.id, fileName: file.name }),
+    if ((hasOrder || hasCust) && (hasProd || hasQty || hasPrice)) {
+      const mapping: Record<string, string> = {};
+      headers.forEach(h => {
+        const l = h.toLowerCase().trim();
+        if (l.includes('order') || l.includes('invoice') || l.includes('bill')) mapping[h] = 'orderNumber';
+        else if (l.includes('date') || l.includes('time')) mapping[h] = 'orderDate';
+        else if (l.includes('cust') || l.includes('client') || l.includes('buyer')) mapping[h] = 'customerName';
+        else if (l.includes('city') || l.includes('loc') || l.includes('state')) mapping[h] = 'city';
+        else if (l.includes('product') || l.includes('item') || l.includes('name') || l.includes('title')) mapping[h] = 'productName';
+        else if (l.includes('qty') || l.includes('quantity') || l.includes('units')) mapping[h] = 'quantity';
+        else if (l.includes('cost')) mapping[h] = 'costPrice';
+        else if (l.includes('price') || l.includes('amount') || l.includes('rate') || l.includes('mrp')) mapping[h] = 'sellingPrice';
+        else if (l.includes('payment') || l.includes('mode') || l.includes('pay')) mapping[h] = 'paymentMode';
+        else if (l.includes('status')) mapping[h] = 'status';
+        else if (l.includes('sku') || l.includes('code')) mapping[h] = 'sku';
+        else if (l.includes('cat')) mapping[h] = 'category';
+        else mapping[h] = 'skip';
       });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to download file content.');
-      }
-
-      // Check if there is an existing mapping profile signature in DataContext
-      const results = Papa.parse(data.csvContent, { header: true, skipEmptyLines: true });
-      const rawRows = results.data as Record<string, any>[];
-      if (rawRows.length === 0) {
-        throw new Error('Spreadsheet has no data rows.');
-      }
-
-      const headers = Object.keys(rawRows[0]);
-      
-      // Load saved mapping profiles from DataContext
-      const profiles = await getMappingProfiles();
-      const currentSignature = headers.slice().sort().join('|').toLowerCase();
-      const matchedProfile = profiles.find((p: any) => p.headersSignature === currentSignature);
-
-      if (matchedProfile) {
-        // Auto Sync: Run direct ingestion silently on the client side
-        await runSilentIngestion(file.id, file.name, data.csvContent, matchedProfile);
-      } else {
-        // Needs Review / Custom Mapping: Open the mapping wizard modal with preset file content
-        setPresetFile({
-          name: file.name,
-          content: data.csvContent,
-          driveFileId: file.id
-        });
-        setIsImportDialogOpen(true);
-      }
-    } catch (err: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Sync Action Failed',
-        description: err?.message || 'Verification failed.',
-      });
-    } finally {
-      setIsSyncingFileId(null);
-      setSyncState('idle');
+      return { fileType: 'SALES_REPORT', mapping };
     }
+
+    if (hasProd && (hasPrice || hasQty || lower.some(h => h.includes('stock')))) {
+      const mapping: Record<string, string> = {};
+      headers.forEach(h => {
+        const l = h.toLowerCase().trim();
+        if (l.includes('product') || l.includes('item') || l.includes('name') || l.includes('title')) mapping[h] = 'name';
+        else if (l.includes('cost')) mapping[h] = 'costPrice';
+        else if (l.includes('price') || l.includes('rate') || l.includes('mrp') || l.includes('selling')) mapping[h] = 'price';
+        else if (l.includes('stock') || l.includes('qty') || l.includes('quantity') || l.includes('units') || l.includes('avail')) mapping[h] = 'stock';
+        else if (l.includes('sku') || l.includes('code')) mapping[h] = 'sku';
+        else if (l.includes('cat')) mapping[h] = 'category';
+        else if (l.includes('supp') || l.includes('vendor')) mapping[h] = 'supplier';
+        else if (l.includes('unit')) mapping[h] = 'unit';
+        else if (l.includes('desc')) mapping[h] = 'description';
+        else mapping[h] = 'skip';
+      });
+      return { fileType: 'INVENTORY_MASTER', mapping };
+    }
+
+    return null;
   };
 
-  // 9. Client-side silent normalization & ingestion
-  const runSilentIngestion = async (fileId: string, fileName: string, csvContent: string, profile: any) => {
+  // 8. Client-side silent normalization & ingestion
+  const runSilentIngestion = useCallback(async (
+    fileId: string,
+    fileName: string,
+    csvContent: string,
+    profile: any,
+    triggerScanRefresh: boolean = true,
+    showNotification: boolean = true
+  ) => {
     if (!user) return;
     try {
       const results = Papa.parse(csvContent, { header: true, skipEmptyLines: true });
@@ -762,21 +745,249 @@ export default function IntegrationsPage() {
         }
       );
 
-      toast({
-        title: 'File Synced Successfully ✨',
-        description: `Imported ${validRows.length} records. Business Intelligence recalculated.`,
-      });
+      if (showNotification) {
+        toast({
+          title: 'File Synced Successfully ✨',
+          description: `Imported ${validRows.length} records from "${fileName}".`,
+        });
+      }
 
-      scanDriveFolder();
+      if (triggerScanRefresh) {
+        scanDriveFolder();
+      }
     } catch (err: any) {
       console.error(err);
+      if (showNotification) {
+        toast({
+          variant: 'destructive',
+          title: 'Sync Ingestion Failed',
+          description: err?.message || 'Failed to normalize data.',
+        });
+      }
+    }
+  }, [user, products, categories, suppliers, addCategory, addSupplier, bulkAddProducts, bulkAddTransactions, recordSyncSuccess, toast, scanDriveFolder]);
+
+  // 9. Silent Sync or Manual Mapping Ingestion Flow
+  const syncFile = useCallback(async (file: any, isBackground = false) => {
+    if (!user) return;
+    setIsSyncingFileId(file.id);
+    setSyncState('syncing');
+
+    try {
+      const token = await getClientDriveToken(driveConnection, user, firestore);
+      if (!token) throw new Error('Could not obtain valid Google Drive token');
+
+      const res = await fetch('/api/drive/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          'x-user-uid': user.uid,
+        },
+        body: JSON.stringify({ fileId: file.id, fileName: file.name }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to download file content.');
+      }
+
+      // Parse CSV rows
+      const results = Papa.parse(data.csvContent, { header: true, skipEmptyLines: true });
+      const rawRows = results.data as Record<string, any>[];
+      if (rawRows.length === 0) {
+        throw new Error('Spreadsheet has no data rows.');
+      }
+
+      const headers = Object.keys(rawRows[0] || {});
+      
+      // Load saved mapping profiles from DataContext or storage
+      const profiles = await getMappingProfiles();
+      const currentSignature = headers.slice().sort().join('|').toLowerCase();
+      let matchedProfile = profiles.find((p: any) => p.headersSignature === currentSignature);
+
+      if (!matchedProfile) {
+        matchedProfile = findMatchingImportProfile(headers) as any;
+      }
+
+      if (!matchedProfile) {
+        matchedProfile = autoDetectMapping(headers) as any;
+      }
+
+      if (matchedProfile) {
+        // Auto Sync: Run direct ingestion silently on the client side
+        await runSilentIngestion(file.id, file.name, data.csvContent, matchedProfile, !isBackground, !isBackground);
+        
+        // Save profile in DataContext for future automatic syncs
+        await saveMappingProfile(file.id, {
+          id: `profile-${file.id}`,
+          profileName: `Auto Map for ${file.name}`,
+          fileType: matchedProfile.fileType,
+          headersSignature: currentSignature,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      } else {
+        if (!isBackground) {
+          // Needs Review / Custom Mapping: Open the mapping wizard modal with preset file content
+          setPresetFile({
+            name: file.name,
+            content: data.csvContent,
+            driveFileId: file.id
+          });
+          setIsImportDialogOpen(true);
+        } else {
+          // In background auto-sync, mark file as Needs Review
+          await recordSyncSuccess(
+            file.id,
+            {
+              id: file.id,
+              fileName: file.name,
+              status: 'Needs Review',
+              lastProcessedAt: new Date().toISOString(),
+              size: data.csvContent.length,
+              modifiedTime: new Date().toISOString(),
+            },
+            {
+              syncedAt: new Date().toISOString(),
+              filesCount: 1,
+              rowsCount: 0,
+              status: 'Completed',
+              files: [file.name],
+            }
+          );
+        }
+      }
+    } catch (err: any) {
+      if (!isBackground) {
+        toast({
+          variant: 'destructive',
+          title: 'Sync Action Failed',
+          description: err?.message || 'Verification failed.',
+        });
+      }
+    } finally {
+      setIsSyncingFileId(null);
+      setSyncState('idle');
+    }
+  }, [user, driveConnection, firestore, getMappingProfiles, runSilentIngestion, saveMappingProfile, recordSyncSuccess, toast]);
+
+  // 9.5 Complete Folder Sync with Automatic Silent Ingestion
+  const syncFolderWithAutoIngest = useCallback(async (overrideFolderId?: string, overrideFolderName?: string) => {
+    if (!user) return;
+    setIsLoadingScan(true);
+    setSyncState('scanning');
+
+    try {
+      const token = await getClientDriveToken(driveConnection, user, firestore);
+      if (!token) return;
+
+      const folderId = overrideFolderId || driveConnection?.selectedFolderId;
+      const folderName = overrideFolderName || driveConnection?.selectedFolderName || '';
+
+      const folderQuery = folderId
+        ? `?folderId=${encodeURIComponent(folderId)}&folderName=${encodeURIComponent(folderName)}`
+        : '';
+
+      const res = await fetch(`/api/drive/scan${folderQuery}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'x-user-uid': user.uid,
+        },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        if (!data?.folderNotSelected) {
+          toast({
+            variant: 'destructive',
+            title: 'Folder Scan Failed',
+            description: data?.error || 'Could not list files in the sync folder.',
+          });
+        }
+        return;
+      }
+
+      const files = data.files || [];
+      setDriveFiles(files);
+
+      // Identify un-synced / new / modified files
+      const pendingFiles = files.filter((f: any) => f.status === 'New File' || f.status === 'Modified');
+
+      let ingestedCount = 0;
+      if (pendingFiles.length > 0) {
+        setSyncState('syncing');
+        for (const file of pendingFiles) {
+          try {
+            await syncFile(file, true);
+            ingestedCount++;
+          } catch (e) {
+            console.error(`Auto-sync failed for file ${file.name}:`, e);
+          }
+        }
+      }
+
+      // Record lastSyncAt timestamp in Firestore so the connection doc updates
+      const nowIso = new Date().toISOString();
+      if (firestore && user) {
+        const connRef = doc(firestore, 'users', user.uid, 'integrations', 'google-drive');
+        await updateDoc(connRef, {
+          lastSyncAt: nowIso,
+          lastSyncStatus: 'Success',
+          updatedAt: nowIso,
+        }).catch(async () => {
+          await setDoc(connRef, { lastSyncAt: nowIso, lastSyncStatus: 'Success', updatedAt: nowIso }, { merge: true });
+        });
+      }
+
+      setDriveConnection((prev: any) => prev ? { ...prev, lastSyncAt: nowIso, lastSyncStatus: 'Success' } : prev);
+      await loadStats();
+      await loadSyncHistory();
+
+      // Refresh final list
+      const resAfter = await fetch(`/api/drive/scan${folderQuery}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'x-user-uid': user.uid,
+        },
+      });
+      const dataAfter = await resAfter.json();
+      if (resAfter.ok && dataAfter.success) {
+        setDriveFiles(dataAfter.files || []);
+      }
+
+      toast({
+        title: 'Google Drive Synchronized 🚀',
+        description: ingestedCount > 0
+          ? `Automatically ingested ${ingestedCount} spreadsheet${ingestedCount > 1 ? 's' : ''}. Last sync updated.`
+          : `Folder checked. All spreadsheets are up to date (${formatLastSyncTime(nowIso)}).`,
+      });
+    } catch (e: any) {
+      console.error('Folder sync error:', e);
       toast({
         variant: 'destructive',
-        title: 'Sync Ingestion Failed',
-        description: err?.message || 'Failed to normalize data.',
+        title: 'Sync Error',
+        description: e?.message || 'Could not complete folder synchronization.',
       });
+    } finally {
+      setIsLoadingScan(false);
+      setSyncState('idle');
     }
-  };
+  }, [user, driveConnection, firestore, syncFile, loadStats, loadSyncHistory, toast]);
+
+  // 9.6 Recurring background auto-sync scheduler (checks every 60 seconds)
+  useEffect(() => {
+    if (!driveConnection || !driveConnection.selectedFolderId || !user) return;
+    if (driveConnection.autoSyncEnabled === false) return;
+
+    const intervalId = setInterval(() => {
+      if (isAutoSyncDue(driveConnection) && !isLoadingScan && !isSyncingFileId) {
+        console.log('[AutoSync] Scheduled Google Drive sync triggered for:', driveConnection.selectedFolderName);
+        syncFolderWithAutoIngest(driveConnection.selectedFolderId, driveConnection.selectedFolderName);
+      }
+    }, 60 * 1000);
+
+    return () => clearInterval(intervalId);
+  }, [driveConnection, user, isLoadingScan, isSyncingFileId, syncFolderWithAutoIngest]);
 
   // 10. Open Mapping Dialog callback to register the mapping profile in Firestore
   const handleImportComplete = async (summary: any) => {
@@ -1083,9 +1294,15 @@ export default function IntegrationsPage() {
                 // State 3: Connected & Active Folder Selected
                 <div className="space-y-3.5 flex-1 flex flex-col justify-between">
                   <div className="space-y-2">
-                    <p className="text-xs text-muted-foreground">
-                      Connected to folder <span className="font-semibold text-blue-400">"{driveConnection.selectedFolderName || 'AnalyzeUp'}"</span>
-                    </p>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground flex-wrap gap-1">
+                      <p>
+                        Connected to folder <span className="font-semibold text-blue-400">"{driveConnection.selectedFolderName || 'AnalyzeUp'}"</span>
+                      </p>
+                      <div className="flex items-center gap-1 text-[11px] text-zinc-400 font-medium">
+                        <Clock className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                        <span>Last Synced: <strong className="text-zinc-200">{formatLastSyncTime(driveConnection.lastSyncAt)}</strong></span>
+                      </div>
+                    </div>
 
                     {/* Interactive Auto-Sync Schedule Badge */}
                     <div className="flex items-center justify-between gap-2 flex-wrap pt-0.5">
@@ -1105,21 +1322,21 @@ export default function IntegrationsPage() {
                         <Pencil className="w-3 h-3 ml-0.5 opacity-60 group-hover:opacity-100 transition-opacity" />
                       </button>
 
-                      <span className="text-[11px] text-zinc-400 font-mono">
-                        {getNextSyncTimeDisplay(driveConnection)}
-                      </span>
+                      <div className="flex items-center gap-1 text-[11px] text-zinc-400">
+                        <span className="font-mono">{getNextSyncTimeDisplay(driveConnection)}</span>
+                      </div>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2 pt-2">
                     <Button
-                      onClick={() => scanDriveFolder()}
-                      disabled={isLoadingScan}
-                      className="flex-1 rounded-xl text-xs gap-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-md h-9"
+                      onClick={() => syncFolderWithAutoIngest()}
+                      disabled={isLoadingScan || syncState === 'syncing'}
+                      className="flex-1 rounded-xl text-xs gap-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-md h-9 cursor-pointer"
                     >
-                      {isLoadingScan ? (
+                      {isLoadingScan || syncState === 'syncing' ? (
                         <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Scanning...
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Syncing Folder...
                         </>
                       ) : (
                         <>
@@ -1157,12 +1374,19 @@ export default function IntegrationsPage() {
         <Card className="ios-glass border-border/40 rounded-3xl overflow-hidden p-6 space-y-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-border/40 pb-3">
             <div>
-              <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-                <FolderOpen className="w-5 h-5 text-blue-400" />
-                Folder Files List
-              </h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Manage and sync spreadsheets detected inside your connected folder.
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                  <FolderOpen className="w-5 h-5 text-blue-400" />
+                  Folder Files List
+                </h3>
+                <Badge variant="secondary" className="text-[11px] font-semibold">
+                  {driveFiles.length} {driveFiles.length === 1 ? 'file' : 'files'}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
+                <span>Spreadsheets detected inside your connected folder.</span>
+                <span>•</span>
+                <span>Last Synced: <strong className="text-zinc-200 font-medium">{formatLastSyncTime(driveConnection.lastSyncAt)}</strong></span>
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -1182,11 +1406,11 @@ export default function IntegrationsPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => scanDriveFolder()}
-                disabled={isLoadingScan}
-                className="rounded-xl text-xs gap-1.5 h-8 font-semibold border-blue-500/20 text-blue-400 hover:bg-blue-500/10"
+                onClick={() => syncFolderWithAutoIngest()}
+                disabled={isLoadingScan || syncState === 'syncing'}
+                className="rounded-xl text-xs gap-1.5 h-8 font-semibold border-blue-500/20 text-blue-400 hover:bg-blue-500/10 cursor-pointer"
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingScan ? 'animate-spin' : ''}`} /> Scan Folder
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingScan || syncState === 'syncing' ? 'animate-spin' : ''}`} /> Scan & Sync All
               </Button>
             </div>
           </div>
@@ -1584,8 +1808,8 @@ export default function IntegrationsPage() {
 
       {/* Dialog 2: Sync History Log Modal */}
       <Dialog open={showHistoryModal} onOpenChange={setShowHistoryModal}>
-        <DialogContent className="sm:max-w-lg bg-zinc-950/90 border border-blue-500/20 rounded-3xl ios-glass text-white shadow-2xl p-6">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-lg bg-zinc-950/95 border border-blue-500/20 rounded-3xl ios-glass text-white shadow-2xl p-6 max-h-[85vh] flex flex-col overflow-hidden">
+          <DialogHeader className="pb-3 border-b border-zinc-800/60 shrink-0">
             <DialogTitle className="text-base font-bold flex items-center gap-2">
               <HistoryIcon className="w-5 h-5 text-blue-400" />
               Sync History Log
@@ -1595,7 +1819,7 @@ export default function IntegrationsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="max-h-80 overflow-y-auto py-3 space-y-2.5 pr-1">
+          <div className="flex-1 overflow-y-auto py-3 space-y-2.5 pr-1">
             {syncHistory.length === 0 ? (
               <p className="text-xs text-zinc-500 text-center py-12">No synchronization records logged yet.</p>
             ) : (
@@ -1647,8 +1871,8 @@ export default function IntegrationsPage() {
 
       {/* Dialog 4: Auto-Sync Schedule Configuration Modal */}
       <Dialog open={showAutoSyncModal} onOpenChange={setShowAutoSyncModal}>
-        <DialogContent className="sm:max-w-md bg-zinc-950/95 border border-blue-500/20 rounded-3xl ios-glass text-white shadow-2xl p-6">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-md bg-zinc-950/95 border border-blue-500/20 rounded-3xl ios-glass text-white shadow-2xl p-6 max-h-[88vh] flex flex-col overflow-hidden">
+          <DialogHeader className="pb-3 border-b border-zinc-800/60 shrink-0">
             <DialogTitle className="text-base font-bold flex items-center gap-2">
               <Clock className="w-5 h-5 text-blue-400" />
               Auto-Sync Schedule
@@ -1658,7 +1882,7 @@ export default function IntegrationsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
+          <div className="flex-1 overflow-y-auto py-3 space-y-4 pr-1">
             {/* Active Toggle Switch */}
             <div className="flex items-center justify-between p-3.5 rounded-2xl bg-zinc-900/90 border border-zinc-800 shadow-inner">
               <div className="space-y-0.5">
@@ -1768,12 +1992,12 @@ export default function IntegrationsPage() {
             )}
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0 pt-2">
+          <DialogFooter className="pt-3.5 mt-2 border-t border-zinc-800/80 shrink-0 flex items-center justify-end gap-2">
             <Button
               type="button"
               variant="outline"
               onClick={() => setShowAutoSyncModal(false)}
-              className="rounded-xl text-xs"
+              className="rounded-xl text-xs h-9 px-4 border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 text-zinc-300 hover:text-white transition-colors"
             >
               Cancel
             </Button>
@@ -1781,7 +2005,7 @@ export default function IntegrationsPage() {
               type="button"
               onClick={handleSaveAutoSyncSchedule}
               disabled={isSavingSchedule}
-              className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold gap-1.5"
+              className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold px-4 h-9 gap-1.5 shadow-md shadow-blue-600/20 transition-all"
             >
               {isSavingSchedule ? (
                 <>

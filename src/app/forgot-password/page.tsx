@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -21,7 +20,6 @@ import { Loader2, Mail, CheckCircle2, ArrowLeft } from 'lucide-react';
 import { AnalyzeUpIcon } from '@/components/analyze-up-icon';
 
 export default function ForgotPasswordPage() {
-  const router = useRouter();
   const { toast } = useToast();
   const auth = useAuth();
 

@@ -5,12 +5,11 @@ import {
   PurchaseOrder,
   ProductReturn,
   BusinessProfile,
-  BusinessEvent,
 } from './types';
 import { computeBusinessHealth } from './command-center-engine';
-import { calculateSupplierCostIntelligence } from './supplier-intelligence-engine';
 import { generateBusinessForecastingReport } from './forecasting-engine';
 import { detectBusinessEvents } from './business-event-engine';
+import { formatCur, getCurSymbol } from './utils';
 
 // 1. Data Models
 export interface PeriodMetrics {
@@ -109,11 +108,6 @@ export interface ReportSnapshot {
   risksCount: number;
   opportunitiesCount: number;
 }
-
-// Helper currency formatter
-const getCurSymbol = (profile?: BusinessProfile | null) => (profile?.currency?.includes('USD') ? '$' : '₹');
-const formatCur = (val: number, profile?: BusinessProfile | null) =>
-  `${getCurSymbol(profile)}${Math.round(val).toLocaleString('en-IN')}`;
 
 // 2. Period Metrics Calculator
 export function calculatePeriodMetrics(
@@ -365,7 +359,6 @@ export function generateAIExecutiveBrief(
   businessProfile?: BusinessProfile | null
 ): AIExecutiveBrief {
   const revTrend = comparison.revenueChangePercent >= 0 ? 'improving' : 'experiencing friction';
-  const posProd = opportunities[0]?.title || 'Sales velocity across hero SKUs is expanding.';
   const negFactor = comparison.marginChangePercentagePoints < 0
     ? `Profit margin compressed by ${Math.abs(comparison.marginChangePercentagePoints)} percentage points due to vendor cost increases.`
     : 'Inventory holding costs remain elevated across slow-moving items.';
@@ -429,6 +422,7 @@ export function createReportSnapshot(
     const updated = [snapshot, ...existing.slice(0, 19)];
     if (typeof window !== 'undefined') {
       localStorage.setItem(SNAPSHOT_STORAGE_KEY, JSON.stringify(updated));
+      window.dispatchEvent(new CustomEvent('analyzeup_snapshots_updated'));
     }
   } catch (err) {
     console.error('Failed to store report snapshot:', err);
@@ -445,5 +439,29 @@ export function getStoredReportSnapshots(): ReportSnapshot[] {
     return JSON.parse(raw);
   } catch {
     return [];
+  }
+}
+
+export function deleteStoredReportSnapshot(snapshotId: string): ReportSnapshot[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const existing = getStoredReportSnapshots();
+    const updated = existing.filter(s => s.id !== snapshotId);
+    localStorage.setItem(SNAPSHOT_STORAGE_KEY, JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent('analyzeup_snapshots_updated'));
+    return updated;
+  } catch (err) {
+    console.error('Failed to delete report snapshot:', err);
+    return [];
+  }
+}
+
+export function clearAllStoredReportSnapshots(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(SNAPSHOT_STORAGE_KEY);
+    window.dispatchEvent(new CustomEvent('analyzeup_snapshots_updated'));
+  } catch (err) {
+    console.error('Failed to clear report snapshots:', err);
   }
 }

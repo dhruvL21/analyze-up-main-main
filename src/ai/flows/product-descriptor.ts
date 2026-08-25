@@ -9,7 +9,7 @@ export async function generateProductDescription(productName: string): Promise<s
   const validatedName = ProductNameSchema.parse(productName);
 
   const prompt = `
-Generate a professional, creative, and compelling 2-3 sentence product description for a product named "${productName}". 
+Generate a professional, creative, and compelling 2-3 sentence product description for a product named "${validatedName}". 
 The target audience is sophisticated consumers looking for quality and reliability. Do not include pricing or technical specs unless inferred by the product name.
   `;
 

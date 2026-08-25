@@ -1,10 +1,10 @@
 'use client';
 
-import React, { createContext, useContext, useState, ReactNode, useMemo, useCallback, useEffect } from 'react';
-import type { Product, PurchaseOrder, Supplier, Transaction, Category, ProductReturn, CustomAttribute, BusinessProfile, BusinessType, BusinessSize } from '@/lib/types';
+import { createContext, useContext, useState, ReactNode, useMemo, useCallback, useEffect } from 'react';
+import type { Product, PurchaseOrder, Supplier, Transaction, Category, ProductReturn, CustomAttribute, BusinessProfile, BusinessType } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { useUser, useFirestore } from '@/firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, writeBatch, setDoc, getDoc, onSnapshot, getDocs } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, writeBatch, setDoc, onSnapshot, getDocs } from 'firebase/firestore';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -454,7 +454,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       }));
     });
     toast({ title: 'Product Added', description: `${productData.name} has been added.` });
-  }, [firestore, user, productsRef, transactionsRef, toast]);
+  }, [firestore, user, productsRef, transactionsRef, toast, isLimitExceeded, activePlanLimit]);
 
   const addTransaction = useCallback(async (transactionData: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>) => {
     if (!firestore || !user || !transactionsRef) {
@@ -698,7 +698,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     });
     const supplierName = suppliers.find(s => s.id === newOrder.supplierId)?.name || 'the customer';
     toast({ title: 'Order Created', description: `New order for ${supplierName} has been recorded.` });
-  }, [firestore, user, ordersRef, suppliers, toast]);
+  }, [firestore, user, ordersRef, suppliers, toast, products, transactionsRef]);
 
   const deleteOrder = useCallback(async (orderId: string) => {
     if (!firestore || !user) return;
@@ -764,7 +764,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         operation: 'update',
       }));
     });
-  }, [firestore, user, orders, products, transactionsRef, toast]);
+  }, [firestore, user, orders, products, transactionsRef, suppliers, toast]);
 
   const addCustomAttribute = useCallback(async (attributeData: Omit<CustomAttribute, 'id'>) => {
     if (!firestore || !user || !customAttributesRef) return;
@@ -944,7 +944,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     });
 
     toast({ title: 'Return Status Updated', description: `Return status updated to ${refundStatus}.` });
-  }, [firestore, user, returns, products, transactionsRef, toast]);
+  }, [firestore, user, returns, products, transactionsRef, returnsRef, toast]);
 
   const deleteReturn = useCallback(async (returnId: string) => {
     if (!firestore || !user) return;
@@ -1253,6 +1253,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     getSyncHistory,
     getMappingProfiles,
     disconnectGoogleDrive,
+    updateGoogleDriveSettings,
     recordSyncSuccess,
     saveMappingProfile,
     activePlan,

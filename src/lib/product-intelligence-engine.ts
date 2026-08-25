@@ -1,4 +1,4 @@
-import { Product, Transaction, Supplier, PurchaseOrder, ProductReturn } from './types';
+import { Product, Transaction, Supplier, ProductReturn } from './types';
 import { calculateSupplierPerformanceScore, calculateSupplierCostIntelligence } from './supplier-intelligence-engine';
 import { calculateProductVelocity, forecastProductDemand, projectStockoutDate } from './forecasting-engine';
 

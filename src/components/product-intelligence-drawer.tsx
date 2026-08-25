@@ -12,7 +12,6 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { Product } from '@/lib/types';
 import { computeProductIntelligence } from '@/lib/product-intelligence-engine';
 import { useData } from '@/context/data-context';
@@ -22,13 +21,8 @@ import {
   Sparkles,
   TrendingUp,
   PackagePlus,
-  Tag,
-  ShieldAlert,
-  Clock,
   ArrowRight,
-  Coins,
   Truck,
-  CheckCircle2,
   AlertTriangle,
 } from 'lucide-react';
 

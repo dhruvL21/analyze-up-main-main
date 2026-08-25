@@ -63,7 +63,6 @@ Respond ONLY in valid JSON with these exact keys:
 `;
 
   try {
-    console.log('Generating business strategy...');
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
@@ -79,7 +78,6 @@ Respond ONLY in valid JSON with these exact keys:
       throw new Error('No output received from the AI model.');
     }
 
-    console.log('AI Raw Response:', content);
     const rawParsed = JSON.parse(content);
     
     // Attempt to fix common key naming variations from AI

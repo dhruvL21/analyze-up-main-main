@@ -12,8 +12,6 @@ import {
   GrowthReport,
   OpportunityStatus,
 } from './types';
-import { computeBusinessHealth } from './command-center-engine';
-import { generateBusinessForecastingReport } from './forecasting-engine';
 import { computeProductIntelligence } from './product-intelligence-engine';
 import { calculateSupplierPerformanceScore } from './supplier-intelligence-engine';
 
@@ -52,9 +50,6 @@ export function computeCustomerGrowthIntelligence(
   returns: ProductReturn[] = [],
   businessProfile?: BusinessProfile | null
 ): GrowthReport {
-  const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
-  const formatCur = (val: number) => `${currencySymbol}${Math.round(val).toLocaleString('en-IN')}`;
-
   const salesTx = transactions.filter(t => t.type === 'Sale');
   const now = new Date();
 

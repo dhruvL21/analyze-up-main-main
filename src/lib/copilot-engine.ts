@@ -1,16 +1,13 @@
 import { Product, Transaction, Supplier, PurchaseOrder, ProductReturn, BusinessProfile } from './types';
 import { computeBusinessHealth, generateActionTasks, generateTodayPriorities, ActionTask } from './command-center-engine';
-import { computeProductIntelligence, filterProductsByNaturalLanguage } from './product-intelligence-engine';
 import {
-  calculateSupplierPerformanceScore,
-  calculateSupplierCostIntelligence,
   detectProcurementRisks,
   calculateProcurementSavings,
-  generateSmartProcurementRecommendation,
 } from './supplier-intelligence-engine';
-import { generateBusinessForecastingReport, ForecastingReport } from './forecasting-engine';
+import { generateBusinessForecastingReport } from './forecasting-engine';
 import { computeCustomerGrowthIntelligence } from './customer-growth-engine';
 import { runBusinessSimulation } from './simulation-engine';
+import { formatCur } from './utils';
 
 export type IntentType =
   | 'PRODUCT_ANALYSIS'
@@ -240,9 +237,6 @@ export function processCopilotQuery(
   returns: ProductReturn[] = [],
   businessProfile?: BusinessProfile | null
 ): CopilotResponse {
-  const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
-  const formatCur = (val: number) => `${currencySymbol}${Math.round(val).toLocaleString('en-IN')}`;
-
   const { intent, intentLabel } = classifyBusinessIntent(query, history);
 
   const health = computeBusinessHealth(products, transactions, suppliers, returns);
