@@ -556,9 +556,15 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       }));
     });
 
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('analyzeup_audit_logged'));
+      window.dispatchEvent(new CustomEvent('analyzeup_tasks_updated'));
+      window.dispatchEvent(new CustomEvent('analyzeup_drive_synced', { detail: { newCount, updateCount } }));
+    }
+
     toast({
-      title: 'Bulk Ingestion Complete',
-      description: `${newCount} new products added, ${updateCount} existing products updated. Duplicate records prevented.`,
+      title: 'Catalog Data Synced ✨',
+      description: `${newCount} new products added, ${updateCount} existing products updated. AI metrics & insights recalculated.`,
     });
   }, [firestore, user, productsRef, transactionsRef, products, activePlanLimit, toast]);
 
@@ -578,6 +584,11 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     await batch.commit().catch((_serverError) => {
       console.error("Bulk update failed:", _serverError);
     });
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('analyzeup_audit_logged'));
+      window.dispatchEvent(new CustomEvent('analyzeup_tasks_updated'));
+    }
   }, [firestore, user, productsRef]);
 
   const bulkAddTransactions = useCallback(async (transactionsData: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>[]) => {
@@ -614,9 +625,15 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       }));
     });
 
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('analyzeup_audit_logged'));
+      window.dispatchEvent(new CustomEvent('analyzeup_tasks_updated'));
+      window.dispatchEvent(new CustomEvent('analyzeup_drive_synced', { detail: { count: uniqueTransactions.length } }));
+    }
+
     toast({
-      title: 'Transactions Imported',
-      description: `Added ${uniqueTransactions.length} new transaction(s). ${transactionsData.length - uniqueTransactions.length} duplicate(s) safely ignored.`,
+      title: 'Sales Transactions Synced ✨',
+      description: `Added ${uniqueTransactions.length} new transaction(s). AI revenue, velocity & profit models updated.`,
     });
   }, [firestore, user, transactionsRef, transactions, toast]);
 

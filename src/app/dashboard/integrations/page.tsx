@@ -35,6 +35,7 @@ import {
 } from '@/lib/drive-helper';
 import { ImportDialog } from '@/components/import-dialog';
 import { findMatchingImportProfile } from '@/lib/import-profile-store';
+import { logBusinessAction } from '@/lib/audit-store';
 import Papa from 'papaparse';
 import {
   ShoppingBag,
@@ -759,10 +760,26 @@ export default function IntegrationsPage() {
         }
       );
 
+      logBusinessAction({
+        title: 'Google Drive Data Synced',
+        productName: fileName,
+        actionType: 'audit',
+        changeDetails: `Synced ${validRows.length} ${fileType === 'SALES_REPORT' ? 'sales transaction' : 'inventory'} records from Google Drive. Recalculated AI health score, forecasting, and demand velocity.`,
+        impactValue: `${validRows.length} Records`,
+      });
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('analyzeup_audit_logged'));
+        window.dispatchEvent(new CustomEvent('analyzeup_tasks_updated'));
+        window.dispatchEvent(new CustomEvent('analyzeup_drive_synced', { detail: { fileName, rowsCount: validRows.length } }));
+        // Clear completed task cache so AI Action Center generates fresh insights on new synced data
+        localStorage.removeItem('analyzeup_completed_tasks');
+      }
+
       if (showNotification) {
         toast({
-          title: 'File Synced Successfully ✨',
-          description: `Imported ${validRows.length} records from "${fileName}".`,
+          title: 'Google Drive Synced Successfully ✨',
+          description: `Imported ${validRows.length} records from "${fileName}". All dashboard metrics, stock levels, and AI recommendations recalculated.`,
         });
       }
 

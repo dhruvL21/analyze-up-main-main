@@ -98,17 +98,25 @@ export function computeProductIntelligence(
   // Days of Stock Remaining
   const daysOfStockRemaining = dailySales > 0 ? Math.round(stock / dailySales) : (stock > 0 ? 999 : 0);
 
-  // Determine Health Status
+  // Reorder Advice with Calibrated Target Runway Band (28-35 Days)
+  const leadTime = product?.leadTimeDays || 7;
+  const isReorderNeeded = stock === 0 || stock <= (product?.minStock || 5) || (dailySales > 0 && daysOfStockRemaining <= leadTime + 3);
+  const targetBufferDays = Math.max(leadTime + 14, 28); // 4 weeks of runway
+  const targetOptimalStock = Math.ceil(dailySales > 0 ? dailySales * targetBufferDays : (product?.minStock || 5) * 3);
+  const suggestedQty = isReorderNeeded ? Math.max(10, Math.ceil(targetOptimalStock - stock)) : 0;
+  const runwayImpact = Math.round(sellingPrice * (suggestedQty || 15));
+
+  // Determine Health Status based on actual mathematical runway
   let healthStatus: ProductHealthStatus = 'Healthy';
-  let healthColor = '#a07e50';
-  let badgeClass = 'bg-primary/20 text-primary border border-primary/40 font-bold shadow-sm';
+  let healthColor = '#10b981';
+  let badgeClass = 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-bold shadow-sm';
   const hasSalesHistory = totalSoldQty > 0;
 
   if (stock === 0) {
     healthStatus = 'Out of Stock';
     healthColor = '#ef4444';
     badgeClass = 'bg-rose-500/20 text-rose-400 border border-rose-500/40 font-bold shadow-sm';
-  } else if (stock <= (product?.minStock || 5)) {
+  } else if (isReorderNeeded) {
     healthStatus = 'Low Stock';
     healthColor = '#f59e0b';
     badgeClass = 'bg-amber-500/20 text-amber-400 border border-amber-500/40 font-bold shadow-sm';
@@ -116,22 +124,27 @@ export function computeProductIntelligence(
     healthStatus = 'Dead Stock';
     healthColor = '#94a3b8';
     badgeClass = 'bg-slate-400/20 text-slate-200 border border-slate-400/40 font-bold shadow-sm';
-  } else if (stock >= (product?.maxStock || 100)) {
+  } else if (daysOfStockRemaining > 120 && stock > 80 && dailySales < 0.8) {
+    // Only flag Overstocked when stock exceeds 4 full months of demand on a slow item
     healthStatus = 'Overstocked';
     healthColor = '#3b82f6';
     badgeClass = 'bg-blue-500/20 text-blue-300 border border-blue-500/40 font-bold shadow-sm';
   } else if (dailySales >= 2.0) {
     healthStatus = 'Fast Moving';
-    healthColor = '#a07e50';
-    badgeClass = 'bg-primary/20 text-primary border border-primary/40 font-bold shadow-sm';
+    healthColor = '#10b981';
+    badgeClass = 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-bold shadow-sm';
   } else if (dailySales >= 1.0) {
     healthStatus = 'Trending';
-    healthColor = '#a07e50';
-    badgeClass = 'bg-primary/20 text-primary border border-primary/40 font-bold shadow-sm';
+    healthColor = '#10b981';
+    badgeClass = 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-bold shadow-sm';
   } else if (dailySales < 0.3 && totalSoldQty > 0) {
     healthStatus = 'Slow Moving';
     healthColor = '#94a3b8';
     badgeClass = 'bg-slate-400/20 text-slate-200 border border-slate-400/40 font-bold shadow-sm';
+  } else {
+    healthStatus = 'Healthy';
+    healthColor = '#10b981';
+    badgeClass = 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-bold shadow-sm';
   }
 
   // Calculate Performance Score (0 - 100) & Grade
@@ -170,9 +183,9 @@ export function computeProductIntelligence(
   if (stock === 0) {
     riskLevel = 'Critical';
     riskReason = 'Out of stock! Customers cannot purchase this item.';
-  } else if (stock <= (product?.minStock || 5)) {
+  } else if (isReorderNeeded) {
     riskLevel = 'High';
-    riskReason = `Stock level (${stock}) is below alert threshold (${product?.minStock || 5}). Imminent stockout risk.`;
+    riskReason = `Stock level (${stock} units) will last ~${daysOfStockRemaining} days, below the supplier lead time window (${leadTime} days). Imminent stockout risk.`;
   } else if (healthStatus === 'Dead Stock') {
     riskLevel = 'Medium';
     riskReason = 'Capital lockup! Item has zero sales velocity and is occupying shelf space.';
@@ -181,21 +194,12 @@ export function computeProductIntelligence(
     riskReason = 'Low profit margin! Selling price is close to cost price.';
   }
 
-  // Reorder Advice
-  const leadTime = product?.leadTimeDays || 7;
-  const isReorderNeeded = daysOfStockRemaining <= leadTime + 2 || stock <= (product?.minStock || 5);
-  // Velocity-adjusted replenishment: aim for at least (leadTime + 14 days) runway
-  const targetBufferDays = Math.max(leadTime + 14, 21);
-  const targetStock = Math.ceil(dailySales > 0 ? dailySales * targetBufferDays : (product?.minStock || 5) * 4);
-  const reorderQty = Math.max(15, Math.ceil(targetStock - stock > 0 ? targetStock - stock : (product?.minStock || 5) * 3));
-  const runwayImpact = Math.round(sellingPrice * reorderQty);
-
   const reorderAdvice = {
     needed: isReorderNeeded,
-    suggestedQty: reorderQty,
+    suggestedQty: suggestedQty,
     urgency: stock === 0 ? ('High' as const) : (isReorderNeeded ? ('High' as const) : ('Low' as const)),
     reason: isReorderNeeded
-      ? `Current stock (${stock} units) will last ~${daysOfStockRemaining} days. Supplier lead time requires ${leadTime} days.`
+      ? `Current stock (${stock} units) will last ~${daysOfStockRemaining} days. Reordering ${suggestedQty} units establishes a healthy ${targetBufferDays}-day runway.`
       : `Current stock level is sufficient for ${daysOfStockRemaining} days.`,
     financialRunwayImpact: runwayImpact,
   };
@@ -260,7 +264,7 @@ export function computeProductIntelligence(
   // Executive Summary with robust product name resolution
   let executiveSummary = `${productName} holds a Performance Grade of ${performanceGrade}. `;
   if (isReorderNeeded) {
-    executiveSummary += `Stock level (${stock} units) is critical; reorder ${reorderQty} units immediately to protect ₹${runwayImpact.toLocaleString('en-IN')} revenue runway.`;
+    executiveSummary += `Stock level (${stock} units) is critical; reorder ${suggestedQty} units immediately to protect ₹${runwayImpact.toLocaleString('en-IN')} revenue runway.`;
   } else if (healthStatus === 'Dead Stock') {
     executiveSummary += `Item has zero recorded sales, locking up ₹${Math.round(stock * costPrice).toLocaleString('en-IN')} in working capital. Launch a clearance promo.`;
   } else {

@@ -249,9 +249,15 @@ export function generateActionTasks(
     return `${sign}${currencySymbol}${Math.round(num).toLocaleString('en-IN')}`;
   };
 
-  // Task Group 1: Low / Critical Stock Items (All low stock items)
+  // Task Group 1: Low / Critical Stock Items (Calibrated by Lead Time Runway)
   const lowStock = [...products]
-    .filter(p => p && p.name && p.stock <= (p.minStock || 5))
+    .filter(p => {
+      if (!p || !p.name) return false;
+      const leadTime = p.leadTimeDays || 7;
+      const velocity = p.averageDailySales || (p.stock === 0 ? 0.5 : 0);
+      const daysOfStock = velocity > 0 ? p.stock / velocity : (p.stock === 0 ? 0 : 999);
+      return p.stock === 0 || p.stock <= (p.minStock || 5) || daysOfStock <= leadTime + 3;
+    })
     .sort((a, b) => (a.stock / (a.minStock || 5)) - (b.stock / (b.minStock || 5)) || (a.name || '').localeCompare(b.name || ''));
 
   lowStock.slice(0, 5).forEach((topLow) => {
@@ -259,16 +265,20 @@ export function generateActionTasks(
     const targetSlug = topLow.id || topLow.sku || getSlug(pName);
     const rawPrice = topLow.price && topLow.price > 0 ? topLow.price : (topLow.costPrice ? topLow.costPrice * 1.5 : 499);
     const pPrice = Math.min(25000, Math.max(50, rawPrice));
-    const reorderQty = topLow.minStock ? topLow.minStock * 4 : 50;
+    const leadTime = topLow.leadTimeDays || 7;
+    const velocity = topLow.averageDailySales || 1.2;
+    const targetOptimalStock = Math.ceil(velocity * (leadTime + 21)); // 28-day optimal buffer
+    const currentStock = topLow.stock || 0;
+    const reorderQty = Math.max(15, targetOptimalStock > currentStock ? targetOptimalStock - currentStock : Math.ceil(velocity * 21));
     const estimatedLoss = Math.round(pPrice * reorderQty);
 
     tasks.push({
       id: `task-reorder-${targetSlug}`,
-      title: `Running out of ${pName}`,
-      problem: `Current quantity is ${topLow.stock} ${topLow.unit || 'units'} (below alert threshold of ${topLow.minStock || 5}).`,
-      reason: `High sales velocity over recent cycles has depleted stock faster than supplier lead time.`,
+      title: `Restock Required: ${pName}`,
+      problem: `Current quantity is ${topLow.stock} ${topLow.unit || 'units'} (runway is below supplier lead time window of ${leadTime} days).`,
+      reason: `Consumer demand velocity (${velocity}/day) will deplete stock before the next supplier delivery cycle.`,
       impact: `Estimated revenue loss of ${formatCurrency(estimatedLoss)} if inventory empties before restock.`,
-      recommendation: `Place a purchase order for ${reorderQty} ${topLow.unit || 'units'} immediately with ${topLow.supplier || 'supplier'}.`,
+      recommendation: `Place a purchase order for ${reorderQty} ${topLow.unit || 'units'} with ${topLow.supplier || 'supplier'} to re-establish a healthy 4-week buffer.`,
       priority: topLow.stock === 0 ? 'High' : 'High',
       estimatedBenefit: `Protect ${formatCurrency(estimatedLoss)} revenue runway`,
       actionType: 'reorder',

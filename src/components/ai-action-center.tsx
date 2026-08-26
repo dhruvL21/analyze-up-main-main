@@ -163,7 +163,11 @@ export function AIActionCenter() {
 
         try {
           if (task.actionType === 'reorder') {
-            const reorderQty = (targetProd?.minStock || 5) * 4 || 50;
+            const leadTime = targetProd?.leadTimeDays || 7;
+            const velocity = targetProd?.averageDailySales || 1.2;
+            const targetOptimalStock = Math.ceil(velocity * (leadTime + 21)); // 28 days of runway
+            const currentStock = targetProd?.stock || 0;
+            const reorderQty = Math.max(15, targetOptimalStock > currentStock ? targetOptimalStock - currentStock : Math.ceil(velocity * 21));
             const costPrice = targetProd?.costPrice || (targetProd?.price || 500) * 0.6;
             const totalCost = Math.round(costPrice * reorderQty);
 
@@ -177,6 +181,14 @@ export function AIActionCenter() {
               expectedDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString(),
               status: 'Fulfilled',
             });
+
+            if (targetProd) {
+              await updateProduct({
+                ...targetProd,
+                stock: currentStock + reorderQty,
+                updatedAt: new Date().toISOString(),
+              });
+            }
 
             logBusinessAction({
               title: 'Executed Purchase Order Reorder',
