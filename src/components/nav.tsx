@@ -50,14 +50,14 @@ const navItems = [
     label: "Connect",
   },
   {
-    href: "/dashboard/ai-advisor",
-    icon: Sparkles,
-    label: "AI Copilot",
-  },
-  {
     href: "/dashboard/insights",
     icon: BarChart3,
     label: "Insights & Health",
+  },
+  {
+    href: "/dashboard/ai-advisor",
+    icon: Sparkles,
+    label: "Ask?",
   },
 ];
 

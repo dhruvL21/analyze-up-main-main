@@ -37,8 +37,8 @@ const mobileNavItems = [
   { href: '/dashboard/suppliers', label: 'Suppliers', icon: Truck },
   { href: '/dashboard/executive', label: 'Executive', icon: Crown },
   { href: '/dashboard/integrations', label: 'Connect', icon: Layers },
-  { href: '/dashboard/ai-advisor', label: 'AI Copilot', icon: Sparkles },
   { href: '/dashboard/insights', label: 'Insights & Health', icon: BarChart3 },
+  { href: '/dashboard/ai-advisor', label: 'Ask?', icon: Sparkles },
 ];
 
 const containerVariants = {

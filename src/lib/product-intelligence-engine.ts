@@ -44,6 +44,7 @@ export interface ProductIntelligenceReport {
     title: string;
     description: string;
     estimatedValue: number;
+    targetPrice?: number;
   };
   tags: string[];
   executiveSummary: string;
@@ -182,8 +183,11 @@ export function computeProductIntelligence(
 
   // Reorder Advice
   const leadTime = product?.leadTimeDays || 7;
-  const isReorderNeeded = daysOfStockRemaining <= leadTime + 3 || stock <= (product?.minStock || 5);
-  const reorderQty = Math.max(10, Math.min(100, (product?.minStock || 5) * 3));
+  const isReorderNeeded = daysOfStockRemaining <= leadTime + 2 || stock <= (product?.minStock || 5);
+  // Velocity-adjusted replenishment: aim for at least (leadTime + 14 days) runway
+  const targetBufferDays = Math.max(leadTime + 14, 21);
+  const targetStock = Math.ceil(dailySales > 0 ? dailySales * targetBufferDays : (product?.minStock || 5) * 4);
+  const reorderQty = Math.max(15, Math.ceil(targetStock - stock > 0 ? targetStock - stock : (product?.minStock || 5) * 3));
   const runwayImpact = Math.round(sellingPrice * reorderQty);
 
   const reorderAdvice = {
@@ -207,22 +211,38 @@ export function computeProductIntelligence(
 
   if (healthStatus === 'Dead Stock') {
     const tied = Math.round(stock * costPrice * 0.8);
+    const clearancePrice = Math.max(1, Math.round(sellingPrice * 0.8));
     opportunityAdvice = {
       hasOpportunity: true,
       type: 'clearance',
       title: 'Launch 20% Clearance Discount',
-      description: 'Clear stagnant inventory to unlock tied working capital.',
+      description: `Clear stagnant inventory at ₹${clearancePrice.toLocaleString('en-IN')} to unlock tied working capital.`,
       estimatedValue: tied,
+      targetPrice: clearancePrice,
     };
-  } else if (dailySales >= 1.2 && profitMarginPercent < 40) {
-    const newPrice = Math.round(sellingPrice * 1.08);
+  } else if (sellingPrice < costPrice || profitMarginPercent <= 0) {
+    // Loss-making / heavily underpriced product: suggest realistic cost-plus pricing
+    const targetPrice = Math.round(costPrice * 1.3); // 30% margin
+    const addedProfit = Math.round((targetPrice - sellingPrice) * (stock || 20));
+    opportunityAdvice = {
+      hasOpportunity: true,
+      type: 'price_increase',
+      title: 'Correct Below-Cost Price',
+      description: `Selling price (₹${sellingPrice.toLocaleString('en-IN')}) is below unit cost (₹${Math.round(costPrice).toLocaleString('en-IN')}). Adjust price to ₹${targetPrice.toLocaleString('en-IN')} to achieve a 30% margin.`,
+      estimatedValue: addedProfit,
+      targetPrice: targetPrice,
+    };
+  } else if (dailySales >= 1.5 && profitMarginPercent < 25 && profitMarginPercent > 0) {
+    // Profitable item with high demand but sub-optimal margin (< 25%): expand margin
+    const newPrice = Math.max(sellingPrice + 10, Math.round(sellingPrice * 1.08));
     const addedProfit = Math.round((newPrice - sellingPrice) * (stock || 20));
     opportunityAdvice = {
       hasOpportunity: true,
       type: 'price_increase',
       title: 'Optimize Price (+8%)',
-      description: `High demand allows increasing price to ₹${newPrice} without losing sales volume.`,
+      description: `High sales velocity (${dailySales}/day) allows increasing price from ₹${sellingPrice.toLocaleString('en-IN')} to ₹${newPrice.toLocaleString('en-IN')} to reach a 25%+ healthy margin.`,
       estimatedValue: addedProfit,
+      targetPrice: newPrice,
     };
   }
 

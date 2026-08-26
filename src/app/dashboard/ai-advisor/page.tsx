@@ -191,9 +191,9 @@ export default function AIAdvisorPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border/30 pb-4">
         <div>
           <h1 className="text-xl md:text-3xl font-extrabold tracking-tight text-foreground flex items-center gap-2.5">
-            <Bot className="w-7 h-7 text-primary" /> AI Business Copilot Command Center
+            <Bot className="w-7 h-7 text-primary" /> Ask?
           </h1>
-          <p className="text-xs md:text-sm text-muted-foreground mt-1">
+          <p className="text-xs md:text-sm text-muted-foreground mt-1 font-medium">
             Your Decision Intelligence Advisor answering questions using actual business logs, inventory velocity, and vendor data.
           </p>
         </div>
@@ -226,12 +226,40 @@ export default function AIAdvisorPage() {
           </CardHeader>
 
           <CardContent className="p-0 py-6 space-y-6 flex-1">
-            {/* Circle Score */}
+            {/* Dynamic Filled Circular Score Gauge */}
             <div className="flex flex-col items-center justify-center py-2">
-              <div className="relative h-32 w-32 flex items-center justify-center rounded-full border-[7px] border-secondary/40 shadow-inner">
-                <div className="text-center">
-                  <span className="text-4xl font-black text-foreground">{healthSummary.score}</span>
-                  <span className="text-xs font-medium text-muted-foreground block">/100</span>
+              <div className="relative w-36 h-36 flex items-center justify-center">
+                <svg className="w-full h-full -rotate-90 transform" viewBox="0 0 128 128">
+                  {/* Background Track Circle */}
+                  <circle
+                    cx="64"
+                    cy="64"
+                    r="52"
+                    className="text-secondary/40 stroke-current"
+                    strokeWidth="10"
+                    fill="transparent"
+                  />
+                  {/* Dynamic Filled Progress Stroke */}
+                  <circle
+                    cx="64"
+                    cy="64"
+                    r="52"
+                    stroke={healthSummary.score >= 80 ? '#10b981' : healthSummary.score >= 60 ? '#f59e0b' : '#ef4444'}
+                    strokeWidth="10"
+                    strokeDasharray={326.726}
+                    strokeDashoffset={326.726 - (326.726 * Math.min(100, Math.max(0, healthSummary.score))) / 100}
+                    strokeLinecap="round"
+                    fill="transparent"
+                    className="transition-all duration-1000 ease-out"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                  <span className="text-4xl font-extrabold tracking-tight text-foreground">
+                    {healthSummary.score}
+                  </span>
+                  <span className="text-xs font-semibold text-muted-foreground block -mt-0.5">
+                    /100
+                  </span>
                 </div>
               </div>
             </div>
@@ -440,204 +468,6 @@ export default function AIAdvisorPage() {
           </div>
         </Card>
       </div>
-
-      {/* Row 2: Today's Priorities List */}
-      <Card className="border border-primary/20 ios-glass p-4 sm:p-6 space-y-4 shadow-xl">
-        <div className="flex items-center justify-between border-b border-border/40 pb-3">
-          <div>
-            <h3 className="text-base font-extrabold text-foreground flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-primary" /> Today's Priorities & Action Plan
-            </h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Prioritized tasks synthesized from Inventory velocity, Supplier risks, and Profit margins.
-            </p>
-          </div>
-          <Badge className="bg-primary/15 text-primary border-primary/30 font-bold text-xs">
-            {actionTasks.length} Active Action Items
-          </Badge>
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 text-xs">
-          {actionTasks.slice(0, 6).map((task) => (
-            <div key={task.id} className="p-4 rounded-2xl bg-secondary/30 border border-border/40 space-y-2 flex flex-col justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <Badge variant={task.priority === 'High' ? 'destructive' : 'outline'} className="text-[10px]">
-                    {task.priority} Priority
-                  </Badge>
-                  <span className="text-[10px] font-mono text-muted-foreground uppercase">{task.actionType}</span>
-                </div>
-                <h4 className="font-bold text-foreground text-sm">{task.title}</h4>
-                <p className="text-muted-foreground text-[11px] leading-relaxed">{task.problem}</p>
-              </div>
-              <div className="pt-2 border-t border-border/30 flex items-center justify-between">
-                <span className="text-primary font-semibold text-[11px]">{task.estimatedBenefit}</span>
-                <Button
-                  size="sm"
-                  className="h-7 text-[11px] font-bold rounded-xl gap-1"
-                  onClick={() => {
-                    const getSlug = (str: string) => (str || 'item').toLowerCase().replace(/[^a-z0-9]/g, '-');
-                    const targetProd = products.find(p => p.id === task.targetId || p.sku === task.targetId || getSlug(p.name) === task.targetId);
-                    const pName = targetProd?.name || task.targetName || 'Product';
-
-                    setConfirmData({
-                      title: task.title,
-                      description: `Confirm execution of: "${task.recommendation}". This will apply inventory changes to Firestore.`,
-                      onConfirm: async () => {
-                        try {
-                          if (task.actionType === 'reorder') {
-                            const reorderQty = targetProd?.minStock ? targetProd.minStock * 4 : 50;
-                            const costPrice = targetProd?.costPrice || (targetProd?.price || 500) * 0.6;
-                            const totalCost = Math.round(costPrice * reorderQty);
-
-                            await addOrder({
-                              supplierId: targetProd?.supplierId || suppliers[0]?.id || 'sup-1',
-                              productId: targetProd?.id || 'prod-1',
-                              quantity: reorderQty,
-                              unitCost: costPrice,
-                              totalCost: totalCost,
-                              orderDate: new Date().toISOString(),
-                              expectedDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString(),
-                              status: 'Fulfilled',
-                            });
-
-                            logBusinessAction({
-                              title: 'Executed Purchase Order Reorder',
-                              productName: pName,
-                              actionType: 'reorder',
-                              changeDetails: `Reordered ${reorderQty} units at ${currencySymbol}${costPrice}/unit (${currencySymbol}${totalCost.toLocaleString('en-IN')}).`,
-                              impactValue: `+${reorderQty} Units`,
-                            });
-
-                            toast({
-                              title: '📦 Purchase Order Created & Saved to Audit!',
-                              description: `Logged PO for ${reorderQty} units of "${pName}". Click "Change History" to view recorded audit.`,
-                            });
-                          } else if (task.actionType === 'discount') {
-                            if (targetProd) {
-                              const oldPrice = targetProd.price || 500;
-                              const newPrice = Math.round(oldPrice * 0.8);
-                              await updateProduct({
-                                ...targetProd,
-                                price: newPrice,
-                                updatedAt: new Date().toISOString(),
-                              });
-
-                              logBusinessAction({
-                                title: 'Liquidated Dead Stock (20% Clearance)',
-                                productName: pName,
-                                actionType: 'discount',
-                                changeDetails: `Reduced price from ${currencySymbol}${oldPrice} to ${currencySymbol}${newPrice} (-20%). Unlocked working capital.`,
-                                impactValue: `-20% Clearance`,
-                              });
-
-                              toast({
-                                title: '🏷️ Clearance Promo Applied & Saved to Audit!',
-                                description: `Reduced price of "${pName}" to ${currencySymbol}${newPrice}. Click "Change History" to view recorded audit.`,
-                              });
-                            }
-                          } else if (task.actionType === 'price_up') {
-                            if (targetProd) {
-                              const oldPrice = targetProd.price || 500;
-                              const newPrice = Math.round(oldPrice * 1.08);
-                              await updateProduct({
-                                ...targetProd,
-                                price: newPrice,
-                                updatedAt: new Date().toISOString(),
-                              });
-
-                              logBusinessAction({
-                                title: 'Optimized Price (+8%)',
-                                productName: pName,
-                                actionType: 'price_up',
-                                changeDetails: `Adjusted price from ${currencySymbol}${oldPrice} to ${currencySymbol}${newPrice} (+8%) for margin expansion.`,
-                                impactValue: `+8% Price Boost`,
-                              });
-
-                              toast({
-                                title: '📈 Price Optimized & Saved to Audit!',
-                                description: `Adjusted price of "${pName}" to ${currencySymbol}${newPrice}. Click "Change History" to view recorded audit.`,
-                              });
-                            }
-                          } else if (task.actionType === 'supplier') {
-                            logBusinessAction({
-                              title: 'Dispatched Supplier Expedite Notice',
-                              productName: task.targetName || 'Supplier',
-                              actionType: 'supplier',
-                              changeDetails: `Dispatched high-priority delivery expedite to supplier ${task.targetName}.`,
-                              impactValue: `Expedited`,
-                            });
-
-                            toast({
-                              title: '🚚 Supplier Expedite Dispatched',
-                              description: `High-priority delivery notice dispatched to ${task.targetName || 'supplier'}.`,
-                            });
-                          }
-                        } catch (err) {
-                          console.error('Error executing action:', err);
-                          toast({
-                            title: 'Execution Error',
-                            description: 'Failed to apply recommendation changes.',
-                            variant: 'destructive',
-                          });
-                        }
-                      }
-                    });
-                  }}
-                >
-                  Execute
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      <Dialog open={confirmData !== null} onOpenChange={(open) => { if (!open) setConfirmData(null); }}>
-        <DialogContent className="max-w-md bg-zinc-950/90 border border-amber-500/20 rounded-3xl ios-glass text-white shadow-2xl p-6">
-          <DialogHeader className="space-y-2">
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                <AlertTriangle className="w-5 h-5 animate-bounce text-amber-400" />
-              </div>
-              <DialogTitle className="text-base font-bold text-white">Confirm Business Change</DialogTitle>
-            </div>
-            <DialogDescription className="text-xs text-zinc-400">
-              Are you sure you want to execute this change? This will write modifications directly to your database.
-            </DialogDescription>
-          </DialogHeader>
-
-          {confirmData && (
-            <div className="py-2 text-xs space-y-3">
-              <div className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-1.5">
-                <div className="text-zinc-200 font-bold">{confirmData.title}</div>
-                <div className="text-zinc-300 leading-relaxed">{confirmData.description}</div>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter className="flex flex-row items-center justify-end gap-2 pt-4 border-t border-zinc-800/40">
-            <Button
-              variant="ghost"
-              onClick={() => setConfirmData(null)}
-              className="rounded-xl text-xs hover:bg-zinc-900 text-zinc-400 hover:text-white px-3"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                if (confirmData) {
-                  confirmData.onConfirm();
-                  setConfirmData(null);
-                }
-              }}
-              className="bg-amber-500 hover:bg-amber-600 text-black font-extrabold rounded-xl text-xs px-4"
-            >
-              Confirm & Apply
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

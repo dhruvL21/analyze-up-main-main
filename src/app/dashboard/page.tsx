@@ -8,7 +8,7 @@ import { BusinessHealthCard } from '@/components/business-health-card';
 import { AIActionCenter } from '@/components/ai-action-center';
 import { ExecutiveKPIGrid } from '@/components/executive-kpi-grid';
 import { RevenueProfitIntelligence } from '@/components/revenue-profit-intelligence';
-import { InventoryRiskOpportunities } from '@/components/inventory-risk-opportunities';
+import { DeadStockSection } from '@/components/dead-stock-section';
 import { InventoryQualitySnapshot } from '@/components/inventory-quality-snapshot';
 import { BusinessActivityTimeline } from '@/components/business-activity-timeline';
 import { EmptyStateIntelligence } from '@/components/empty-state-intelligence';
@@ -78,17 +78,17 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* FEATURE 3: AI Action Center */}
-      <AIActionCenter />
-
       {/* FEATURE 4: Executive KPI Grid (Trend & Interpretation) */}
       <ExecutiveKPIGrid />
+
+      {/* FEATURE 3: AI Action Center */}
+      <AIActionCenter />
 
       {/* FEATURE 5 & 12: Revenue & Profit Intelligence */}
       <RevenueProfitIntelligence />
 
-      {/* FEATURE 9 & 10: Inventory Risk Panel & AI Growth Opportunities */}
-      <InventoryRiskOpportunities />
+      {/* Dead Stock Warning & Stagnant Products */}
+      <DeadStockSection />
 
       {/* FEATURE 6 & 11: Inventory Quality Snapshot & Activity Timeline */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
