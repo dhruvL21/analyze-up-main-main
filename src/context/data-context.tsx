@@ -12,6 +12,7 @@ import { generateDemoBusinessData } from '@/lib/demo-data';
 import Papa from 'papaparse';
 import { getClientDriveToken, isAutoSyncDue, autoDetectMapping, formatLastSyncTime } from '@/lib/drive-helper';
 import { findMatchingImportProfile } from '@/lib/import-profile-store';
+import { logBusinessAction } from '@/lib/audit-store';
 
 interface DataContextProps {
   products: Product[];
@@ -39,6 +40,7 @@ interface DataContextProps {
   addOrder: (order: Omit<PurchaseOrder, 'id' | 'createdAt' | 'updatedAt' | 'userId'>) => Promise<void>;
   deleteOrder: (orderId: string) => Promise<void>;
   updateOrderStatus: (orderId: string, status: string) => Promise<void>;
+  receivePurchaseOrder: (orderId: string, customReceivedQty?: number) => Promise<void>;
   addSupplier: (supplier: Omit<Supplier, 'id' | 'createdAt' | 'updatedAt' | 'userId'>) => Promise<void>;
   deleteSupplier: (supplierId: string) => Promise<void>;
   addCategory: (category: Omit<Category, 'id' | 'userId'>) => Promise<void>;
@@ -668,10 +670,12 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     if (!firestore || !user || !ordersRef || !transactionsRef) return;
 
     const batch = writeBatch(firestore);
+    const orderStatus = orderData.status || 'Pending';
 
     const newOrderRef = doc(ordersRef);
     const newOrder = cleanObject({
       ...orderData,
+      status: orderStatus,
       id: newOrderRef.id,
       userId: user.uid,
       createdAt: serverTimestamp(),
@@ -679,8 +683,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     });
     batch.set(newOrderRef, newOrder);
 
-    // If order is created as Fulfilled, handle stock replenishment immediately
-    if (orderData.status === 'Fulfilled') {
+    // Only if explicitly created as Fulfilled (e.g. historical import), handle stock replenishment immediately
+    if (orderStatus === 'Fulfilled') {
       const productRef = doc(firestore, 'users', user.uid, 'products', orderData.productId);
       const product = products.find(p => p.id === orderData.productId);
       if (product) {
@@ -718,8 +722,11 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         requestResourceData: { order: newOrder },
       }));
     });
-    const supplierName = suppliers.find(s => s.id === newOrder.supplierId)?.name || 'the customer';
-    toast({ title: 'Order Created', description: `New order for ${supplierName} has been recorded.` });
+    const supplierName = suppliers.find(s => s.id === newOrder.supplierId)?.name || 'the supplier';
+    toast({
+      title: orderStatus === 'Pending' ? '📦 Purchase Order Created (In Transit)' : 'Order Created',
+      description: `Purchase order for ${orderData.quantity} units from ${supplierName} recorded. Stock will update once marked received.`,
+    });
   }, [firestore, user, ordersRef, suppliers, toast, products, transactionsRef]);
 
   const deleteOrder = useCallback(async (orderId: string) => {
@@ -734,59 +741,98 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     toast({ title: 'Order Deleted', description: 'The purchase order has been removed.' });
   }, [firestore, user, toast]);
 
-  const updateOrderStatus = useCallback(async (orderId: string, status: string) => {
-    if (!firestore || !user || !transactionsRef) return;
-    const orderRef = doc(firestore, 'users', user.uid, 'orders', orderId);
+  const receivePurchaseOrder = useCallback(async (orderId: string, customReceivedQty?: number) => {
+    if (!firestore || !user || !ordersRef || !transactionsRef) return;
     const orderToUpdate = orders.find(o => o.id === orderId);
     if (!orderToUpdate) return;
 
-    const batch = writeBatch(firestore);
-
-    batch.update(orderRef, { status, updatedAt: serverTimestamp() });
-
-    if (status === 'Fulfilled') {
-      const productRef = doc(firestore, 'users', user.uid, 'products', orderToUpdate.productId);
-      const product = products.find(p => p.id === orderToUpdate.productId);
-      if (product) {
-        // Increment stock for a purchase replenishment
-        batch.update(productRef, {
-          stock: product.stock + orderToUpdate.quantity,
-          updatedAt: serverTimestamp()
-        });
-
-        // Record a Purchase Transaction
-        const transactionRef = doc(transactionsRef);
-        const costPrice = product.costPrice || product.price * 0.6;
-        batch.set(transactionRef, cleanObject({
-          id: transactionRef.id,
-          tenantId: user.uid,
-          productId: product.id,
-          productName: product.name,
-          sku: product.sku,
-          category: product.categoryId,
-          locationId: 'MAIN-WAREHOUSE',
-          type: 'Purchase',
-          quantity: orderToUpdate.quantity,
-          price: costPrice,
-          totalCost: Math.round(costPrice * orderToUpdate.quantity),
-          supplier: suppliers.find(s => s.id === orderToUpdate.supplierId)?.name || 'Supplier',
-          transactionDate: serverTimestamp(),
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        }));
-        toast({ title: 'Order Fulfilled', description: `Order ${orderId.substring(0, 8)}... has been marked as fulfilled.` });
-      }
-    } else {
-      toast({ title: 'Order Status Updated', description: `Order ${orderId.substring(0, 8)}... has been marked as ${status}.` });
+    if (orderToUpdate.status === 'Fulfilled') {
+      toast({ title: 'Already Received', description: 'This purchase order has already been received and added to inventory.' });
+      return;
     }
 
-    batch.commit().catch((_serverError) => {
+    const receivedQty = customReceivedQty !== undefined ? customReceivedQty : orderToUpdate.quantity;
+    const batch = writeBatch(firestore);
+    const orderRef = doc(firestore, 'users', user.uid, 'orders', orderId);
+
+    batch.update(orderRef, {
+      status: 'Fulfilled',
+      actualDeliveryDate: new Date().toISOString(),
+      updatedAt: serverTimestamp(),
+    });
+
+    const product = products.find(p => p.id === orderToUpdate.productId);
+    if (product) {
+      const productRef = doc(firestore, 'users', user.uid, 'products', product.id);
+      const newStock = (product.stock || 0) + receivedQty;
+      batch.update(productRef, {
+        stock: newStock,
+        updatedAt: serverTimestamp(),
+      });
+
+      const costPrice = orderToUpdate.unitCost || product.costPrice || product.price * 0.6;
+      const totalCost = Math.round(costPrice * receivedQty);
+      const supplierName = suppliers.find(s => s.id === orderToUpdate.supplierId)?.name || 'Supplier';
+
+      const transactionRef = doc(transactionsRef);
+      batch.set(transactionRef, cleanObject({
+        id: transactionRef.id,
+        tenantId: user.uid,
+        productId: product.id,
+        productName: product.name,
+        sku: product.sku,
+        category: product.categoryId,
+        locationId: 'MAIN-WAREHOUSE',
+        type: 'Purchase',
+        quantity: receivedQty,
+        price: costPrice,
+        totalCost: totalCost,
+        supplier: supplierName,
+        transactionDate: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }));
+
+      logBusinessAction({
+        title: 'Purchase Order Received & Stock Replenished',
+        productName: product.name,
+        actionType: 'reorder',
+        changeDetails: `Received shipment of ${receivedQty} units from "${supplierName}". Inventory updated from ${product.stock} to ${newStock} units.`,
+        impactValue: `+${receivedQty} Units`,
+        previousValue: `Stock: ${product.stock}`,
+        newValue: `Stock: ${newStock}`,
+      });
+    }
+
+    await batch.commit().catch((_serverError) => {
       errorEmitter.emit('permission-error', new FirestorePermissionError({
         path: 'batch-write',
         operation: 'update',
       }));
     });
-  }, [firestore, user, orders, products, transactionsRef, suppliers, toast]);
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('analyzeup_audit_logged'));
+      window.dispatchEvent(new CustomEvent('analyzeup_tasks_updated'));
+    }
+
+    toast({
+      title: '📦 Goods Received & Inventory Updated!',
+      description: `Added +${receivedQty} units to "${product?.name || 'Product'}". Stock count and AI analytics updated.`,
+    });
+  }, [firestore, user, ordersRef, transactionsRef, orders, products, suppliers, toast]);
+
+  const updateOrderStatus = useCallback(async (orderId: string, status: string) => {
+    if (status === 'Fulfilled') {
+      await receivePurchaseOrder(orderId);
+      return;
+    }
+
+    if (!firestore || !user) return;
+    const orderRef = doc(firestore, 'users', user.uid, 'orders', orderId);
+    await updateDoc(orderRef, { status, updatedAt: serverTimestamp() }).catch(console.error);
+    toast({ title: 'Order Status Updated', description: `Order status set to ${status}.` });
+  }, [firestore, user, receivePurchaseOrder, toast]);
 
   const addCustomAttribute = useCallback(async (attributeData: Omit<CustomAttribute, 'id'>) => {
     if (!firestore || !user || !customAttributesRef) return;
@@ -1467,6 +1513,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     addOrder,
     deleteOrder,
     updateOrderStatus,
+    receivePurchaseOrder,
     addSupplier,
     deleteSupplier,
     addCategory,
@@ -1528,6 +1575,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     addOrder,
     deleteOrder,
     updateOrderStatus,
+    receivePurchaseOrder,
     addSupplier,
     deleteSupplier,
     addCategory,

@@ -65,13 +65,14 @@ export function ProductIntelligenceDrawer({ product, open, onOpenChange }: Produ
   );
 
   const handleExecuteReorder = () => {
-    const reorderQty = report.reorderAdvice.suggestedQty;
+    const reorderQty = report.reorderAdvice.suggestedQty || 20;
     const costPrice = liveProduct.costPrice || (liveProduct.price || 500) * 0.6;
     const totalCost = Math.round(costPrice * reorderQty);
+    const leadTime = liveProduct.leadTimeDays || 7;
 
     setConfirmData({
       title: `Create Purchase Order for ${reorderQty} Units`,
-      description: `Create and fulfill a purchase order with supplier "${liveProduct.supplier || suppliers[0]?.name || 'Supplier'}" for ${reorderQty} units of "${liveProduct.name}" at a cost of ${currencySymbol}${costPrice}/unit (Total: ${currencySymbol}${totalCost.toLocaleString('en-IN')}). This will increment stock levels to ${liveProduct.stock + reorderQty} units.`,
+      description: `Create purchase order with supplier "${liveProduct.supplier || suppliers[0]?.name || 'Supplier'}" for ${reorderQty} units of "${liveProduct.name}" at ${currencySymbol}${costPrice}/unit (Total: ${currencySymbol}${totalCost.toLocaleString('en-IN')}). The PO will be tracked as In Transit and stock will update when marked Received upon physical arrival.`,
       onConfirm: async () => {
         try {
           await addOrder({
@@ -81,23 +82,23 @@ export function ProductIntelligenceDrawer({ product, open, onOpenChange }: Produ
             unitCost: costPrice,
             totalCost: totalCost,
             orderDate: new Date().toISOString(),
-            expectedDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString(),
-            status: 'Fulfilled',
+            expectedDeliveryDate: new Date(Date.now() + leadTime * 86400000).toISOString(),
+            status: 'Pending',
           });
 
           logBusinessAction({
-            title: `PO Executed: ${reorderQty} units`,
+            title: `PO Created (In Transit): ${reorderQty} units`,
             productName: liveProduct.name,
             actionType: 'reorder',
-            changeDetails: `Created & fulfilled purchase order for ${reorderQty} units at ${currencySymbol}${costPrice}/unit with "${liveProduct.supplier || 'Supplier'}". Total spend: ${currencySymbol}${totalCost.toLocaleString('en-IN')}.`,
+            changeDetails: `Issued purchase order for ${reorderQty} units at ${currencySymbol}${costPrice}/unit to "${liveProduct.supplier || 'Supplier'}". Expected delivery in ${leadTime} days.`,
             impactValue: `${currencySymbol}${totalCost.toLocaleString('en-IN')}`,
             previousValue: `Stock: ${liveProduct.stock}`,
-            newValue: `Stock: ${liveProduct.stock + reorderQty}`,
+            newValue: `In Transit: ${reorderQty} units`,
           });
 
           toast({
-            title: '📦 Restock Purchase Order Executed!',
-            description: `Added ${reorderQty} units to "${liveProduct.name}". Stock updated to ${liveProduct.stock + reorderQty} units.`,
+            title: '📦 Purchase Order Created (In Transit)!',
+            description: `Order for ${reorderQty} units of "${liveProduct.name}" logged. Track and mark received in Orders Tracking when goods arrive.`,
           });
         } catch (err) {
           console.error(err);

@@ -38,7 +38,7 @@ import {
 
 function getActionDestination(task: ActionTask): { route: string; label: string } {
   if (task.actionType === 'reorder') {
-    return { route: '/dashboard/orders', label: 'Orders' };
+    return { route: '/dashboard/orders', label: 'Orders & Inbound POs' };
   }
   if (task.actionType === 'supplier') {
     return { route: '/dashboard/suppliers', label: 'Suppliers' };
@@ -178,29 +178,21 @@ export function AIActionCenter() {
               unitCost: costPrice,
               totalCost: totalCost,
               orderDate: new Date().toISOString(),
-              expectedDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString(),
-              status: 'Fulfilled',
+              expectedDeliveryDate: new Date(Date.now() + (leadTime || 7) * 86400000).toISOString(),
+              status: 'Pending',
             });
 
-            if (targetProd) {
-              await updateProduct({
-                ...targetProd,
-                stock: currentStock + reorderQty,
-                updatedAt: new Date().toISOString(),
-              });
-            }
-
             logBusinessAction({
-              title: 'Executed Purchase Order Reorder',
+              title: 'Purchase Order Created (In Transit)',
               productName: pName,
               actionType: 'reorder',
-              changeDetails: `Reordered ${reorderQty} units at ${currencySymbol}${costPrice}/unit (${currencySymbol}${totalCost.toLocaleString('en-IN')}).`,
-              impactValue: `+${reorderQty} Units`,
+              changeDetails: `Issued PO for ${reorderQty} units at ${currencySymbol}${costPrice}/unit (${currencySymbol}${totalCost.toLocaleString('en-IN')}). Expected delivery in ${leadTime || 7} days.`,
+              impactValue: `${reorderQty} Units In Transit`,
             });
 
             toast({
-              title: '📦 Purchase Order Executed & Saved to Audit!',
-              description: `Logged PO for ${reorderQty} units of "${pName}". Changes reflect in ${destination.label}.`,
+              title: '📦 Purchase Order Created (In Transit)',
+              description: `Ordered ${reorderQty} units of "${pName}". Stock will update when marked Received in Orders Tracking.`,
             });
           } else if (task.actionType === 'discount') {
             if (targetProd) {

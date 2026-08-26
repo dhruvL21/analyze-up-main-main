@@ -1,13 +1,25 @@
-
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { PlusCircle, MoreHorizontal } from 'lucide-react';
+import React, { useState } from 'react';
+import {
+  PlusCircle,
+  MoreHorizontal,
+  Truck,
+  CheckCircle2,
+  Clock,
+  PackageCheck,
+  TrendingUp,
+  Boxes,
+  Building2,
+  DollarSign,
+  Search,
+  Package,
+  Calendar,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
@@ -24,6 +36,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
@@ -54,15 +67,70 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useData } from '@/context/data-context';
 import { logBusinessAction } from '@/lib/audit-store';
 import type { PurchaseOrder } from '@/lib/types';
+import Image from 'next/image';
 
-type OrderStatus = "Pending" | "Fulfilled" | "Cancelled";
+type OrderFilterTab = 'pending' | 'all' | 'fulfilled' | 'cancelled';
 
 export default function OrdersPage() {
-  const { orders, suppliers, products, addOrder, deleteOrder, updateOrderStatus, isLoading, businessProfile } = useData();
+  const {
+    orders,
+    suppliers,
+    products,
+    addOrder,
+    deleteOrder,
+    receivePurchaseOrder,
+    isLoading,
+    businessProfile,
+  } = useData();
+
+  const [activeTab, setActiveTab] = useState<OrderFilterTab>('pending');
+  const [searchQuery, setSearchQuery] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [viewingOrder, setViewingOrder] = useState<PurchaseOrder | null>(null);
+  const [receivingOrder, setReceivingOrder] = useState<PurchaseOrder | null>(null);
+  const [receivedQtyInput, setReceivedQtyInput] = useState<number>(0);
 
   const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
+
+  // Sort orders newest first
+  const sortedOrders = [...orders].sort((a, b) => {
+    const dateA = new Date(a.orderDate || 0).getTime();
+    const dateB = new Date(b.orderDate || 0).getTime();
+    return dateB - dateA;
+  });
+
+  const pendingOrders = sortedOrders.filter(
+    (o) => o.status === 'Pending' || o.status === 'Shipped' || o.status === 'Delivered'
+  );
+  const fulfilledOrders = sortedOrders.filter((o) => o.status === 'Fulfilled');
+  const cancelledOrders = sortedOrders.filter((o) => o.status === 'Cancelled');
+
+  const filteredOrders = sortedOrders.filter((order) => {
+    if (activeTab === 'pending') {
+      if (order.status === 'Fulfilled' || order.status === 'Cancelled') return false;
+    } else if (activeTab === 'fulfilled') {
+      if (order.status !== 'Fulfilled') return false;
+    } else if (activeTab === 'cancelled') {
+      if (order.status !== 'Cancelled') return false;
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const sup = suppliers.find((s) => s.id === order.supplierId)?.name?.toLowerCase() || '';
+      const prod = products.find((p) => p.id === order.productId)?.name?.toLowerCase() || '';
+      const id = order.id.toLowerCase();
+      return sup.includes(q) || prod.includes(q) || id.includes(q);
+    }
+    return true;
+  });
+
+  // Calculate Inbound Metrics
+  const totalInboundUnits = pendingOrders.reduce((sum, o) => sum + (o.quantity || 0), 0);
+  const totalInboundSpend = pendingOrders.reduce((sum, o) => {
+    const prod = products.find((p) => p.id === o.productId);
+    const unitCost = o.unitCost || prod?.costPrice || (prod?.price || 500) * 0.6;
+    return sum + unitCost * o.quantity;
+  }, 0);
 
   const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -70,46 +138,57 @@ export default function OrdersPage() {
     const supplierId = formData.get('supplierId') as string;
     const productId = formData.get('productId') as string;
     const quantity = Number(formData.get('quantity'));
-    
-    const prod = products.find(p => p.id === productId);
-    const sup = suppliers.find(s => s.id === supplierId);
-    const unitCost = Number(prod?.costPrice) || Number(prod?.price) * 0.6 || 0;
+    const leadDays = Number(formData.get('leadDays')) || 7;
+
+    const prod = products.find((p) => p.id === productId);
+    const sup = suppliers.find((s) => s.id === supplierId);
+    const unitCost = Number(prod?.costPrice) || Number(prod?.price || 500) * 0.6;
     const totalCost = Math.round(unitCost * quantity);
 
     const newOrderData = {
       supplierId,
-      status: 'Pending' as OrderStatus,
+      status: 'Pending' as const,
       orderDate: new Date().toISOString(),
-      expectedDeliveryDate: new Date(new Date().setDate(new Date().getDate() + 7)).toISOString(),
+      expectedDeliveryDate: new Date(Date.now() + leadDays * 86400000).toISOString(),
       quantity,
       productId,
+      unitCost,
+      totalCost,
     };
-    
+
     addOrder(newOrderData);
 
     logBusinessAction({
-      title: `Purchase Order Issued: ${quantity} units`,
+      title: `Purchase Order Issued: ${quantity} units (In Transit)`,
       productName: prod?.name || 'Product',
       actionType: 'reorder',
-      changeDetails: `Issued PO for ${quantity} units to "${sup?.name || 'Supplier'}". Expected delivery in 7 days.`,
+      changeDetails: `Issued PO for ${quantity} units to "${sup?.name || 'Supplier'}". Expected delivery in ${leadDays} days. Stock will update upon receiving.`,
       impactValue: `${currencySymbol}${totalCost.toLocaleString('en-IN')}`,
       previousValue: `Stock: ${prod?.stock || 0}`,
-      newValue: `Ordered: ${quantity} units`,
+      newValue: `In Transit: ${quantity} units`,
     });
 
     setDialogOpen(false);
   };
 
-  const getStatusVariant = (status: OrderStatus): "secondary" | "outline" | "destructive" | "default" => {
-    switch (status) {
-      case 'Fulfilled':
-        return 'secondary';
-      case 'Pending':
-        return 'outline';
-      case 'Cancelled':
-        return 'destructive';
-      default:
-        return 'default';
+  const handleOpenReceiveModal = (order: PurchaseOrder) => {
+    setReceivingOrder(order);
+    setReceivedQtyInput(order.quantity);
+  };
+
+  const handleConfirmReceive = async () => {
+    if (!receivingOrder) return;
+    await receivePurchaseOrder(receivingOrder.id, receivedQtyInput || receivingOrder.quantity);
+    setReceivingOrder(null);
+  };
+
+  const formatDate = (isoString?: string) => {
+    if (!isoString) return '—';
+    try {
+      const d = new Date(isoString);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch {
+      return isoString;
     }
   };
 
@@ -117,274 +196,627 @@ export default function OrdersPage() {
     <>
       <div className="flex flex-col gap-6">
         <OperationsSubNav />
-        <div className="flex items-center">
-          <h1 className="text-lg font-semibold md:text-2xl">Orders</h1>
-          <div className="ml-auto flex items-center gap-2">
+
+        {/* Top Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-xl md:text-2xl font-black text-foreground flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <Truck className="w-5 h-5" />
+              </div>
+              Purchase Orders & Inbound Tracking
+            </h1>
+            <p className="text-xs text-muted-foreground mt-1">
+              Track incoming supplier shipments. Physical inventory and metrics update when goods are marked as received.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
             <Button
               size="sm"
-              className="h-8 gap-1"
+              className="h-9 px-4 gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-md shadow-emerald-600/20"
               onClick={() => setDialogOpen(true)}
             >
-              <PlusCircle className="h-3.5 w-3.5" />
-              <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
-                Create Order
-              </span>
+              <PlusCircle className="h-4 w-4" />
+              <span>Create Purchase Order</span>
             </Button>
           </div>
         </div>
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Orders</CardTitle>
-            <CardDescription>
-              A list of recent purchase orders from your suppliers.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-0">
-            {/* Desktop Table View */}
-            <div className="hidden md:block overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Order</TableHead>
-                    <TableHead>Supplier</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="hidden md:table-cell">Date</TableHead>
-                    <TableHead className="text-right">Quantity</TableHead>
-                    <TableHead>
-                      <span className="sr-only">Actions</span>
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {orders.map((order) => (
-                    <TableRow key={order.id}>
-                      <TableCell className="font-medium">{order.id.substring(0,8)}...</TableCell>
-                      <TableCell>{suppliers.find(s => s.id === order.supplierId)?.name || order.supplierId}</TableCell>
-                      <TableCell>
-                        <Badge variant={getStatusVariant(order.status as OrderStatus)}>
-                          {order.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        {new Date(order.orderDate).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {order.quantity}
-                      </TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              aria-haspopup="true"
-                              size="icon"
-                              variant="ghost"
-                            >
-                              <MoreHorizontal className="h-4 w-4" />
-                              <span className="sr-only">Toggle menu</span>
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuLabel className="bg-primary/10 text-primary text-[10px] uppercase tracking-wider font-bold text-center py-1 rounded-sm mb-1 select-none">Actions</DropdownMenuLabel>
-                            <DropdownMenuItem
-                              onClick={() => setViewingOrder(order)}
-                            >
-                              View Details
-                            </DropdownMenuItem>
-                            {order.status === 'Pending' && (
-                              <DropdownMenuItem
-                                onClick={() => updateOrderStatus(order.id, 'Fulfilled')}
-                              >
-                                Mark as Fulfilled
-                              </DropdownMenuItem>
-                            )}
-                             <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <DropdownMenuItem
-                                  onSelect={(e) => e.preventDefault()}
-                                  className="text-destructive"
-                                >
-                                  Delete
-                                </DropdownMenuItem>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent className="w-[95vw] sm:max-w-md rounded-xl">
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>
-                                    Are you sure?
-                                  </AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    This action cannot be undone. This will
-                                    permanently delete the purchase order.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() => deleteOrder(order.id)}
-                                  >
-                                    Delete
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+
+        {/* Inbound KPI Summary Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Card className="ios-glass rounded-2xl border border-amber-500/20 p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-amber-400 font-bold uppercase tracking-wider">In Transit Shipments</p>
+                <h3 className="text-2xl font-black text-foreground mt-1">
+                  {pendingOrders.length} <span className="text-xs font-normal text-muted-foreground">POs active</span>
+                </h3>
+              </div>
+              <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                <Truck className="w-5 h-5 animate-pulse" />
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-2">
+              {totalInboundUnits} total units pending physical delivery
+            </p>
+          </Card>
+
+          <Card className="ios-glass rounded-2xl border border-blue-500/20 p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-blue-400 font-bold uppercase tracking-wider">Inbound Capital Committed</p>
+                <h3 className="text-2xl font-black text-foreground mt-1">
+                  {currencySymbol}{totalInboundSpend.toLocaleString('en-IN')}
+                </h3>
+              </div>
+              <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                <DollarSign className="w-5 h-5" />
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-2">
+              Cost value of incoming replenishment inventory
+            </p>
+          </Card>
+
+          <Card className="ios-glass rounded-2xl border border-emerald-500/20 p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-emerald-400 font-bold uppercase tracking-wider">Received & Restocked</p>
+                <h3 className="text-2xl font-black text-foreground mt-1">
+                  {fulfilledOrders.length} <span className="text-xs font-normal text-muted-foreground">fulfilled</span>
+                </h3>
+              </div>
+              <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-2">
+              Shipments successfully accepted into physical inventory
+            </p>
+          </Card>
+        </div>
+
+        {/* Main Orders Table & Filter Tabs */}
+        <Card className="ios-glass rounded-3xl border border-border/40 p-5 shadow-xl space-y-4">
+          {/* Header Controls */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border/40">
+            {/* Filter Tabs */}
+            <div className="flex items-center gap-1.5 p-1 bg-secondary/30 rounded-2xl border border-border/40 w-fit text-xs font-semibold overflow-x-auto">
+              <button
+                onClick={() => setActiveTab('pending')}
+                className={`px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                  activeTab === 'pending'
+                    ? 'bg-amber-500 text-black font-bold shadow-xs'
+                    : 'text-amber-400/90 hover:text-amber-400 hover:bg-amber-500/10'
+                }`}
+              >
+                <Truck className="w-3.5 h-3.5" />
+                In Transit & Pending ({pendingOrders.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('all')}
+                className={`px-3.5 py-1.5 rounded-xl transition-all whitespace-nowrap ${
+                  activeTab === 'all'
+                    ? 'bg-primary text-primary-foreground font-bold shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
+                }`}
+              >
+                All Orders ({sortedOrders.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('fulfilled')}
+                className={`px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                  activeTab === 'fulfilled'
+                    ? 'bg-emerald-600 text-white font-bold shadow-xs'
+                    : 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10'
+                }`}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Received ({fulfilledOrders.length})
+              </button>
+              {cancelledOrders.length > 0 && (
+                <button
+                  onClick={() => setActiveTab('cancelled')}
+                  className={`px-3.5 py-1.5 rounded-xl transition-all whitespace-nowrap ${
+                    activeTab === 'cancelled'
+                      ? 'bg-rose-600 text-white font-bold shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
+                  }`}
+                >
+                  Cancelled ({cancelledOrders.length})
+                </button>
+              )}
             </div>
 
-            {/* Mobile Card List View */}
-            <div className="md:hidden divide-y divide-border/50">
-              {orders.map((order) => {
-                const supplierName = suppliers.find(s => s.id === order.supplierId)?.name || order.supplierId;
-                const productName = products.find(p => p.id === order.productId)?.name || order.productId;
-                return (
-                  <div key={order.id} className="flex flex-col gap-2 p-4 hover:bg-muted/10 transition-colors">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-sm text-foreground">Order: {order.id.substring(0,8)}...</span>
-                      <Badge variant={getStatusVariant(order.status as OrderStatus)}>
-                        {order.status}
-                      </Badge>
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">Supplier:</span> {supplierName}</p>
-                      <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">Product:</span> {productName}</p>
-                    </div>
-                    <div className="flex items-center justify-between mt-1 pt-1.5 border-t border-border/20">
-                      <span className="text-xs text-muted-foreground">{new Date(order.orderDate).toLocaleDateString()}</span>
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs font-semibold text-foreground">Qty: {order.quantity}</span>
-                        
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              aria-haspopup="true"
-                              size="icon"
-                              variant="ghost"
-                              className="rounded-full h-8 w-8"
-                            >
-                              <MoreHorizontal className="h-4 w-4" />
-                              <span className="sr-only">Toggle menu</span>
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuLabel className="bg-primary/10 text-primary text-[10px] uppercase tracking-wider font-bold text-center py-1 rounded-sm mb-1 select-none">Actions</DropdownMenuLabel>
-                            <DropdownMenuItem
-                              onClick={() => setViewingOrder(order)}
-                            >
-                              View Details
-                            </DropdownMenuItem>
-                            {order.status === 'Pending' && (
-                              <DropdownMenuItem
-                                onClick={() => updateOrderStatus(order.id, 'Fulfilled')}
-                              >
-                                Mark as Fulfilled
-                              </DropdownMenuItem>
-                            )}
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <DropdownMenuItem
-                                  onSelect={(e) => e.preventDefault()}
-                                  className="text-destructive"
-                                >
-                                  Delete
-                                </DropdownMenuItem>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent className="w-[95vw] sm:max-w-md rounded-xl">
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>
-                                    Are you sure?
-                                  </AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    This action cannot be undone. This will
-                                    permanently delete the purchase order.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() => deleteOrder(order.id)}
-                                  >
-                                    Delete
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+            {/* Search Input */}
+            <div className="relative w-full sm:w-72">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search product, SKU or supplier..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 h-9 text-xs rounded-xl bg-secondary/30 border-border/40"
+              />
             </div>
+          </div>
+
+          <CardContent className="p-0">
+            {isLoading ? (
+              <div className="py-12 text-center text-xs text-muted-foreground animate-pulse">
+                Loading purchase orders...
+              </div>
+            ) : filteredOrders.length === 0 ? (
+              <div className="py-12 text-center rounded-2xl bg-secondary/10 border border-border/30 space-y-2">
+                <PackageCheck className="w-8 h-8 text-muted-foreground mx-auto" />
+                <h4 className="text-sm font-bold text-foreground">No Purchase Orders Found</h4>
+                <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                  {activeTab === 'pending'
+                    ? 'No inbound shipments currently in transit. Create a purchase order or approve a restock recommendation in AI Action Center.'
+                    : 'No orders match the current filter or search criteria.'}
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Desktop Table View */}
+                <div className="hidden md:block overflow-x-auto rounded-2xl border border-border/40">
+                  <Table className="w-full">
+                    <TableHeader className="bg-secondary/40">
+                      <TableRow className="hover:bg-transparent border-border/40">
+                        <TableHead className="text-xs font-bold text-muted-foreground py-3.5 pl-4 min-w-[220px]">
+                          Product & SKU
+                        </TableHead>
+                        <TableHead className="text-xs font-bold text-muted-foreground py-3.5 min-w-[150px]">
+                          Supplier
+                        </TableHead>
+                        <TableHead className="text-xs font-bold text-muted-foreground py-3.5 text-center min-w-[130px]">
+                          Status
+                        </TableHead>
+                        <TableHead className="text-xs font-bold text-muted-foreground py-3.5 text-center min-w-[150px]">
+                          Ordered / Expected
+                        </TableHead>
+                        <TableHead className="text-xs font-bold text-muted-foreground py-3.5 text-right min-w-[90px]">
+                          Quantity
+                        </TableHead>
+                        <TableHead className="text-xs font-bold text-muted-foreground py-3.5 text-right min-w-[110px]">
+                          Total Cost
+                        </TableHead>
+                        <TableHead className="text-xs font-bold text-muted-foreground py-3.5 text-right pr-4 min-w-[150px]">
+                          Actions
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody className="divide-y divide-border/30">
+                      {filteredOrders.map((order) => {
+                        const sup = suppliers.find((s) => s.id === order.supplierId);
+                        const prod = products.find((p) => p.id === order.productId);
+                        const pName = prod?.name || order.productName || 'Product';
+                        const supName = sup?.name || order.supplierName || 'Supplier';
+                        const unitCost = order.unitCost || prod?.costPrice || (prod?.price || 500) * 0.6;
+                        const totalCost = order.totalCost || Math.round(unitCost * order.quantity);
+
+                        const isPending = order.status !== 'Fulfilled' && order.status !== 'Cancelled';
+                        const hasRealImage = prod?.imageUrl && prod.imageUrl.startsWith('http') && !prod.imageUrl.includes('placehold.co');
+
+                        return (
+                          <TableRow key={order.id} className="hover:bg-secondary/20 transition-colors">
+                            {/* Product & SKU */}
+                            <TableCell className="py-3 pl-4">
+                              <div className="flex items-center gap-3">
+                                {hasRealImage ? (
+                                  <Image
+                                    alt={pName}
+                                    src={prod.imageUrl!}
+                                    width={38}
+                                    height={38}
+                                    className="aspect-square rounded-xl object-cover border border-border/40 shrink-0"
+                                    unoptimized
+                                  />
+                                ) : (
+                                  <div className="w-9 h-9 rounded-xl bg-secondary/80 border border-border/50 flex items-center justify-center text-muted-foreground shrink-0">
+                                    <Package className="w-4 h-4 text-muted-foreground" />
+                                  </div>
+                                )}
+                                <div className="space-y-0.5">
+                                  <p className="font-bold text-xs text-foreground leading-tight">{pName}</p>
+                                  <p className="font-mono text-[10px] text-muted-foreground">
+                                    {prod?.sku ? `SKU: ${prod.sku}` : `PO-${order.id.substring(0, 6)}`}
+                                  </p>
+                                </div>
+                              </div>
+                            </TableCell>
+
+                            {/* Supplier */}
+                            <TableCell className="py-3">
+                              <div className="flex items-center gap-1.5">
+                                <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                                <span className="text-xs font-semibold text-foreground">{supName}</span>
+                              </div>
+                            </TableCell>
+
+                            {/* Status Badge (Clean single-line) */}
+                            <TableCell className="py-3 text-center">
+                              {order.status === 'Fulfilled' ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 whitespace-nowrap shadow-xs">
+                                  <CheckCircle2 className="w-3 h-3 shrink-0" /> Received
+                                </span>
+                              ) : isPending ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 whitespace-nowrap shadow-xs">
+                                  <Truck className="w-3.5 h-3.5 shrink-0 animate-pulse" /> In Transit
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30 whitespace-nowrap">
+                                  Cancelled
+                                </span>
+                              )}
+                            </TableCell>
+
+                            {/* Ordered / Expected */}
+                            <TableCell className="py-3 text-center">
+                              <div className="space-y-0.5 text-xs">
+                                <p className="text-foreground font-medium whitespace-nowrap">
+                                  {formatDate(order.orderDate)}
+                                </p>
+                                {order.expectedDeliveryDate && isPending && (
+                                  <p className="text-amber-400 font-semibold text-[10px] flex items-center justify-center gap-1 whitespace-nowrap">
+                                    <Clock className="w-2.5 h-2.5 shrink-0" />
+                                    Exp: {formatDate(order.expectedDeliveryDate)}
+                                  </p>
+                                )}
+                              </div>
+                            </TableCell>
+
+                            {/* Quantity */}
+                            <TableCell className="py-3 text-right">
+                              <span className="font-black text-xs text-foreground">{order.quantity}</span>
+                              <span className="text-[10px] text-muted-foreground ml-1">units</span>
+                            </TableCell>
+
+                            {/* Total Cost */}
+                            <TableCell className="py-3 text-right font-bold text-xs text-foreground font-mono">
+                              {currencySymbol}{totalCost.toLocaleString('en-IN')}
+                            </TableCell>
+
+                            {/* Actions */}
+                            <TableCell className="py-3 pr-4 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {isPending ? (
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleOpenReceiveModal(order)}
+                                    className="rounded-xl h-8 px-3 text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold gap-1.5 shadow-sm shadow-emerald-600/20 whitespace-nowrap"
+                                  >
+                                    <PackageCheck className="w-3.5 h-3.5 shrink-0" />
+                                    <span>Receive PO</span>
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setViewingOrder(order)}
+                                    className="rounded-xl h-8 text-xs text-muted-foreground hover:text-foreground"
+                                  >
+                                    Details
+                                  </Button>
+                                )}
+
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button aria-haspopup="true" size="icon" variant="ghost" className="h-8 w-8 rounded-xl shrink-0">
+                                      <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="rounded-2xl ios-glass">
+                                    <DropdownMenuLabel className="text-[10px] uppercase font-bold text-muted-foreground">
+                                      Options
+                                    </DropdownMenuLabel>
+                                    <DropdownMenuItem onClick={() => setViewingOrder(order)}>
+                                      View Full Order Details
+                                    </DropdownMenuItem>
+                                    {isPending && (
+                                      <DropdownMenuItem onClick={() => handleOpenReceiveModal(order)} className="text-emerald-400 font-semibold">
+                                        Mark as Received (+{order.quantity} units)
+                                      </DropdownMenuItem>
+                                    )}
+                                    <DropdownMenuSeparator />
+                                    <AlertDialog>
+                                      <AlertDialogTrigger asChild>
+                                        <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive font-semibold">
+                                          Delete Order
+                                        </DropdownMenuItem>
+                                      </AlertDialogTrigger>
+                                      <AlertDialogContent className="w-[95vw] sm:max-w-md rounded-2xl ios-glass">
+                                        <AlertDialogHeader>
+                                          <AlertDialogTitle>Delete Purchase Order?</AlertDialogTitle>
+                                          <AlertDialogDescription className="text-xs">
+                                            This will remove the PO record from tracking. If already fulfilled, stock count will remain unchanged.
+                                          </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                          <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+                                          <AlertDialogAction onClick={() => deleteOrder(order.id)} className="bg-destructive rounded-xl">
+                                            Delete
+                                          </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                    </AlertDialog>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Mobile Card List View */}
+                <div className="md:hidden divide-y divide-border/30">
+                  {filteredOrders.map((order) => {
+                    const sup = suppliers.find((s) => s.id === order.supplierId);
+                    const prod = products.find((p) => p.id === order.productId);
+                    const pName = prod?.name || order.productName || 'Product';
+                    const supName = sup?.name || order.supplierName || 'Supplier';
+                    const unitCost = order.unitCost || prod?.costPrice || (prod?.price || 500) * 0.6;
+                    const totalCost = order.totalCost || Math.round(unitCost * order.quantity);
+                    const isPending = order.status !== 'Fulfilled' && order.status !== 'Cancelled';
+                    const hasRealImage = prod?.imageUrl && prod.imageUrl.startsWith('http') && !prod.imageUrl.includes('placehold.co');
+
+                    return (
+                      <div key={order.id} className="p-4 space-y-3 hover:bg-secondary/20 transition-colors">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2.5">
+                            {hasRealImage ? (
+                              <Image
+                                alt={pName}
+                                src={prod.imageUrl!}
+                                width={36}
+                                height={36}
+                                className="aspect-square rounded-xl object-cover border border-border/40 shrink-0"
+                                unoptimized
+                              />
+                            ) : (
+                              <div className="w-9 h-9 rounded-xl bg-secondary/80 border border-border/50 flex items-center justify-center text-muted-foreground shrink-0">
+                                <Package className="w-4 h-4 text-muted-foreground" />
+                              </div>
+                            )}
+                            <div>
+                              <p className="font-bold text-xs text-foreground">{pName}</p>
+                              <p className="text-[10px] text-muted-foreground">{supName}</p>
+                            </div>
+                          </div>
+                          {order.status === 'Fulfilled' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                              Received
+                            </span>
+                          ) : isPending ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                              <Truck className="w-3 h-3" /> In Transit
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/15 text-rose-400">
+                              Cancelled
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs pt-1 border-t border-border/20 text-muted-foreground">
+                          <span>Ordered: {formatDate(order.orderDate)}</span>
+                          <span className="font-bold text-foreground">
+                            {order.quantity} units ({currencySymbol}{totalCost.toLocaleString('en-IN')})
+                          </span>
+                        </div>
+
+                        {isPending && (
+                          <div className="pt-1">
+                            <Button
+                              size="sm"
+                              onClick={() => handleOpenReceiveModal(order)}
+                              className="w-full rounded-xl text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold gap-1.5 shadow-sm shadow-emerald-600/20"
+                            >
+                              <PackageCheck className="w-3.5 h-3.5" />
+                              Mark as Received (Add +{order.quantity} to Stock)
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
 
+      {/* Receive PO & Restock Confirmation Dialog */}
+      <Dialog open={!!receivingOrder} onOpenChange={(open) => !open && setReceivingOrder(null)}>
+        <DialogContent className="w-[95vw] sm:max-w-md max-h-[90vh] overflow-y-auto ios-glass border-emerald-500/30 p-6 rounded-3xl shadow-2xl">
+          <DialogHeader className="text-left space-y-1">
+            <DialogTitle className="text-base font-bold flex items-center gap-2 text-foreground">
+              <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <PackageCheck className="w-5 h-5" />
+              </div>
+              Confirm Goods Receipt & Stock Update
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Receiving this purchase order will transition it to Received and increment your physical inventory stock.
+            </DialogDescription>
+          </DialogHeader>
+
+          {receivingOrder && (
+            <div className="space-y-4 py-3 text-xs">
+              {(() => {
+                const prod = products.find((p) => p.id === receivingOrder.productId);
+                const sup = suppliers.find((s) => s.id === receivingOrder.supplierId);
+                const currentStock = prod?.stock || 0;
+                const incomingQty = receivedQtyInput || receivingOrder.quantity;
+                const newStock = currentStock + incomingQty;
+
+                return (
+                  <>
+                    <div className="p-4 rounded-2xl bg-secondary/30 border border-border/40 space-y-3">
+                      <div className="flex justify-between items-center pb-2 border-b border-border/20">
+                        <span className="text-muted-foreground">Product</span>
+                        <span className="font-bold text-foreground text-right">{prod?.name || 'Product'}</span>
+                      </div>
+                      <div className="flex justify-between items-center pb-2 border-b border-border/20">
+                        <span className="text-muted-foreground">Supplier</span>
+                        <span className="font-semibold text-foreground text-right">{sup?.name || 'Supplier'}</span>
+                      </div>
+
+                      {/* Stock Impact Comparison */}
+                      <div className="p-3.5 rounded-xl bg-emerald-500/5 border border-emerald-500/20 space-y-2">
+                        <p className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+                          <TrendingUp className="w-3.5 h-3.5" /> Inventory Impact
+                        </p>
+                        <div className="flex items-center justify-between font-mono text-xs">
+                          <span className="text-muted-foreground">Current Physical Stock:</span>
+                          <span className="font-bold text-foreground">{currentStock} units</span>
+                        </div>
+                        <div className="flex items-center justify-between font-mono text-xs">
+                          <span className="text-emerald-400 font-bold">+ Arriving Quantity:</span>
+                          <span className="font-bold text-emerald-400">+{incomingQty} units</span>
+                        </div>
+                        <div className="flex items-center justify-between font-mono text-xs pt-1.5 border-t border-emerald-500/20">
+                          <span className="font-bold text-foreground">New Total Stock:</span>
+                          <span className="font-black text-emerald-400 text-sm">{newStock} units</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="receivedQty" className="text-xs font-semibold text-foreground">
+                        Confirm Received Quantity
+                      </Label>
+                      <Input
+                        id="receivedQty"
+                        type="number"
+                        min="1"
+                        value={receivedQtyInput}
+                        onChange={(e) => setReceivedQtyInput(Number(e.target.value))}
+                        className="rounded-xl h-9 text-xs"
+                      />
+                      <p className="text-[10px] text-muted-foreground">
+                        Adjust if supplier delivered partial or over-shipment.
+                      </p>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="ghost" onClick={() => setReceivingOrder(null)} className="rounded-xl text-xs">
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleConfirmReceive}
+              className="rounded-xl text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold gap-1.5 shadow-md shadow-emerald-600/20"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              Confirm & Update Inventory Stock
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Create Order Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="w-[95vw] sm:max-w-md max-h-[90vh] overflow-y-auto ios-glass">
-          <DialogHeader>
-            <DialogTitle>Create New Order</DialogTitle>
+        <DialogContent className="w-[95vw] sm:max-w-md max-h-[90vh] overflow-y-auto ios-glass rounded-3xl p-6">
+          <DialogHeader className="text-left space-y-1">
+            <DialogTitle className="text-base font-bold flex items-center gap-2">
+              <PlusCircle className="w-5 h-5 text-emerald-400" />
+              Create Purchase Order
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Issue an inbound purchase order to a supplier. The PO will be tracked as In Transit until received.
+            </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
-            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-              <Label htmlFor="supplierId" className="sm:text-right">
+
+          <form onSubmit={handleFormSubmit} className="space-y-4 py-2 text-xs">
+            <div className="space-y-1.5">
+              <Label htmlFor="supplierId" className="text-xs font-semibold">
                 Supplier
               </Label>
-              <Select name="supplierId" required>
-                <SelectTrigger className="sm:col-span-3">
+              <Select name="supplierId" required defaultValue={suppliers[0]?.id}>
+                <SelectTrigger className="rounded-xl text-xs h-9">
                   <SelectValue placeholder="Select a supplier" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="rounded-xl">
                   {suppliers.map((sup) => (
-                    <SelectItem key={sup.id} value={sup.id}>
+                    <SelectItem key={sup.id} value={sup.id} className="text-xs">
                       {sup.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-             <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-              <Label htmlFor="productId" className="sm:text-right">
-                Product
+
+            <div className="space-y-1.5">
+              <Label htmlFor="productId" className="text-xs font-semibold">
+                Product to Replenish
               </Label>
-              <Select name="productId" required>
-                <SelectTrigger className="sm:col-span-3">
+              <Select name="productId" required defaultValue={products[0]?.id}>
+                <SelectTrigger className="rounded-xl text-xs h-9">
                   <SelectValue placeholder="Select a product" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="rounded-xl">
                   {products.map((prod) => (
-                    <SelectItem key={prod.id} value={prod.id}>
-                      {prod.name}
+                    <SelectItem key={prod.id} value={prod.id} className="text-xs">
+                      {prod.name} (Stock: {prod.stock})
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-              <Label htmlFor="quantity" className="sm:text-right">
-                Quantity
-              </Label>
-              <Input
-                id="quantity"
-                name="quantity"
-                type="number"
-                step="1"
-                className="sm:col-span-3"
-                required
-              />
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="quantity" className="text-xs font-semibold">
+                  Order Quantity
+                </Label>
+                <Input
+                  id="quantity"
+                  name="quantity"
+                  type="number"
+                  defaultValue={30}
+                  min={1}
+                  step={1}
+                  className="rounded-xl text-xs h-9"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="leadDays" className="text-xs font-semibold">
+                  Lead Time (Days)
+                </Label>
+                <Input
+                  id="leadDays"
+                  name="leadDays"
+                  type="number"
+                  defaultValue={7}
+                  min={1}
+                  step={1}
+                  className="rounded-xl text-xs h-9"
+                  required
+                />
+              </div>
             </div>
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button type="button" variant="secondary">
-                  Cancel
-                </Button>
-              </DialogClose>
-              <Button type="submit">Create Order</Button>
+
+            <DialogFooter className="pt-3 gap-2 sm:gap-0">
+              <Button type="button" variant="ghost" onClick={() => setDialogOpen(false)} className="rounded-xl text-xs">
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="rounded-xl text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold gap-1"
+              >
+                Create Order (In Transit)
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -392,45 +824,71 @@ export default function OrdersPage() {
 
       {/* View Order Details Dialog */}
       <Dialog open={!!viewingOrder} onOpenChange={() => setViewingOrder(null)}>
-        <DialogContent className="w-[95vw] sm:max-w-md max-h-[90vh] overflow-y-auto ios-glass">
-          <DialogHeader>
-            <DialogTitle>Order Details</DialogTitle>
-            <DialogDescription>Order ID: {viewingOrder?.id.substring(0,8)}...</DialogDescription>
+        <DialogContent className="w-[95vw] sm:max-w-md max-h-[90vh] overflow-y-auto ios-glass rounded-3xl p-6">
+          <DialogHeader className="text-left space-y-1">
+            <DialogTitle className="text-base font-bold">Purchase Order Details</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              PO ID: {viewingOrder?.id}
+            </DialogDescription>
           </DialogHeader>
+
           {viewingOrder && (
-            <div className="space-y-4 py-4">
-              <div>
-                <Label>Supplier</Label>
-                <p className="text-sm text-muted-foreground">{suppliers.find(s => s.id === viewingOrder.supplierId)?.name || viewingOrder.supplierId}</p>
-              </div>
-               <div>
-                <Label>Product</Label>
-                <p className="text-sm text-muted-foreground">{products.find(p => p.id === viewingOrder.productId)?.name || viewingOrder.productId}</p>
-              </div>
-              <div>
-                <Label>Date</Label>
-                <p className="text-sm text-muted-foreground">{new Date(viewingOrder.orderDate).toLocaleDateString()}</p>
-              </div>
-              <div>
-                <Label>Status</Label>
-                <div>
-                  <Badge variant={getStatusVariant(viewingOrder.status as OrderStatus)}>
-                    {viewingOrder.status}
-                  </Badge>
+            <div className="space-y-3 py-3 text-xs">
+              <div className="p-4 rounded-2xl bg-secondary/30 border border-border/40 space-y-2.5">
+                <div className="flex justify-between items-center py-1 border-b border-border/20">
+                  <span className="text-muted-foreground">Status</span>
+                  <span>{viewingOrder.status}</span>
                 </div>
-              </div>
-              <div>
-                <Label>Quantity</Label>
-                <p className="text-sm text-muted-foreground">{viewingOrder.quantity}</p>
+                <div className="flex justify-between items-center py-1 border-b border-border/20">
+                  <span className="text-muted-foreground">Product</span>
+                  <span className="font-bold text-foreground text-right">
+                    {products.find((p) => p.id === viewingOrder.productId)?.name || viewingOrder.productId}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center py-1 border-b border-border/20">
+                  <span className="text-muted-foreground">Supplier</span>
+                  <span className="font-semibold text-foreground text-right">
+                    {suppliers.find((s) => s.id === viewingOrder.supplierId)?.name || viewingOrder.supplierId}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center py-1 border-b border-border/20">
+                  <span className="text-muted-foreground">Quantity Ordered</span>
+                  <span className="font-bold text-foreground">{viewingOrder.quantity} units</span>
+                </div>
+                <div className="flex justify-between items-center py-1 border-b border-border/20">
+                  <span className="text-muted-foreground">Order Date</span>
+                  <span className="text-foreground">{formatDate(viewingOrder.orderDate)}</span>
+                </div>
+                {viewingOrder.expectedDeliveryDate && (
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-muted-foreground">Expected Delivery</span>
+                    <span className="text-amber-400 font-semibold">
+                      {formatDate(viewingOrder.expectedDeliveryDate)}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           )}
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="secondary">
-                Close
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            {viewingOrder && viewingOrder.status !== 'Fulfilled' && (
+              <Button
+                type="button"
+                onClick={() => {
+                  const ord = viewingOrder;
+                  setViewingOrder(null);
+                  handleOpenReceiveModal(ord);
+                }}
+                className="rounded-xl text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold gap-1"
+              >
+                <PackageCheck className="w-3.5 h-3.5" />
+                Mark as Received
               </Button>
-            </DialogClose>
+            )}
+            <Button type="button" variant="ghost" onClick={() => setViewingOrder(null)} className="rounded-xl text-xs">
+              Close
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

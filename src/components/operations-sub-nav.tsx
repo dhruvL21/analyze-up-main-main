@@ -13,11 +13,8 @@ export function OperationsSubNav() {
   const { products = [], transactions = [], orders = [], returns = [] } = useData();
 
   // Strict count calculations:
-  // - Customer Sales transactions: type === 'Sale'
-  // - Purchase Orders: orders.length
   const salesCount = transactions.filter(t => t.type === 'Sale').length;
-  const ordersCount = orders.length;
-  const totalOrdersAndSales = ordersCount + salesCount;
+  const pendingPOCount = orders.filter(o => o.status !== 'Fulfilled' && o.status !== 'Cancelled').length;
   const returnsCount = returns.length;
 
   const tabs = [
@@ -28,10 +25,11 @@ export function OperationsSubNav() {
       count: products.length,
     },
     {
-      label: 'Orders & Sales',
+      label: pendingPOCount > 0 ? `Orders & Inbound POs (${pendingPOCount} In Transit)` : 'Orders & Inbound POs',
       href: '/dashboard/orders',
       icon: ShoppingCart,
-      count: totalOrdersAndSales,
+      count: pendingPOCount > 0 ? pendingPOCount : orders.length,
+      badgeColor: pendingPOCount > 0 ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40' : undefined,
     },
     {
       label: 'Customer Returns',
@@ -64,7 +62,7 @@ export function OperationsSubNav() {
               variant="outline"
               className={cn(
                 'text-[11px] px-1.5 py-0 font-mono border-0',
-                isActive ? 'bg-primary/20 text-primary font-bold' : 'bg-secondary text-muted-foreground'
+                tab.badgeColor || (isActive ? 'bg-primary/20 text-primary font-bold' : 'bg-secondary text-muted-foreground')
               )}
             >
               {tab.count}
