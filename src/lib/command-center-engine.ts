@@ -1,6 +1,7 @@
 import { Product, Transaction, Supplier, PurchaseOrder, ProductReturn, BusinessProfile } from './types';
 import { detectProcurementRisks, calculateProcurementSavings } from './supplier-intelligence-engine';
 import { generateBusinessForecastingReport } from './forecasting-engine';
+import { predictOptimalClearanceDiscount } from './ml/clearance-pricing-model';
 import {
   toDomainProducts,
   toDomainTransactions,
@@ -276,7 +277,7 @@ export function generateActionTasks(
     });
   });
 
-  // Task Group 2: Dead Stock Liquidation (All stagnant items)
+  // Task Group 2: Dead Stock Liquidation (Individual predictive clearance discounts)
   const saleProductIds = new Set(transactions.filter(t => t.type === 'Sale').map(t => t.productId));
   const deadStock = [...products]
     .filter(p => p && p.name && p.stock > 0 && !saleProductIds.has(p.id))
@@ -285,54 +286,81 @@ export function generateActionTasks(
   deadStock.slice(0, 5).forEach((topDead) => {
     const pName = topDead.name || topDead.productName || 'Product';
     const targetSlug = topDead.id || topDead.sku || getSlug(pName);
-    const rawPrice = topDead.price && topDead.price > 0 ? topDead.price : (topDead.costPrice ? topDead.costPrice * 1.5 : 350);
-    const pPrice = Math.min(25000, Math.max(50, rawPrice));
-    const tiedCapital = topDead.stock * (topDead.costPrice || pPrice * 0.6);
+    const pred = predictOptimalClearanceDiscount(topDead);
+    const tiedCapital = (topDead.stock || 1) * pred.costPrice;
 
     tasks.push({
       id: `task-discount-${targetSlug}`,
       title: `Liquidate Dead Stock: ${pName}`,
-      problem: `${topDead.stock} ${topDead.unit || 'units'} sitting unsold with zero recorded customer transactions.`,
-      reason: `Overstocking or seasonal shift resulted in stagnant shelf space.`,
-      impact: `${formatCurrency(Math.round(tiedCapital))} working capital locked up in non-moving inventory.`,
-      recommendation: `Launch a 20% clearance promo or bundle with best-selling products.`,
+      problem: `${topDead.stock} ${topDead.unit || 'units'} sitting unsold with zero customer transactions (${pred.grossMarginBefore}% margin headroom).`,
+      reason: `Overstocking or seasonal shift resulted in dormant capital lockup.`,
+      impact: `${formatCurrency(Math.round(tiedCapital))} working capital frozen in dormant inventory.`,
+      recommendation: `Launch a ${pred.discountPercent}% clearance promo (Price: ${formatCurrency(pred.newPrice)}) to unfreeze capital.`,
       priority: 'High',
-      estimatedBenefit: `Unlock ${formatCurrency(Math.round(tiedCapital * 0.8))} cash flow`,
+      estimatedBenefit: `Unlock ${formatCurrency(pred.estimatedCashUnlocked)} cash flow`,
       actionType: 'discount',
       targetId: targetSlug,
       targetName: pName,
     });
   });
 
-  // Task Group 3: Pricing Optimization (High Demand Items)
+  // Task Group 3: Pricing Optimization (High Demand & High Margin Expansion)
   const highDemandProducts = [...products]
     .filter(p => p && p.name && (p.averageDailySales || 0) >= 0.5 && (p.price || 0) > 0)
     .sort((a, b) => (b.averageDailySales || 0) - (a.averageDailySales || 0) || (a.name || '').localeCompare(b.name || ''));
 
-  highDemandProducts.slice(0, 3).forEach((topDemand) => {
+  highDemandProducts.slice(0, 4).forEach((topDemand) => {
     const pName = topDemand.name || topDemand.productName || 'Product';
     const targetSlug = topDemand.id || topDemand.sku || getSlug(pName);
     const pPrice = Math.min(50000, Math.max(50, topDemand.price || 500));
-    const newPrice = Math.round(pPrice * 1.08);
+    const costPrice = topDemand.costPrice || pPrice * 0.6;
+    const margin = Math.round(((pPrice - costPrice) / pPrice) * 100);
+    
+    // Suggest 8% to 12% price hike for high velocity items
+    const hikePercent = margin < 25 ? 12 : 8;
+    const newPrice = Math.round(pPrice * (1 + hikePercent / 100));
     const addedProfit = Math.round((newPrice - pPrice) * (topDemand.stock || 20));
 
     tasks.push({
       id: `task-price-${targetSlug}`,
-      title: `Price Optimization: ${pName}`,
-      problem: `High consumer demand with stable daily sales velocity (${topDemand.averageDailySales || 1.2} units/day).`,
-      reason: `Current pricing is under-indexed compared to industry profit benchmarks.`,
-      impact: `Unclaimed margin expansion potential.`,
-      recommendation: `Adjust selling price from ${formatCurrency(pPrice)} to ${formatCurrency(newPrice)} (8% increase).`,
+      title: `Margin Optimization (+${hikePercent}%): ${pName}`,
+      problem: `High consumer demand (${topDemand.averageDailySales || 1.2} units/day) with margin (${margin}%) below benchmark.`,
+      reason: `Current selling price is under-indexed against market willingness-to-pay.`,
+      impact: `Unclaimed margin expansion potential on recurring customer transactions.`,
+      recommendation: `Adjust selling price from ${formatCurrency(pPrice)} to ${formatCurrency(newPrice)} (+${hikePercent}% margin boost).`,
       priority: 'Medium',
-      estimatedBenefit: `+${formatCurrency(addedProfit)} additional profit margin`,
+      estimatedBenefit: `+${formatCurrency(addedProfit)} net profit expansion`,
       actionType: 'price_up',
       targetId: targetSlug,
       targetName: pName,
     });
   });
 
-  // Task Group 4: Supplier Lead Time Audit
-  // Task Group 4: Supplier Procurement Intelligence & Risk Actions
+  // Task Group 4: Cross-Sell Bundles & AOV Growth
+  const topSellers = [...products]
+    .filter(p => (p.averageDailySales || 0) >= 0.8 && p.stock > 10)
+    .slice(0, 2);
+
+  topSellers.forEach(item => {
+    const pName = item.name || 'Best Seller';
+    const targetSlug = item.id || getSlug(pName);
+    const estLift = Math.round((item.price || 1200) * 0.25 * 10);
+    tasks.push({
+      id: `task-bundle-${targetSlug}`,
+      title: `Bundle Growth Opportunity: ${pName}`,
+      problem: `Single-item checkouts for ${pName} cap average order value at ${formatCurrency(item.price || 1200)}.`,
+      reason: `Customers buying ${pName} frequently search for complementary accessories.`,
+      impact: `Missed +20% Average Order Value (AOV) expansion on high-intent buyer traffic.`,
+      recommendation: `Launch a 10% combo bundle pairing ${pName} with high-margin catalog accessories.`,
+      priority: 'Medium',
+      estimatedBenefit: `+${formatCurrency(estLift)} AOV revenue lift`,
+      actionType: 'discount',
+      targetId: targetSlug,
+      targetName: pName,
+    });
+  });
+
+  // Task Group 5: Supplier Procurement Intelligence & Risk Actions
   const procurementRisks = detectProcurementRisks(products, suppliers, orders || [], transactions);
   procurementRisks.slice(0, 3).forEach((risk) => {
     const targetSlug = getSlug(risk.supplierName);
@@ -351,7 +379,7 @@ export function generateActionTasks(
     });
   });
 
-  // Task Group 5: Procurement Cost Savings Opportunity
+  // Task Group 6: Procurement Cost Savings Opportunity
   const savingsResult = calculateProcurementSavings(products, suppliers, orders || [], transactions);
   if (savingsResult.savingsList.length > 0) {
     const topSave = savingsResult.savingsList[0];
@@ -370,7 +398,7 @@ export function generateActionTasks(
     });
   }
 
-  // Task Group 6: Predictive Stockout & Velocity Warnings (Part 6 Integration)
+  // Task Group 7: Predictive Stockout & Velocity Warnings
   const forecastingReport = generateBusinessForecastingReport(products, transactions, suppliers, orders);
   forecastingReport.stockoutProjections
     .filter(s => s.stockoutRiskLevel === 'HIGH')

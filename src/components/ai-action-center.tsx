@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +25,7 @@ import {
   ChevronDown,
   ChevronUp,
   Target,
+  ExternalLink,
 } from 'lucide-react';
 import {
   Dialog,
@@ -33,6 +35,16 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+
+function getActionDestination(task: ActionTask): { route: string; label: string } {
+  if (task.actionType === 'reorder') {
+    return { route: '/dashboard/orders', label: 'Orders' };
+  }
+  if (task.actionType === 'supplier') {
+    return { route: '/dashboard/suppliers', label: 'Suppliers' };
+  }
+  return { route: '/dashboard/inventory', label: 'Inventory' };
+}
 
 export function AIActionCenter() {
   const {
@@ -45,6 +57,7 @@ export function AIActionCenter() {
     addOrder,
   } = useData();
   const { toast } = useToast();
+  const router = useRouter();
 
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [tasks, setTasks] = useState<ActionTask[]>([]);
@@ -66,6 +79,8 @@ export function AIActionCenter() {
     task: ActionTask;
     title: string;
     description: string;
+    targetRoute: string;
+    targetPageName: string;
     onConfirm: () => void;
   } | null>(null);
 
@@ -113,8 +128,21 @@ export function AIActionCenter() {
     });
   };
 
+  const resetCompletedTasks = () => {
+    setCompletedTaskIds([]);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('analyzeup_completed_tasks');
+    }
+    setActiveTab('all');
+    toast({
+      title: '🔄 Action Queue Refreshed',
+      description: 'Loaded fresh daily growth, margin, and velocity tasks for your store.',
+    });
+  };
+
   const handleExecuteAction = (task: ActionTask) => {
     const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
+    const destination = getActionDestination(task);
     const targetProd = products.find(
       (p) =>
         (task.targetId && p.id === task.targetId) ||
@@ -126,7 +154,9 @@ export function AIActionCenter() {
     setConfirmData({
       task,
       title: task.title,
-      description: `Confirm execution of: "${task.recommendation}". This will update stock levels or catalog pricing in your database.`,
+      targetRoute: destination.route,
+      targetPageName: destination.label,
+      description: `Confirm execution of: "${task.recommendation}". This will update records in your database and reflect in ${destination.label}.`,
       onConfirm: async () => {
         // Immediately complete task in React state so card dismisses instantaneously
         markTaskCompleted(task.id);
@@ -157,8 +187,8 @@ export function AIActionCenter() {
             });
 
             toast({
-              title: '📦 Purchase Order Created & Saved to Audit!',
-              description: `Logged PO for ${reorderQty} units of "${pName}". Click "Change History" to view recorded audit.`,
+              title: '📦 Purchase Order Executed & Saved to Audit!',
+              description: `Logged PO for ${reorderQty} units of "${pName}". Changes reflect in ${destination.label}.`,
             });
           } else if (task.actionType === 'discount') {
             if (targetProd) {
@@ -180,7 +210,7 @@ export function AIActionCenter() {
 
               toast({
                 title: '🏷️ Clearance Promo Applied & Saved to Audit!',
-                description: `Reduced price of "${pName}" to ${currencySymbol}${newPrice}. Click "Change History" to view recorded audit.`,
+                description: `Reduced price of "${pName}" to ${currencySymbol}${newPrice}. Changes reflect in ${destination.label}.`,
               });
             }
           } else if (task.actionType === 'price_up') {
@@ -203,7 +233,7 @@ export function AIActionCenter() {
 
               toast({
                 title: '📈 Price Optimized & Saved to Audit!',
-                description: `Adjusted price of "${pName}" to ${currencySymbol}${newPrice}. Click "Change History" to view recorded audit.`,
+                description: `Adjusted price of "${pName}" to ${currencySymbol}${newPrice}. Changes reflect in ${destination.label}.`,
               });
             }
           } else if (task.actionType === 'supplier') {
@@ -217,45 +247,63 @@ export function AIActionCenter() {
 
             toast({
               title: '🚚 Supplier Expedite Dispatched',
-              description: `High-priority delivery notice dispatched to ${task.targetName || 'supplier'}.`,
+              description: `High-priority delivery notice dispatched to ${task.targetName || 'supplier'}. Changes reflect in ${destination.label}.`,
             });
           }
         } catch (err) {
           console.error('Error executing action:', err);
+          toast({
+            title: 'Execution Error',
+            description: 'Failed to apply recommendation changes.',
+            variant: 'destructive',
+          });
         }
       },
     });
   };
 
-  // Partition tasks into active vs completed
-  const activeTasks = useMemo(() => tasks.filter((t) => !completedTaskIds.includes(t.id)), [tasks, completedTaskIds]);
-  const completedTasks = useMemo(() => tasks.filter((t) => completedTaskIds.includes(t.id)), [tasks, completedTaskIds]);
+  // Filter tasks into Active vs Completed
+  const activeTasks = useMemo(() => {
+    return tasks.filter((t) => !completedTaskIds.includes(t.id));
+  }, [tasks, completedTaskIds]);
 
-  // Separate Top Priorities (High Priority tasks, max 3) vs Other Business Actions
+  const completedTasks = useMemo(() => {
+    return tasks.filter((t) => completedTaskIds.includes(t.id));
+  }, [tasks, completedTaskIds]);
+
+  // Separate Top Priorities (#1, #2, #3) vs Other Actions
   const topPriorityTasks = useMemo(() => {
-    const high = activeTasks.filter((t) => t.priority === 'High');
-    return high.length > 0 ? high.slice(0, 3) : activeTasks.slice(0, 2);
+    return activeTasks.filter((t) => t.priority === 'High').slice(0, 3);
   }, [activeTasks]);
 
-  const otherTasks = useMemo(() => {
-    const topIds = new Set(topPriorityTasks.map((t) => t.id));
-    return activeTasks.filter((t) => !topIds.has(t.id));
-  }, [activeTasks, topPriorityTasks]);
+  const topPriorityIds = useMemo(() => new Set(topPriorityTasks.map((t) => t.id)), [topPriorityTasks]);
 
-  const renderTaskCard = (task: ActionTask, isTopPriority: boolean = false, rankIndex?: number) => (
-    <div
-      key={task.id}
-      className={`p-4 rounded-2xl transition-all space-y-3 shadow-sm ${
-        isTopPriority
-          ? 'bg-amber-500/5 hover:bg-amber-500/10 border-2 border-amber-500/30 shadow-md'
-          : 'bg-secondary/40 hover:bg-secondary/70 border border-border/50'
-      }`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="space-y-1">
+  const otherTasks = useMemo(() => {
+    return activeTasks.filter((t) => !topPriorityIds.has(t.id));
+  }, [activeTasks, topPriorityIds]);
+
+  // Render a Single Task Card
+  const renderTaskCard = (task: ActionTask, isTopPriority: boolean = false, rankIndex?: number) => {
+    const destination = getActionDestination(task);
+
+    return (
+      <div
+        key={task.id}
+        className={`p-4 sm:p-5 rounded-2xl transition-all space-y-3.5 relative overflow-hidden ${
+          isTopPriority
+            ? 'bg-secondary/40 border-2 border-amber-500/40 shadow-md'
+            : 'bg-secondary/20 border border-border/40 hover:bg-secondary/30'
+        }`}
+      >
+        {isTopPriority && (
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500/40 via-amber-500 to-amber-500/40" />
+        )}
+
+        {/* Top Header line of the task */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <div className="flex items-center gap-2 flex-wrap">
-            {rankIndex !== undefined && (
-              <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 text-xs font-extrabold flex items-center justify-center shrink-0 border border-amber-500/40">
+            {isTopPriority && rankIndex !== undefined && (
+              <span className="w-6 h-6 rounded-full bg-amber-500 text-black font-extrabold text-xs flex items-center justify-center shadow-xs shrink-0">
                 #{rankIndex + 1}
               </span>
             )}
@@ -281,73 +329,85 @@ export function AIActionCenter() {
             <span className="text-xs font-bold text-foreground">{task.title}</span>
           </div>
         </div>
+
+        {/* 5-Part Structured Explanation Breakdown */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+          <div className="p-3 rounded-xl bg-background/80 border border-border/40 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">1. Observed Fact</span>
+              <ThreeTierBadge tier="ACTUAL_DATA" size="sm" />
+            </div>
+            <p className="text-[11px] text-foreground leading-relaxed">{task.problem}</p>
+          </div>
+
+          <div className="p-3 rounded-xl bg-background/80 border border-border/40 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">2. Root Cause / Impact</span>
+              <span className="text-[10px] text-muted-foreground font-semibold">Operational</span>
+            </div>
+            <p className="text-[11px] text-foreground leading-relaxed">{task.reason}</p>
+          </div>
+
+          <div className="p-3 rounded-xl bg-purple-500/5 border border-purple-500/20 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-purple-400 uppercase tracking-wider font-bold">3. Forecast Projection</span>
+              <ThreeTierBadge tier="MODEL_2_PREDICTION" size="sm" />
+            </div>
+            <p className="text-[11px] text-purple-200/90 leading-relaxed">{task.impact}</p>
+          </div>
+
+          <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-emerald-400 uppercase tracking-wider font-bold">4. Estimated Benefit</span>
+              <span className="text-[10px] text-emerald-400 font-semibold">Value Added</span>
+            </div>
+            <p className="text-[11px] text-emerald-300 font-bold leading-relaxed">{task.estimatedBenefit}</p>
+          </div>
+        </div>
+
+        {/* Action Controls & Direct Navigation */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-2 border-t border-border/40 gap-3">
+          <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
+            <span className="font-semibold text-foreground">5. Recommended Action:</span>
+            <span className="text-foreground/90 font-medium">{task.recommendation}</span>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end flex-wrap">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => router.push(destination.route)}
+              className="rounded-xl text-xs h-8 border border-border/50 hover:bg-secondary text-muted-foreground hover:text-foreground font-medium px-2.5 gap-1"
+              title={`View product/records in ${destination.label}`}
+            >
+              <span>Go to {destination.label}</span>
+              <ExternalLink className="w-3 h-3 text-muted-foreground" />
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => markTaskCompleted(task.id, task.title, task.recommendation)}
+              className="rounded-xl text-xs h-8 border-border/60 hover:bg-secondary text-muted-foreground hover:text-foreground font-medium px-3 gap-1"
+              title="Mark this task as done for today"
+            >
+              <Check className="w-3.5 h-3.5" />
+              Mark Done
+            </Button>
+
+            <Button
+              size="sm"
+              onClick={() => handleExecuteAction(task)}
+              className="rounded-xl text-xs h-8 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow-md shadow-emerald-600/20 gap-1.5 px-4"
+            >
+              Execute Action
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        </div>
       </div>
-
-      {/* 5-Part Structured Explanation Breakdown */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-        <div className="p-3 rounded-xl bg-background/80 border border-border/40 space-y-1.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">1. Observed Fact</span>
-            <ThreeTierBadge tier="ACTUAL_DATA" size="sm" />
-          </div>
-          <p className="text-[11px] text-foreground leading-relaxed">{task.problem}</p>
-        </div>
-
-        <div className="p-3 rounded-xl bg-background/80 border border-border/40 space-y-1.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">2. Root Cause / Impact</span>
-            <span className="text-[10px] font-mono text-muted-foreground font-semibold">Operational</span>
-          </div>
-          <p className="text-[11px] text-foreground leading-relaxed">{task.reason}</p>
-        </div>
-
-        <div className="p-3 rounded-xl bg-purple-500/5 border border-purple-500/20 space-y-1.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] text-purple-400 uppercase tracking-wider font-bold">3. Forecast Projection</span>
-            <ThreeTierBadge tier="MODEL_2_PREDICTION" size="sm" />
-          </div>
-          <p className="text-[11px] text-purple-200/90 leading-relaxed">{task.impact}</p>
-        </div>
-
-        <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 space-y-1.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] text-emerald-400 uppercase tracking-wider font-bold">4. Estimated Benefit</span>
-            <span className="text-[10px] text-emerald-400 font-semibold font-mono">Value Added</span>
-          </div>
-          <p className="text-[11px] text-emerald-300 font-bold leading-relaxed">{task.estimatedBenefit}</p>
-        </div>
-      </div>
-
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-2 border-t border-border/40 gap-3">
-        <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
-          <span className="font-semibold text-foreground">5. Recommended Action:</span>
-          <span className="text-foreground/90 font-medium">{task.recommendation}</span>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => markTaskCompleted(task.id, task.title, task.recommendation)}
-            className="rounded-xl text-xs h-8 border-border/60 hover:bg-secondary text-muted-foreground hover:text-foreground font-medium px-3 gap-1"
-            title="Mark this task as done for today without modifying store database"
-          >
-            <Check className="w-3.5 h-3.5" />
-            Mark Done
-          </Button>
-
-          <Button
-            size="sm"
-            onClick={() => handleExecuteAction(task)}
-            className="rounded-xl text-xs h-8 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow-md shadow-emerald-600/20 gap-1.5 px-4"
-          >
-            Execute Action
-            <ArrowRight className="w-3.5 h-3.5" />
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <>
@@ -372,6 +432,17 @@ export function AIActionCenter() {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={resetCompletedTasks}
+              className="rounded-xl text-xs gap-1.5 text-muted-foreground hover:text-foreground font-semibold border border-border/40"
+              title="Refresh daily predictive actions queue"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Refresh Actions
+            </Button>
+
             <Button
               size="sm"
               variant="outline"
@@ -453,7 +524,14 @@ export function AIActionCenter() {
               <p className="text-xs text-muted-foreground max-w-md mx-auto">
                 Outstanding execution! All high-priority operational bottlenecks, restocking alerts, and price recommendations have been addressed for today.
               </p>
-              <div className="flex items-center justify-center gap-3 pt-2">
+              <div className="flex items-center justify-center gap-3 pt-2 flex-wrap">
+                <Button
+                  onClick={resetCompletedTasks}
+                  size="sm"
+                  className="rounded-xl text-xs bg-emerald-600 hover:bg-emerald-500 text-white gap-1.5 font-bold shadow-sm shadow-emerald-600/20"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" /> Generate Next Growth Actions
+                </Button>
                 <Button
                   onClick={() => setIsAuditModalOpen(true)}
                   variant="outline"
@@ -466,9 +544,10 @@ export function AIActionCenter() {
                   <Button
                     onClick={() => setActiveTab('done')}
                     size="sm"
-                    className="rounded-xl text-xs bg-emerald-600 hover:bg-emerald-500 text-white gap-1"
+                    variant="outline"
+                    className="rounded-xl text-xs gap-1"
                   >
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Review Completed Tasks ({completedTasks.length})
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Review Completed ({completedTasks.length})
                   </Button>
                 )}
               </div>
@@ -483,43 +562,65 @@ export function AIActionCenter() {
                     Completed & Executed Today ({completedTasks.length})
                   </span>
                 </div>
-                <span className="text-[11px] text-muted-foreground">Recorded in Local Audit</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={resetCompletedTasks}
+                  className="rounded-xl text-xs h-7 text-muted-foreground hover:text-foreground gap-1 px-2.5"
+                >
+                  <RotateCcw className="w-3 h-3" /> Reset Completed Queue
+                </Button>
               </div>
 
               {completedTasks.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center py-6">No tasks completed yet today.</p>
               ) : (
-                completedTasks.map((task) => (
-                  <div
-                    key={task.id}
-                    className="p-3.5 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="p-1.5 rounded-full bg-emerald-500/20 text-emerald-400 shrink-0">
-                        <Check className="w-3.5 h-3.5" />
+                completedTasks.map((task) => {
+                  const dest = getActionDestination(task);
+                  return (
+                    <div
+                      key={task.id}
+                      className="p-3.5 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="p-1.5 rounded-full bg-emerald-500/20 text-emerald-400 shrink-0">
+                          <Check className="w-3.5 h-3.5" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-foreground line-through opacity-80">{task.title}</p>
+                          <p className="text-[11px] text-muted-foreground">{task.recommendation}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-xs font-semibold text-foreground line-through opacity-80">{task.title}</p>
-                        <p className="text-[11px] text-muted-foreground">{task.recommendation}</p>
-                      </div>
-                    </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 text-[10px]">
-                        Done Today
-                      </Badge>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => undoCompletedTask(task.id, task.title)}
-                        className="rounded-xl text-xs h-7 text-muted-foreground hover:text-foreground gap-1 px-2"
-                        title="Reopen task and move back to pending"
-                      >
-                        <RotateCcw className="w-3 h-3" /> Reopen
-                      </Button>
+                      <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => router.push(dest.route)}
+                          className="rounded-xl text-xs h-7 border border-border/50 text-muted-foreground hover:text-foreground gap-1 px-2.5"
+                          title={`View in ${dest.label}`}
+                        >
+                          <span>Go to {dest.label}</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </Button>
+
+                        <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 text-[10px]">
+                          Done Today
+                        </Badge>
+
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => undoCompletedTask(task.id, task.title)}
+                          className="rounded-xl text-xs h-7 text-muted-foreground hover:text-foreground gap-1 px-2"
+                          title="Reopen task and move back to pending"
+                        >
+                          <RotateCcw className="w-3 h-3" /> Reopen
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           ) : (
@@ -631,6 +732,10 @@ export function AIActionCenter() {
               <div className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-1.5">
                 <div className="text-zinc-200 font-bold">{confirmData.title}</div>
                 <div className="text-zinc-300 leading-relaxed">{confirmData.description}</div>
+                <div className="pt-2 text-[11px] text-zinc-400 flex items-center gap-1.5 border-t border-zinc-800/60">
+                  <span>Destination:</span>
+                  <span className="font-semibold text-emerald-400">{confirmData.targetPageName} ({confirmData.targetRoute})</span>
+                </div>
               </div>
             </div>
           )}

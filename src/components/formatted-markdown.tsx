@@ -61,7 +61,7 @@ function parseInlineMarkdown(text: string): React.ReactNode[] {
         tokens.push(
           <strong
             key={`bold-${keyIndex++}`}
-            className={isLabel ? 'font-bold text-primary font-mono text-[11px] tracking-wide' : 'font-bold text-foreground'}
+            className={isLabel ? 'font-bold text-primary text-xs' : 'font-bold text-foreground'}
           >
             {innerText}
           </strong>

@@ -58,7 +58,6 @@ import { useToast } from '@/hooks/use-toast';
 import { computeProductIntelligence, filterProductsByNaturalLanguage } from '@/lib/product-intelligence-engine';
 import { InventoryInsightsTicker } from '@/components/inventory-insights-ticker';
 import { InventoryRecommendationsPanel } from '@/components/inventory-recommendations-panel';
-import { InventoryDistributionCard } from '@/components/inventory-distribution-card';
 import { ProductIntelligenceDrawer } from '@/components/product-intelligence-drawer';
 import { ProductComparisonModal } from '@/components/product-comparison-modal';
 
@@ -182,9 +181,6 @@ export default function InventoryPage() {
 
         {/* FEATURE 18: Proactive AI Inventory Recommendations Panel */}
         <InventoryRecommendationsPanel />
-
-        {/* FEATURE 14: Inventory Distribution Analysis */}
-        <InventoryDistributionCard />
 
         {/* Main Table Card */}
         <Card className="ios-glass rounded-3xl border-border/50 shadow-xl overflow-hidden">
