@@ -11,6 +11,7 @@ import { logBusinessAction } from '@/lib/audit-store';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { sanitizePlainData } from '@/lib/utils';
+import { FormattedMarkdown } from '@/components/formatted-markdown';
 
 export function ChatWidget() {
   const { products, transactions, suppliers, orders, returns, activePlan, setShowSubscriptionModal, businessProfile, incrementAiQueryCount } = useData();
@@ -273,13 +274,17 @@ export function ChatWidget() {
                     )}
                     <div className="space-y-2">
                       <div
-                        className={`rounded-2xl px-4 py-3 leading-relaxed ${
+                        className={`rounded-2xl px-4 py-3 leading-relaxed text-xs ${
                           msg.role === 'user'
                             ? 'bg-primary text-primary-foreground font-medium rounded-tr-none shadow-sm'
-                            : 'bg-secondary/40 text-foreground border border-border/40 rounded-tl-none whitespace-pre-wrap font-normal'
+                            : 'bg-secondary/40 text-foreground border border-border/40 rounded-tl-none font-normal'
                         }`}
                       >
-                        {msg.content}
+                        {msg.role === 'user' ? (
+                          msg.content
+                        ) : (
+                          <FormattedMarkdown content={msg.content} />
+                        )}
                       </div>
 
                       {/* Supporting Data & 1-Click Action */}

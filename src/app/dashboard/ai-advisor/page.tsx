@@ -47,6 +47,7 @@ import { logBusinessAction } from '@/lib/audit-store';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { sanitizePlainData } from '@/lib/utils';
+import { FormattedMarkdown } from '@/components/formatted-markdown';
 import {
   Dialog,
   DialogContent,
@@ -282,7 +283,7 @@ export default function AIAdvisorPage() {
           <CardHeader className="p-0 pb-4 border-b border-border/40 shrink-0">
             <CardTitle className="flex items-center gap-2 text-lg font-bold text-foreground">
               <Bot className="h-5 w-5 text-primary" />
-              AI Business Copilot Console
+              AnalyzeUp AI
             </CardTitle>
             <CardDescription className="text-xs">
               Grounds all answers in actual inventory, transactions, and supplier database logs.
@@ -313,10 +314,14 @@ export default function AIAdvisorPage() {
                         className={`rounded-2xl px-4 py-3 text-xs leading-relaxed ${
                           msg.role === 'user'
                             ? 'bg-primary text-primary-foreground font-semibold rounded-tr-none shadow-sm'
-                            : 'bg-secondary/40 text-foreground border border-border/40 rounded-tl-none whitespace-pre-wrap font-medium'
+                            : 'bg-secondary/40 text-foreground border border-border/40 rounded-tl-none font-medium'
                         }`}
                       >
-                        {msg.content}
+                        {msg.role === 'user' ? (
+                          msg.content
+                        ) : (
+                          <FormattedMarkdown content={msg.content} />
+                        )}
                       </div>
 
                       {/* Copilot Response Actions & Metrics */}

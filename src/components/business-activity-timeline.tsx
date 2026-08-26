@@ -17,7 +17,7 @@ export function BusinessActivityTimeline() {
     transactions.slice(0, 5).forEach((t, i) => {
       list.push({
         id: `event-tx-${t.id || i}`,
-        title: t.type === 'Sale' ? `Sale Recorded: ${t.productName || 'Product'}` : `Purchase Order Fulfilled`,
+        title: t.type === 'Sale' ? `Sale: ${t.productName || 'Product'}` : `Purchase Order Fulfilled`,
         description: `${t.quantity} units @ ₹${t.price} (${t.paymentMethod || 'Completed'})`,
         timestamp: t.transactionDate ? String(t.transactionDate).slice(0, 10) : 'Recent',
         type: t.type === 'Sale' ? 'sale' : 'order',
@@ -29,7 +29,7 @@ export function BusinessActivityTimeline() {
     lowStock.forEach((p, i) => {
       list.push({
         id: `event-low-${i}`,
-        title: `Low Stock Alert: ${p.name}`,
+        title: `Low Stock: ${p.name}`,
         description: `Current stock level dropped to ${p.stock} units.`,
         timestamp: 'Today',
         type: 'alert',
@@ -40,8 +40,8 @@ export function BusinessActivityTimeline() {
     if (suppliers.length > 0) {
       list.push({
         id: 'event-sup-1',
-        title: `Active Supplier Sync: ${suppliers[0].name}`,
-        description: `Catalog linked with ${suppliers[0].contactName}.`,
+        title: `Supplier Sync: ${suppliers[0].name}`,
+        description: `Catalog linked with ${suppliers[0].contactName || 'Vendor'}.`,
         timestamp: 'Yesterday',
         type: 'supplier',
       });
@@ -53,13 +53,13 @@ export function BusinessActivityTimeline() {
   const getIcon = (type: string) => {
     switch (type) {
       case 'sale':
-        return <ShoppingCart className="w-3.5 h-3.5 text-primary" />;
+        return <ShoppingCart className="w-3.5 h-3.5 text-emerald-400" />;
       case 'order':
         return <PackagePlus className="w-3.5 h-3.5 text-primary" />;
       case 'alert':
-        return <AlertTriangle className="w-3.5 h-3.5 text-destructive" />;
+        return <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />;
       case 'supplier':
-        return <Truck className="w-3.5 h-3.5 text-primary" />;
+        return <Truck className="w-3.5 h-3.5 text-amber-400" />;
       default:
         return <Sparkles className="w-3.5 h-3.5 text-primary" />;
     }
@@ -68,32 +68,40 @@ export function BusinessActivityTimeline() {
   return (
     <Card className="ios-glass rounded-3xl border-border/50 p-5 shadow-xl space-y-3 h-full flex flex-col justify-between">
       <div>
-        <CardHeader className="p-0 pb-3 border-b border-border/40 flex flex-row items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-primary/10 text-primary border border-primary/20">
+        <CardHeader className="p-0 pb-3 border-b border-border/40 flex flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-2 rounded-xl bg-primary/10 text-primary border border-primary/20 shrink-0">
               <Clock className="w-5 h-5 text-primary" />
             </div>
-            <div>
-              <CardTitle className="text-base font-bold">Business Activity Timeline</CardTitle>
-              <CardDescription className="text-xs">Real-time operational event feed</CardDescription>
+            <div className="min-w-0">
+              <CardTitle className="text-base font-bold whitespace-nowrap">Business Activity Timeline</CardTitle>
+              <CardDescription className="text-xs truncate">Real-time operational event feed</CardDescription>
             </div>
           </div>
 
-          <Badge variant="outline" className="text-xs font-semibold">Live Feed</Badge>
+          <Badge
+            variant="outline"
+            className="text-xs font-semibold whitespace-nowrap shrink-0 px-2.5 py-1 border-emerald-500/30 text-emerald-400 bg-emerald-500/10 flex items-center gap-1.5 shadow-xs"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+            Live Feed
+          </Badge>
         </CardHeader>
 
-        <CardContent className="p-0 pt-3 text-xs">
+        <CardContent className="p-0 pt-4 text-xs">
           <div className="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-border/60">
             {events.map((evt) => (
               <div key={evt.id} className="relative flex items-start justify-between gap-3">
-                <div className="absolute -left-6 top-0.5 p-1 rounded-full bg-background border border-border shadow-sm">
+                <div className="absolute -left-6 top-0.5 p-1 rounded-full bg-background border border-border shadow-xs">
                   {getIcon(evt.type)}
                 </div>
-                <div>
-                  <h5 className="font-semibold text-foreground">{evt.title}</h5>
-                  <p className="text-muted-foreground">{evt.description}</p>
+                <div className="min-w-0 space-y-0.5 pr-2">
+                  <h5 className="font-semibold text-foreground truncate text-xs">{evt.title}</h5>
+                  <p className="text-muted-foreground text-[11px] line-clamp-1">{evt.description}</p>
                 </div>
-                <span className="text-[10px] text-muted-foreground font-mono shrink-0">{evt.timestamp}</span>
+                <span className="text-[10px] text-muted-foreground font-mono shrink-0 whitespace-nowrap bg-secondary/50 px-1.5 py-0.5 rounded-md border border-border/40">
+                  {evt.timestamp}
+                </span>
               </div>
             ))}
           </div>
