@@ -301,3 +301,57 @@ export function isAutoSyncDue(connection: any): boolean {
 
   return false;
 }
+
+/**
+ * Universal Heuristic Auto-Detection for spreadsheet columns
+ */
+export function autoDetectMapping(headers: string[]): { fileType: string; mapping: Record<string, string> } | null {
+  const lower = headers.map(h => h.toLowerCase().trim());
+
+  const hasOrder = lower.some(h => h.includes('order') || h.includes('invoice') || h.includes('bill') || h.includes('trans'));
+  const hasCust = lower.some(h => h.includes('cust') || h.includes('client') || h.includes('buyer'));
+  const hasQty = lower.some(h => h.includes('qty') || h.includes('quantity') || h.includes('units') || h.includes('count'));
+  const hasPrice = lower.some(h => h.includes('price') || h.includes('amount') || h.includes('rate') || h.includes('total') || h.includes('revenue') || h.includes('mrp'));
+  const hasProd = lower.some(h => h.includes('product') || h.includes('item') || h.includes('name') || h.includes('title') || h.includes('desc'));
+
+  if ((hasOrder || hasCust) && (hasProd || hasQty || hasPrice)) {
+    const mapping: Record<string, string> = {};
+    headers.forEach(h => {
+      const l = h.toLowerCase().trim();
+      if (l.includes('order') || l.includes('invoice') || l.includes('bill')) mapping[h] = 'orderNumber';
+      else if (l.includes('date') || l.includes('time')) mapping[h] = 'orderDate';
+      else if (l.includes('cust') || l.includes('client') || l.includes('buyer')) mapping[h] = 'customerName';
+      else if (l.includes('city') || l.includes('loc') || l.includes('state')) mapping[h] = 'city';
+      else if (l.includes('product') || l.includes('item') || l.includes('name') || l.includes('title')) mapping[h] = 'productName';
+      else if (l.includes('qty') || l.includes('quantity') || l.includes('units')) mapping[h] = 'quantity';
+      else if (l.includes('cost')) mapping[h] = 'costPrice';
+      else if (l.includes('price') || l.includes('amount') || l.includes('rate') || l.includes('mrp')) mapping[h] = 'sellingPrice';
+      else if (l.includes('payment') || l.includes('mode') || l.includes('pay')) mapping[h] = 'paymentMode';
+      else if (l.includes('status')) mapping[h] = 'status';
+      else if (l.includes('sku') || l.includes('code')) mapping[h] = 'sku';
+      else if (l.includes('cat')) mapping[h] = 'category';
+      else mapping[h] = 'skip';
+    });
+    return { fileType: 'SALES_REPORT', mapping };
+  }
+
+  if (hasProd && (hasPrice || hasQty || lower.some(h => h.includes('stock')))) {
+    const mapping: Record<string, string> = {};
+    headers.forEach(h => {
+      const l = h.toLowerCase().trim();
+      if (l.includes('product') || l.includes('item') || l.includes('name') || l.includes('title')) mapping[h] = 'name';
+      else if (l.includes('cost')) mapping[h] = 'costPrice';
+      else if (l.includes('price') || l.includes('rate') || l.includes('mrp') || l.includes('selling')) mapping[h] = 'price';
+      else if (l.includes('stock') || l.includes('qty') || l.includes('quantity') || l.includes('units') || l.includes('avail')) mapping[h] = 'stock';
+      else if (l.includes('sku') || l.includes('code')) mapping[h] = 'sku';
+      else if (l.includes('cat')) mapping[h] = 'category';
+      else if (l.includes('supp') || l.includes('vendor')) mapping[h] = 'supplier';
+      else if (l.includes('unit')) mapping[h] = 'unit';
+      else if (l.includes('desc')) mapping[h] = 'description';
+      else mapping[h] = 'skip';
+    });
+    return { fileType: 'INVENTORY_MASTER', mapping };
+  }
+
+  return null;
+}

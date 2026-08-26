@@ -574,8 +574,22 @@ export default function IntegrationsPage() {
     try {
       const results = Papa.parse(csvContent, { header: true, skipEmptyLines: true });
       const rawRows = results.data as Record<string, any>[];
-      const fileType = profile.fileType;
-      const fieldMapping = profile.mapping;
+      const headers = Object.keys(rawRows[0] || {});
+      
+      let fileType = profile?.fileType || 'INVENTORY_MASTER';
+      let fieldMapping = profile?.mapping || profile?.fieldMapping;
+
+      if (!fieldMapping || Object.keys(fieldMapping).length === 0) {
+        const detected = autoDetectMapping(headers);
+        if (detected) {
+          fileType = detected.fileType;
+          fieldMapping = detected.mapping;
+        } else {
+          fieldMapping = {};
+        }
+      }
+
+      const safeFieldMapping = fieldMapping || {};
 
       const existingSkus = new Set(products.map(p => p.sku?.toUpperCase()));
       const seenSkusInFile = new Set<string>();
@@ -584,7 +598,7 @@ export default function IntegrationsPage() {
       const normalizedItems = rawRows.map((rawRow, idx) => {
         const obj: Record<string, any> = { isValid: true, errors: [], warnings: [] };
 
-        Object.entries(fieldMapping).forEach(([csvHeader, targetKey]) => {
+        Object.entries(safeFieldMapping).forEach(([csvHeader, targetKey]) => {
           const keyStr = targetKey as string;
           if (keyStr === 'skip') return;
           const val = rawRow[csvHeader];
@@ -823,6 +837,7 @@ export default function IntegrationsPage() {
           id: `profile-${file.id}`,
           profileName: `Auto Map for ${file.name}`,
           fileType: matchedProfile.fileType,
+          mapping: matchedProfile.mapping,
           headersSignature: currentSignature,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
@@ -911,7 +926,7 @@ export default function IntegrationsPage() {
       setDriveFiles(files);
 
       // Identify un-synced / new / modified files
-      const pendingFiles = files.filter((f: any) => f.status === 'New File' || f.status === 'Modified');
+      const pendingFiles = files.filter((f: any) => f.status !== 'Synced');
 
       let ingestedCount = 0;
       if (pendingFiles.length > 0) {
@@ -974,7 +989,20 @@ export default function IntegrationsPage() {
     }
   }, [user, driveConnection, firestore, syncFile, loadStats, loadSyncHistory, toast]);
 
-  // 9.6 Recurring background auto-sync scheduler (checks every 60 seconds)
+  // 9.6 Listen to global auto-sync completions from DataContext
+  useEffect(() => {
+    const handleSyncComplete = () => {
+      scanDriveFolder();
+      loadStats();
+      loadSyncHistory();
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('analyzeup_drive_sync_complete', handleSyncComplete);
+      return () => window.removeEventListener('analyzeup_drive_sync_complete', handleSyncComplete);
+    }
+  }, [scanDriveFolder, loadStats, loadSyncHistory]);
+
+  // 9.7 Local recurring background auto-sync scheduler (checks every 30 seconds)
   useEffect(() => {
     if (!driveConnection || !driveConnection.selectedFolderId || !user) return;
     if (driveConnection.autoSyncEnabled === false) return;
@@ -984,7 +1012,7 @@ export default function IntegrationsPage() {
         console.log('[AutoSync] Scheduled Google Drive sync triggered for:', driveConnection.selectedFolderName);
         syncFolderWithAutoIngest(driveConnection.selectedFolderId, driveConnection.selectedFolderName);
       }
-    }, 60 * 1000);
+    }, 30 * 1000);
 
     return () => clearInterval(intervalId);
   }, [driveConnection, user, isLoadingScan, isSyncingFileId, syncFolderWithAutoIngest]);
