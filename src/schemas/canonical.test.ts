@@ -4,7 +4,6 @@ import {
   CanonicalSaleSchema,
   CanonicalSupplierSchema,
   CanonicalPurchaseOrderSchema,
-  CanonicalReturnSchema,
 } from './canonical';
 
 describe('Canonical Schemas (analyzeup_v1)', () => {

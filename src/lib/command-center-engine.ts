@@ -1,5 +1,4 @@
 import { Product, Transaction, Supplier, PurchaseOrder, ProductReturn, BusinessProfile } from './types';
-import { getIndustryConfig } from './industry-intelligence';
 import { detectProcurementRisks, calculateProcurementSavings } from './supplier-intelligence-engine';
 import { generateBusinessForecastingReport } from './forecasting-engine';
 import {
@@ -7,7 +6,6 @@ import {
   toDomainTransactions,
   toDomainSuppliers,
   toDomainPurchaseOrders,
-  toDomainProductReturns,
 } from './domain-adapters';
 
 export interface BusinessHealthSummary {
@@ -87,7 +85,6 @@ export function computeBusinessHealth(
   const products = toDomainProducts(rawProducts);
   const transactions = toDomainTransactions(rawTransactions);
   const suppliers = toDomainSuppliers(rawSuppliers);
-  const returns = toDomainProductReturns(rawReturns);
 
   if (!products || products.length === 0) {
     return {

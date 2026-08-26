@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { PlusCircle, MoreHorizontal, AlertCircle, Search, CheckCircle, Calendar, DollarSign, ClipboardList, Activity, ShieldAlert } from 'lucide-react';
+import { PlusCircle, MoreHorizontal, AlertCircle, Search, RotateCcw, Calendar, DollarSign, ClipboardList, Activity, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -365,193 +365,205 @@ export default function ReturnsPage() {
         )}
 
         {/* Main Grid: Returns History & Analytics */}
-        <div className="grid gap-8 grid-cols-1 xl:grid-cols-3 items-start">
+        <div className="grid gap-6 grid-cols-1 xl:grid-cols-3 items-stretch">
           {/* Returns Log */}
-          <Card className="xl:col-span-2">
-            <CardHeader className="pb-4">
-              <CardTitle>Returned Orders Log</CardTitle>
-              <CardDescription>View, search, and update details for customer returns.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {/* Search & Filters */}
-              <div className="flex flex-col sm:flex-row gap-3 items-center justify-between mb-4">
-                <div className="relative w-full sm:w-80">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search by customer, product..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9 h-9"
-                  />
+          <Card className="xl:col-span-2 ios-glass rounded-3xl border-border/50 shadow-xl overflow-hidden flex flex-col justify-between">
+            <div>
+              <CardHeader className="border-b border-border/40 pb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <CardTitle className="text-base font-bold">Returned Orders Log</CardTitle>
+                    <CardDescription className="text-xs">
+                      View, search, and update details for customer returns.
+                    </CardDescription>
+                  </div>
+                  <Badge variant="outline" className="text-xs font-semibold px-2.5 py-1 bg-secondary/30 border-border/40 self-start sm:self-auto">
+                    {filteredReturns.length} {filteredReturns.length === 1 ? 'Record' : 'Records'}
+                  </Badge>
                 </div>
-                <div className="flex gap-2 w-full sm:w-auto">
-                  <Select value={reasonFilter} onValueChange={setReasonFilter}>
-                    <SelectTrigger className="h-9 w-full sm:w-[140px]">
-                      <SelectValue placeholder="All Reasons" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Reasons</SelectItem>
-                      <SelectItem value="Defective">Defective</SelectItem>
-                      <SelectItem value="Wrong Item">Wrong Item</SelectItem>
-                      <SelectItem value="Unopened / Buyer Remorse">Remorse</SelectItem>
-                      <SelectItem value="Damaged in Transit">Transit Damage</SelectItem>
-                      <SelectItem value="Other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
+              </CardHeader>
+              <CardContent className="p-5 space-y-4">
+                {/* Search & Filters */}
+                <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
+                  <div className="relative w-full sm:flex-1">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search by customer, product..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10 h-10 rounded-2xl border-border/50 bg-secondary/30 text-xs shadow-inner focus-visible:ring-primary"
+                    />
+                  </div>
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <Select value={reasonFilter} onValueChange={setReasonFilter}>
+                      <SelectTrigger className="h-10 w-full sm:w-[150px] rounded-xl text-xs bg-secondary/30 border-border/50">
+                        <SelectValue placeholder="All Reasons" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Reasons</SelectItem>
+                        <SelectItem value="Defective">Defective</SelectItem>
+                        <SelectItem value="Wrong Item">Wrong Item</SelectItem>
+                        <SelectItem value="Unopened / Buyer Remorse">Remorse</SelectItem>
+                        <SelectItem value="Damaged in Transit">Transit Damage</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
 
-                  <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="h-9 w-full sm:w-[140px]">
-                      <SelectValue placeholder="All Refunds" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Statuses</SelectItem>
-                      <SelectItem value="Refunded">Refunded</SelectItem>
-                      <SelectItem value="Store Credit">Store Credit</SelectItem>
-                      <SelectItem value="Pending">Pending</SelectItem>
-                      <SelectItem value="Rejected">Rejected</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                      <SelectTrigger className="h-10 w-full sm:w-[140px] rounded-xl text-xs bg-secondary/30 border-border/50">
+                        <SelectValue placeholder="All Refunds" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Statuses</SelectItem>
+                        <SelectItem value="Refunded">Refunded</SelectItem>
+                        <SelectItem value="Store Credit">Store Credit</SelectItem>
+                        <SelectItem value="Pending">Pending</SelectItem>
+                        <SelectItem value="Rejected">Rejected</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-              </div>
 
-              {/* Table */}
-              <div className="overflow-x-auto rounded-lg border border-border">
-                <Table>
-                  <TableHeader className="bg-muted/40">
-                    <TableRow>
-                      <TableHead>Customer</TableHead>
-                      <TableHead>Product</TableHead>
-                      <TableHead className="text-center">Qty</TableHead>
-                      <TableHead>Action</TableHead>
-                      <TableHead>Refund</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
-                      <TableHead className="w-[80px]"><span className="sr-only">Actions</span></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredReturns.length === 0 ? (
+                {/* Table */}
+                <div className="overflow-x-auto rounded-2xl border border-border/40 bg-secondary/10">
+                  <Table>
+                    <TableHeader className="bg-secondary/30">
                       <TableRow>
-                        <TableCell colSpan={7} className="h-32 text-center text-muted-foreground select-none">
-                          No returns matching filters found.
-                        </TableCell>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Product</TableHead>
+                        <TableHead className="text-center">Qty</TableHead>
+                        <TableHead>Action</TableHead>
+                        <TableHead>Refund</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                        <TableHead className="w-[80px]"><span className="sr-only">Actions</span></TableHead>
                       </TableRow>
-                    ) : (
-                      filteredReturns.map((item) => (
-                        <TableRow key={item.id} className="hover:bg-muted/10 transition-colors">
-                          <TableCell className="font-medium">
-                            <div>
-                              <p className="text-sm font-semibold">{item.customerName}</p>
-                              <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
-                                <Calendar className="h-3 w-3" />
-                                {new Date(item.returnDate).toLocaleDateString()}
-                              </p>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div>
-                              <p className="text-sm font-medium">{item.productName}</p>
-                              <span className="text-[10px] text-muted-foreground bg-secondary/30 px-1 py-0.5 rounded">
-                                {item.reason}
-                              </span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-center font-bold text-sm">
-                            {item.quantity}
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={item.actionTaken === 'Restocked' ? 'outline' : 'destructive'}
-                              className={item.actionTaken === 'Restocked' ? 'border-primary/20 text-primary bg-primary/5' : ''}
-                            >
-                              {item.actionTaken === 'Restocked' ? 'Restocked' : 'Disposed'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={
-                                item.refundStatus === 'Refunded'
-                                  ? 'secondary'
-                                  : item.refundStatus === 'Store Credit'
-                                  ? 'outline'
-                                  : item.refundStatus === 'Pending'
-                                  ? 'default'
-                                  : 'destructive'
-                              }
-                            >
-                              {item.refundStatus}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right font-semibold text-sm">
-                            ₹{item.refundAmount.toLocaleString('en-IN')}
-                          </TableCell>
-                          <TableCell>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button size="icon" variant="ghost" className="rounded-full h-8 w-8">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                  <span className="sr-only">Toggle menu</span>
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuLabel className="bg-primary/10 text-primary text-[10px] uppercase font-bold text-center py-1 mb-1">Actions</DropdownMenuLabel>
-                                {item.refundStatus === 'Pending' && (
-                                  <>
-                                    <DropdownMenuItem onClick={() => updateReturnStatus(item.id, 'Refunded')} className="text-primary font-medium">
-                                      Issue Refund
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => updateReturnStatus(item.id, 'Store Credit')}>
-                                      Issue Store Credit
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => updateReturnStatus(item.id, 'Rejected')} className="text-destructive">
-                                      Reject Refund
-                                    </DropdownMenuItem>
-                                  </>
-                                )}
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive">
-                                      Delete Log
-                                    </DropdownMenuItem>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent className="w-[95vw] sm:max-w-md rounded-xl">
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        This will permanently remove the returns transaction record. It will NOT undo any changes made to product inventory.
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => deleteReturn(item.id)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
-                                        Delete
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredReturns.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="h-36 text-center text-muted-foreground select-none">
+                            No returns matching filters found.
                           </TableCell>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
+                      ) : (
+                        filteredReturns.map((item) => (
+                          <TableRow key={item.id} className="hover:bg-secondary/30 transition-colors">
+                            <TableCell className="font-medium">
+                              <div>
+                                <p className="text-sm font-semibold">{item.customerName}</p>
+                                <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                                  <Calendar className="h-3 w-3" />
+                                  {new Date(item.returnDate).toLocaleDateString()}
+                                </p>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div>
+                                <p className="text-sm font-medium">{item.productName}</p>
+                                <span className="text-[10px] text-muted-foreground bg-secondary/50 px-1.5 py-0.5 rounded-md">
+                                  {item.reason}
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center font-bold text-sm">
+                              {item.quantity}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={item.actionTaken === 'Restocked' ? 'outline' : 'destructive'}
+                                className={item.actionTaken === 'Restocked' ? 'border-primary/30 text-primary bg-primary/10' : ''}
+                              >
+                                {item.actionTaken === 'Restocked' ? 'Restocked' : 'Disposed'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  item.refundStatus === 'Refunded'
+                                    ? 'secondary'
+                                    : item.refundStatus === 'Store Credit'
+                                    ? 'outline'
+                                    : item.refundStatus === 'Pending'
+                                    ? 'default'
+                                    : 'destructive'
+                                }
+                              >
+                                {item.refundStatus}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right font-semibold text-sm">
+                              ₹{item.refundAmount.toLocaleString('en-IN')}
+                            </TableCell>
+                            <TableCell>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button size="icon" variant="ghost" className="rounded-full h-8 w-8 hover:bg-secondary">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                    <span className="sr-only">Toggle menu</span>
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="rounded-2xl">
+                                  <DropdownMenuLabel className="bg-primary/10 text-primary text-[10px] uppercase font-bold text-center py-1 mb-1 rounded-lg">Actions</DropdownMenuLabel>
+                                  {item.refundStatus === 'Pending' && (
+                                    <>
+                                      <DropdownMenuItem onClick={() => updateReturnStatus(item.id, 'Refunded')} className="text-primary font-medium">
+                                        Issue Refund
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => updateReturnStatus(item.id, 'Store Credit')}>
+                                        Issue Store Credit
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => updateReturnStatus(item.id, 'Rejected')} className="text-destructive">
+                                        Reject Refund
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
+                                  <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                      <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive">
+                                        Delete Log
+                                      </DropdownMenuItem>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent className="w-[95vw] sm:max-w-md rounded-2xl">
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                          This will permanently remove the returns transaction record. It will NOT undo any changes made to product inventory.
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+                                        <AlertDialogAction onClick={() => deleteReturn(item.id)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-xl">
+                                          Delete
+                                        </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </div>
           </Card>
 
-          {/* Return Analytics Sidebar */}
-          <div className="flex flex-col gap-8">
-            {/* Reason Breakdown */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Return Reasons Breakdown</CardTitle>
-                <CardDescription>Weekly return volume breakdown by reason.</CardDescription>
+          {/* Reason Breakdown Card */}
+          <Card className="ios-glass rounded-3xl border-border/50 shadow-xl overflow-hidden flex flex-col justify-between">
+            <div>
+              <CardHeader className="border-b border-border/40 pb-4">
+                <CardTitle className="text-base font-bold">Return Reasons Breakdown</CardTitle>
+                <CardDescription className="text-xs">Weekly return volume breakdown by reason.</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-5">
+              <CardContent className="p-6 space-y-5">
                 {returns.length === 0 ? (
-                  <div className="text-center py-10 text-muted-foreground border border-dashed rounded-lg">
-                    No returns logged yet.
+                  <div className="text-center py-16 text-muted-foreground border border-dashed border-border/60 rounded-2xl flex flex-col items-center justify-center gap-2">
+                    <RotateCcw className="w-8 h-8 text-muted-foreground/40" />
+                    <p className="text-xs font-semibold text-foreground/80">No returns logged yet</p>
+                    <p className="text-[11px] text-muted-foreground max-w-[200px]">Return reasons and volume breakdown will appear here once returns are recorded.</p>
                   </div>
                 ) : (
                   reasonBreakdown.map((item, index) => (
@@ -560,9 +572,9 @@ export default function ReturnsPage() {
                         <span className="truncate">{item.name}</span>
                         <span className="text-muted-foreground">{item.qty} units ({item.percentage}%)</span>
                       </div>
-                      <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
+                      <div className="h-2.5 w-full bg-secondary/60 rounded-full overflow-hidden">
                         <div
-                          className="h-full bg-primary rounded-full transition-all duration-500"
+                          className="h-full bg-primary rounded-full transition-all duration-500 shadow-sm"
                           style={{ width: `${item.percentage}%` }}
                         />
                       </div>
@@ -570,29 +582,8 @@ export default function ReturnsPage() {
                   ))
                 )}
               </CardContent>
-            </Card>
-
-            {/* Fulfill Policy Summary */}
-            <Card className="bg-muted/20 border-border/60">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
-                  <CheckCircle className="h-4 w-4 text-primary" />
-                  Small Business Policy Guide
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="text-xs space-y-3 text-muted-foreground">
-                <p>
-                  <strong>Restock:</strong> Select this for unopened products or items with size issues. This adds the item directly back into stock.
-                </p>
-                <p>
-                  <strong>Dispose / Write-Off:</strong> Select this for damaged or defective returns. Keeps stock level unaffected and records product loss.
-                </p>
-                <p>
-                  <strong>Refund Actions:</strong> Fulfilling a refund logs a negative sales entry which automatically adjusts monthly revenue figures on the analytics dashboards.
-                </p>
-              </CardContent>
-            </Card>
-          </div>
+            </div>
+          </Card>
         </div>
       </div>
 

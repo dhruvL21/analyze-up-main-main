@@ -2,8 +2,17 @@
 
 import Image from 'next/image';
 import React, { useState, useRef, useEffect } from 'react';
-import { PlusCircle, MoreHorizontal, Database, Sparkles, Loader2, ArrowRightLeft, Eye, X } from 'lucide-react';
+import { PlusCircle, MoreHorizontal, Database, Sparkles, Loader2, ArrowRightLeft, Eye, X, Filter, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+
+const PRESET_QUICK_QUERIES = [
+  { label: 'Fast Moving', query: 'fast moving' },
+  { label: 'Running Out Soon', query: 'running out this week' },
+  { label: 'Dead Stock', query: 'find dead stock' },
+  { label: 'Highest Margins', query: 'highest margin' },
+  { label: 'Low Margin (<20%)', query: 'less than 20%' },
+  { label: 'Overstocked', query: 'overstocked' },
+];
 import {
   Card,
   CardContent,
@@ -48,7 +57,6 @@ import { generateProductDescription } from '@/ai/flows/product-descriptor';
 import { useToast } from '@/hooks/use-toast';
 import { computeProductIntelligence, filterProductsByNaturalLanguage } from '@/lib/product-intelligence-engine';
 import { InventoryInsightsTicker } from '@/components/inventory-insights-ticker';
-import { InventorySearchBar } from '@/components/inventory-search-bar';
 import { InventoryRecommendationsPanel } from '@/components/inventory-recommendations-panel';
 import { InventoryDistributionCard } from '@/components/inventory-distribution-card';
 import { ProductIntelligenceDrawer } from '@/components/product-intelligence-drawer';
@@ -90,7 +98,6 @@ export default function InventoryPage() {
 
   const { toast } = useToast();
 
-  const productFormRef = useRef<HTMLFormElement>(null);
   const categoryToSelectRef = useRef<string | null>(null);
   const supplierToSelectRef = useRef<string | null>(null);
 
@@ -117,15 +124,6 @@ export default function InventoryPage() {
   const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
 
   const filteredProducts = filterProductsByNaturalLanguage(products, transactions, searchQuery);
-
-  const resetFormState = () => {
-    setEditingProduct(null);
-    setDescription('');
-    setImagePreview(null);
-    setSelectedCategoryId(undefined);
-    setSelectedSupplierId(undefined);
-    setIsGeneratingDescription(false);
-  };
 
   const handleSellSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -182,13 +180,6 @@ export default function InventoryPage() {
         {/* FEATURE 16: Live Inventory Insights Feed */}
         <InventoryInsightsTicker />
 
-        {/* FEATURE 17: Natural Language Search Intelligence */}
-        <InventorySearchBar
-          value={searchQuery}
-          onChange={setSearchQuery}
-          onClear={() => setSearchQuery('')}
-        />
-
         {/* FEATURE 18: Proactive AI Inventory Recommendations Panel */}
         <InventoryRecommendationsPanel />
 
@@ -197,14 +188,71 @@ export default function InventoryPage() {
 
         {/* Main Table Card */}
         <Card className="ios-glass rounded-3xl border-border/50 shadow-xl overflow-hidden">
-          <CardHeader className="border-b border-border/40 pb-4 flex flex-row items-center justify-between">
-            <div>
-              <CardTitle className="text-base font-bold">Catalog Intelligence Table</CardTitle>
-              <CardDescription className="text-xs">
-                Click any row to open full AI Product Business Report
-              </CardDescription>
+          <CardHeader className="border-b border-border/40 pb-4 space-y-3.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-base font-bold">Catalog Intelligence Table</CardTitle>
+                <CardDescription className="text-xs">
+                  Click any row to open full AI Product Business Report
+                </CardDescription>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Search name, SKU, tags..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-8.5 pr-8 h-9 rounded-xl border-border/50 bg-secondary/30 text-xs shadow-inner focus-visible:ring-primary"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+                <Badge variant="outline" className="text-xs font-semibold px-2.5 py-1.5 bg-secondary/30 border-border/40 shrink-0">
+                  {filteredProducts.length} {filteredProducts.length === 1 ? 'Product' : 'Products'}
+                </Badge>
+              </div>
             </div>
 
+            {/* Quick NL Queries Option Bar */}
+            <div className="flex items-center gap-2 overflow-x-auto pt-1 pb-0.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden text-[11px]">
+              <span className="text-muted-foreground font-semibold shrink-0 flex items-center gap-1.5 text-xs">
+                <Filter className="w-3.5 h-3.5 text-muted-foreground" /> Quick NL Queries:
+              </span>
+
+              {PRESET_QUICK_QUERIES.map((preset) => {
+                const isActive = searchQuery.toLowerCase() === preset.query.toLowerCase();
+                return (
+                  <button
+                    key={preset.label}
+                    onClick={() => setSearchQuery(isActive ? '' : preset.query)}
+                    className={`px-3 py-1.5 rounded-xl font-medium border text-xs transition-all shrink-0 cursor-pointer ${
+                      isActive
+                        ? 'bg-primary text-primary-foreground border-primary shadow-sm font-semibold'
+                        : 'bg-secondary/40 border-border/40 text-muted-foreground hover:text-foreground hover:bg-secondary/80'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="px-2.5 py-1.5 rounded-xl font-medium text-xs text-muted-foreground hover:text-rose-400 border border-dashed border-border/60 hover:border-rose-500/40 hover:bg-rose-500/10 transition-all shrink-0 flex items-center gap-1 cursor-pointer"
+                >
+                  <X className="w-3 h-3" /> Clear filter
+                </button>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             {/* Desktop Table View */}

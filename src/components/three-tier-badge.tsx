@@ -2,9 +2,8 @@
  * 3-Tier AI Architecture Visual Badge
  * Distinguishes Actual Data (Ground Truth), Model 2 Predictions, and Model 3 AI Recommendations.
  */
-import React from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Database, Sparkles, TrendingUp, HelpCircle } from 'lucide-react';
+import { Database, Sparkles, TrendingUp } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 export type DataTier = 'ACTUAL_DATA' | 'MODEL_2_PREDICTION' | 'MODEL_3_RECOMMENDATION';

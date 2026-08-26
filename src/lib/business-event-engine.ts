@@ -8,13 +8,13 @@ import {
   BusinessEvent,
   EventSeverity,
   EventStatus,
-  BusinessEventType,
   NotificationPreferences,
 } from './types';
 import { computeBusinessHealth } from './command-center-engine';
-import { calculateSupplierCostIntelligence, detectProcurementRisks } from './supplier-intelligence-engine';
+import { detectProcurementRisks } from './supplier-intelligence-engine';
 import { generateBusinessForecastingReport } from './forecasting-engine';
 import { computeCustomerGrowthIntelligence } from './customer-growth-engine';
+import { formatCur } from './utils';
 
 const getSlug = (str: string) => (str || 'item').toLowerCase().replace(/[^a-z0-9]/g, '-');
 
@@ -29,9 +29,6 @@ export function detectBusinessEvents(
   preferences?: NotificationPreferences
 ): BusinessEvent[] {
   const events: BusinessEvent[] = [];
-  const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
-  const formatCur = (val: number) => `${currencySymbol}${Math.round(val).toLocaleString('en-IN')}`;
-
   const nowIso = new Date().toISOString();
 
   // Helper to add event if category matches user preferences

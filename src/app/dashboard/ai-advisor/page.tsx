@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useTransition, useRef } from 'react';
+import React, { useState, useEffect, useTransition, useRef, useCallback } from 'react';
 import { useData } from '@/context/data-context';
 import {
   Card,
@@ -41,12 +41,13 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { askAnalyzeUpChat, ChatMessage } from '@/ai/flows/chat';
-import { computeBusinessHealth, generateActionTasks, generateTodayPriorities } from '@/lib/command-center-engine';
+import { computeBusinessHealth, generateActionTasks } from '@/lib/command-center-engine';
 import { processCopilotQuery, COPILOT_SUGGESTIONS, CopilotResponse } from '@/lib/copilot-engine';
 import { logBusinessAction } from '@/lib/audit-store';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { sanitizePlainData } from '@/lib/utils';
+import { FormattedMarkdown } from '@/components/formatted-markdown';
 import {
   Dialog,
   DialogContent,
@@ -83,18 +84,9 @@ export default function AIAdvisorPage() {
 
   const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
 
-  // Computations for real data
-  const hasData = products.length > 0;
-
   // Single Source-of-Truth Business Health Engine
   const healthSummary = computeBusinessHealth(products, transactions, suppliers, returns);
-  const todayPriorities = generateTodayPriorities(products, transactions, suppliers);
   const actionTasks = generateActionTasks(products, transactions, suppliers, orders, businessProfile);
-
-  // Dead stock calculation
-  const saleProductIds = new Set(transactions.filter(t => t.type === 'Sale').map(t => t.productId));
-  const deadStockProducts = products.filter(p => p.stock > 0 && !saleProductIds.has(p.id));
-  const totalTiedUpDeadStock = deadStockProducts.reduce((sum, p) => sum + (p.stock * (p.costPrice || p.price * 0.6)), 0);
 
   const isPaid = activePlan !== 'Free Trial';
 
@@ -108,19 +100,7 @@ export default function AIAdvisorPage() {
     }
   }, [chatHistory, isChatPending]);
 
-  // Listen for analyzeup_open_copilot event
-  useEffect(() => {
-    const handleOpen = (evt: Event) => {
-      const customEvt = evt as CustomEvent<{ query?: string }>;
-      if (customEvt.detail?.query) {
-        handleSendMessage(customEvt.detail.query);
-      }
-    };
-    window.addEventListener('analyzeup_open_copilot', handleOpen);
-    return () => window.removeEventListener('analyzeup_open_copilot', handleOpen);
-  }, [products, transactions, suppliers, orders, returns, businessProfile]);
-
-  const handleSendMessage = (textToSend?: string) => {
+  const handleSendMessage = useCallback((textToSend?: string) => {
     const text = textToSend || chatMessage;
     if (!text.trim() || isChatPending) return;
 
@@ -166,7 +146,19 @@ export default function AIAdvisorPage() {
         setChatHistory(prev => [...prev, { role: 'assistant', content: fallback.answerMarkdown, copilotRes: fallback }]);
       }
     });
-  };
+  }, [chatMessage, isChatPending, chatHistory, products, transactions, suppliers, orders, returns, businessProfile]);
+
+  // Listen for analyzeup_open_copilot event
+  useEffect(() => {
+    const handleOpen = (evt: Event) => {
+      const customEvt = evt as CustomEvent<{ query?: string }>;
+      if (customEvt.detail?.query) {
+        handleSendMessage(customEvt.detail.query);
+      }
+    };
+    window.addEventListener('analyzeup_open_copilot', handleOpen);
+    return () => window.removeEventListener('analyzeup_open_copilot', handleOpen);
+  }, [handleSendMessage]);
 
   const handleExecuteAction = (recAction: NonNullable<CopilotResponse['recommendedAction']>) => {
     if (recAction.targetRoute) {
@@ -291,7 +283,7 @@ export default function AIAdvisorPage() {
           <CardHeader className="p-0 pb-4 border-b border-border/40 shrink-0">
             <CardTitle className="flex items-center gap-2 text-lg font-bold text-foreground">
               <Bot className="h-5 w-5 text-primary" />
-              AI Business Copilot Console
+              AnalyzeUp AI
             </CardTitle>
             <CardDescription className="text-xs">
               Grounds all answers in actual inventory, transactions, and supplier database logs.
@@ -322,10 +314,14 @@ export default function AIAdvisorPage() {
                         className={`rounded-2xl px-4 py-3 text-xs leading-relaxed ${
                           msg.role === 'user'
                             ? 'bg-primary text-primary-foreground font-semibold rounded-tr-none shadow-sm'
-                            : 'bg-secondary/40 text-foreground border border-border/40 rounded-tl-none whitespace-pre-wrap font-medium'
+                            : 'bg-secondary/40 text-foreground border border-border/40 rounded-tl-none font-medium'
                         }`}
                       >
-                        {msg.content}
+                        {msg.role === 'user' ? (
+                          msg.content
+                        ) : (
+                          <FormattedMarkdown content={msg.content} />
+                        )}
                       </div>
 
                       {/* Copilot Response Actions & Metrics */}

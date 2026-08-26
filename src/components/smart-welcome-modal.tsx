@@ -1,6 +1,5 @@
 'use client';
 
-import React from 'react';
 import {
   Dialog,
   DialogContent,
@@ -12,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '@/context/data-context';
 import { getIndustryConfig } from '@/lib/industry-intelligence';
-import { Sparkles, Package, Truck, IndianRupee, AlertTriangle, CheckCircle2, ArrowRight, ShieldCheck, Zap } from 'lucide-react';
+import { Sparkles, Package, Truck, IndianRupee, AlertTriangle, ArrowRight, Zap } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export function SmartWelcomeModal() {
@@ -24,7 +23,6 @@ export function SmartWelcomeModal() {
   const industry = getIndustryConfig(businessProfile?.businessType);
   const totalInventoryValue = products.reduce((acc, p) => acc + ((p.price || 0) * (p.stock || 0)), 0);
   const lowStockCount = products.filter(p => p.stock <= (p.minStock || 5)).length;
-  const missingCategoriesCount = products.filter(p => !p.categoryId || p.categoryId === 'uncategorized').length;
 
   const formattedVal = new Intl.NumberFormat('en-IN', {
     style: 'currency',

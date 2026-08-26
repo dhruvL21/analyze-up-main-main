@@ -1,14 +1,17 @@
 'use client';
 
-import React, { createContext, useContext, useState, ReactNode, useMemo, useCallback, useEffect } from 'react';
-import type { Product, PurchaseOrder, Supplier, Transaction, Category, ProductReturn, CustomAttribute, BusinessProfile, BusinessType, BusinessSize } from '@/lib/types';
+import { createContext, useContext, useState, ReactNode, useMemo, useCallback, useEffect } from 'react';
+import type { Product, PurchaseOrder, Supplier, Transaction, Category, ProductReturn, CustomAttribute, BusinessProfile, BusinessType } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { useUser, useFirestore } from '@/firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, writeBatch, setDoc, getDoc, onSnapshot, getDocs } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, writeBatch, setDoc, onSnapshot, getDocs } from 'firebase/firestore';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { generateDemoBusinessData } from '@/lib/demo-data';
+import Papa from 'papaparse';
+import { getClientDriveToken, isAutoSyncDue, autoDetectMapping, formatLastSyncTime } from '@/lib/drive-helper';
+import { findMatchingImportProfile } from '@/lib/import-profile-store';
 
 interface DataContextProps {
   products: Product[];
@@ -49,6 +52,8 @@ interface DataContextProps {
   bulkAddTransactions: (transactions: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>[]) => Promise<void>;
   clearAllData: () => Promise<void>;
   // Google Drive & Integration Helpers
+  driveConnection: any;
+  autoSyncGoogleDriveNow: (showToast?: boolean) => Promise<void>;
   subscribeGoogleDriveConnection: (onUpdate: (data: any) => void) => () => void;
   getGoogleDriveFiles: () => Promise<any[]>;
   getSyncHistory: () => Promise<any[]>;
@@ -454,7 +459,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       }));
     });
     toast({ title: 'Product Added', description: `${productData.name} has been added.` });
-  }, [firestore, user, productsRef, transactionsRef, toast]);
+  }, [firestore, user, productsRef, transactionsRef, toast, isLimitExceeded, activePlanLimit]);
 
   const addTransaction = useCallback(async (transactionData: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>) => {
     if (!firestore || !user || !transactionsRef) {
@@ -698,7 +703,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     });
     const supplierName = suppliers.find(s => s.id === newOrder.supplierId)?.name || 'the customer';
     toast({ title: 'Order Created', description: `New order for ${supplierName} has been recorded.` });
-  }, [firestore, user, ordersRef, suppliers, toast]);
+  }, [firestore, user, ordersRef, suppliers, toast, products, transactionsRef]);
 
   const deleteOrder = useCallback(async (orderId: string) => {
     if (!firestore || !user) return;
@@ -764,7 +769,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         operation: 'update',
       }));
     });
-  }, [firestore, user, orders, products, transactionsRef, toast]);
+  }, [firestore, user, orders, products, transactionsRef, suppliers, toast]);
 
   const addCustomAttribute = useCallback(async (attributeData: Omit<CustomAttribute, 'id'>) => {
     if (!firestore || !user || !customAttributesRef) return;
@@ -944,7 +949,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     });
 
     toast({ title: 'Return Status Updated', description: `Return status updated to ${refundStatus}.` });
-  }, [firestore, user, returns, products, transactionsRef, toast]);
+  }, [firestore, user, returns, products, transactionsRef, returnsRef, toast]);
 
   const deleteReturn = useCallback(async (returnId: string) => {
     if (!firestore || !user) return;
@@ -1015,6 +1020,28 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user, clearAllData, productsLoading, isLoading]);
 
+  const [driveConnection, setDriveConnection] = useState<any>(null);
+
+  // Subscribe to Google Drive connection doc in Firestore
+  useEffect(() => {
+    if (!user || !firestore) {
+      setDriveConnection(null);
+      return;
+    }
+    const docRef = doc(firestore, 'users', user.uid, 'integrations', 'google-drive');
+    const unsubscribe = onSnapshot(docRef, (snap) => {
+      if (snap.exists() && snap.data().connectionStatus === 'Connected') {
+        setDriveConnection(snap.data());
+      } else {
+        setDriveConnection(null);
+      }
+    }, (error) => {
+      console.error('Error subscribing to Google Drive connection:', error);
+    });
+
+    return unsubscribe;
+  }, [user, firestore]);
+
   const subscribeGoogleDriveConnection = useCallback((onUpdate: (data: any) => void) => {
     if (!user || !firestore) {
       onUpdate(null);
@@ -1078,6 +1105,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     try {
       const docRef = doc(firestore, 'users', user.uid, 'integrations', 'google-drive');
       await deleteDoc(docRef);
+      setDriveConnection(null);
       toast({
         title: 'Google Drive Disconnected',
         description: 'Successfully revoked credentials from AnalyzeUp workspace.',
@@ -1151,6 +1179,251 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user, firestore]);
 
+  // Unified background auto-sync runner for entire workspace
+  const autoSyncGoogleDriveNow = useCallback(async (showToast: boolean = true) => {
+    if (!user || !firestore || !driveConnection || !driveConnection.selectedFolderId) return;
+
+    try {
+      const token = await getClientDriveToken(driveConnection, user, firestore);
+      if (!token) return;
+
+      const folderId = driveConnection.selectedFolderId;
+      const folderName = driveConnection.selectedFolderName || '';
+
+      const folderQuery = `?folderId=${encodeURIComponent(folderId)}&folderName=${encodeURIComponent(folderName)}`;
+
+      const res = await fetch(`/api/drive/scan${folderQuery}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'x-user-uid': user.uid,
+        },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) return;
+
+      const files = data.files || [];
+      // Match any file that is not 'Synced' (handles 'New', 'New File', 'Modified')
+      const pendingFiles = files.filter((f: any) => f.status !== 'Synced');
+
+      let ingestedCount = 0;
+      const profiles = await getMappingProfiles();
+
+      for (const file of pendingFiles) {
+        try {
+          const syncRes = await fetch('/api/drive/sync', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+              'x-user-uid': user.uid,
+            },
+            body: JSON.stringify({ fileId: file.id, fileName: file.name }),
+          });
+
+          const syncData = await syncRes.json();
+          if (!syncRes.ok || !syncData.success || !syncData.csvContent) continue;
+
+          const parsed = Papa.parse(syncData.csvContent, { header: true, skipEmptyLines: true });
+          const rawRows = parsed.data as Record<string, any>[];
+          if (rawRows.length === 0) continue;
+
+          const headers = Object.keys(rawRows[0] || {});
+          const currentSignature = headers.slice().sort().join('|').toLowerCase();
+
+          let matchedProfile = profiles.find((p: any) => p.headersSignature === currentSignature);
+          if (!matchedProfile) {
+            matchedProfile = findMatchingImportProfile(headers) as any;
+          }
+          if (!matchedProfile) {
+            matchedProfile = autoDetectMapping(headers) as any;
+          }
+
+          let fieldMapping = matchedProfile?.mapping || matchedProfile?.fieldMapping;
+          if (!fieldMapping || Object.keys(fieldMapping).length === 0) {
+            const detected = autoDetectMapping(headers);
+            if (detected) {
+              matchedProfile = detected;
+              fieldMapping = detected.mapping;
+            }
+          }
+
+          if (matchedProfile && fieldMapping && Object.keys(fieldMapping).length > 0) {
+            // Normalize rows
+            const fileType = matchedProfile.fileType || 'INVENTORY_MASTER';
+            const safeFieldMapping = fieldMapping || {};
+
+            const normalizedItems = rawRows.map((rawRow, idx) => {
+              const obj: Record<string, any> = { isValid: true, errors: [] };
+              Object.entries(safeFieldMapping).forEach(([csvH, targetKey]) => {
+                const keyStr = targetKey as string;
+                if (keyStr === 'skip') return;
+                const val = rawRow[csvH];
+                if (val !== undefined && val !== null) {
+                  obj[keyStr] = val.toString().trim();
+                }
+              });
+
+              if (fileType === 'SALES_REPORT') {
+                const name = obj.productName || obj.name || '';
+                const price = parseFloat((obj.sellingPrice || obj.price || '0').replace(/[^0-9.]/g, '')) || 0;
+                const costPrice = parseFloat((obj.costPrice || '0').replace(/[^0-9.]/g, '')) || 0;
+                const qty = parseInt((obj.quantity || obj.stock || '1').replace(/[^0-9]/g, ''), 10) || 1;
+                obj.parsed = {
+                  name,
+                  price,
+                  costPrice,
+                  qty,
+                  orderNo: obj.orderNumber || `INV-${1000 + idx}`,
+                  customer: obj.customerName || 'Retail Customer',
+                  city: obj.city || '',
+                  status: obj.status || 'Completed',
+                  paymentMode: obj.paymentMode || 'UPI',
+                  date: obj.orderDate || new Date().toISOString().split('T')[0],
+                  sku: obj.sku || `SKU-${idx + 1}`,
+                };
+              } else {
+                const name = obj.name || obj.productName || '';
+                const price = parseFloat((obj.price || obj.sellingPrice || '0').replace(/[^0-9.]/g, '')) || 0;
+                const costPrice = parseFloat((obj.costPrice || '0').replace(/[^0-9.]/g, '')) || 0;
+                const stock = parseInt((obj.stock || obj.quantity || '0').replace(/[^0-9]/g, ''), 10) || 0;
+                obj.parsed = {
+                  name,
+                  price,
+                  costPrice,
+                  stock,
+                  sku: (obj.sku || `AUTOSKU-${idx + 1}`).toUpperCase(),
+                  category: obj.category || 'General',
+                  supplier: obj.supplier || obj.supplierName || '',
+                  unit: obj.unit || 'Piece',
+                  description: obj.description || '',
+                };
+              }
+              return obj;
+            });
+
+            const validRows = normalizedItems.filter(r => r.parsed && r.parsed.name);
+            if (validRows.length > 0) {
+              if (fileType === 'SALES_REPORT') {
+                const transactionsToImport = validRows.map(r => ({
+                  type: 'Sale' as const,
+                  productId: `prod-${r.parsed.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+                  productName: r.parsed.name,
+                  quantity: r.parsed.qty,
+                  price: r.parsed.price,
+                  totalRevenue: r.parsed.price * r.parsed.qty,
+                  costPerUnit: r.parsed.costPrice && r.parsed.costPrice > 0 ? r.parsed.costPrice : Math.round(r.parsed.price * 0.6),
+                  totalCost: (r.parsed.costPrice && r.parsed.costPrice > 0 ? r.parsed.costPrice : Math.round(r.parsed.price * 0.6)) * r.parsed.qty,
+                  customerName: r.parsed.customer,
+                  customerCity: r.parsed.city || '',
+                  transactionDate: r.parsed.date,
+                  status: r.parsed.status || 'Completed',
+                  paymentMethod: r.parsed.paymentMode || 'UPI',
+                  notes: '',
+                }));
+                await bulkAddTransactions(transactionsToImport);
+              } else {
+                const productsToImport = validRows.map(r => ({
+                  name: r.parsed.name,
+                  sku: r.parsed.sku,
+                  description: r.parsed.description || `Imported ${r.parsed.name}`,
+                  categoryId: 'cat-general',
+                  supplier: r.parsed.supplier || '',
+                  supplierId: '',
+                  price: r.parsed.price,
+                  costPrice: r.parsed.costPrice && r.parsed.costPrice > 0 ? r.parsed.costPrice : Math.round(r.parsed.price * 0.6),
+                  stock: r.parsed.stock,
+                  minStock: 5,
+                  maxStock: Math.max(100, r.parsed.stock * 2),
+                  unit: r.parsed.unit || 'Piece',
+                  status: 'Active' as const,
+                  averageDailySales: 1.5,
+                  leadTimeDays: 7,
+                }));
+                await bulkAddProducts(productsToImport, true);
+              }
+
+              await recordSyncSuccess(
+                file.id,
+                {
+                  id: file.id,
+                  fileName: file.name,
+                  status: 'Synced',
+                  lastProcessedAt: new Date().toISOString(),
+                  validRows: validRows.length,
+                  size: syncData.csvContent.length,
+                  modifiedTime: new Date().toISOString(),
+                },
+                {
+                  syncedAt: new Date().toISOString(),
+                  filesCount: 1,
+                  rowsCount: validRows.length,
+                  status: 'Completed',
+                  files: [file.name],
+                }
+              );
+
+              await saveMappingProfile(file.id, {
+                id: `profile-${file.id}`,
+                profileName: `Auto Map for ${file.name}`,
+                fileType: matchedProfile.fileType,
+                mapping: safeFieldMapping,
+                headersSignature: currentSignature,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              });
+
+              ingestedCount++;
+            }
+          }
+        } catch (fileErr) {
+          console.error(`Auto-sync error on file ${file.name}:`, fileErr);
+        }
+      }
+
+      // Update lastSyncAt on the integration doc in Firestore
+      const nowIso = new Date().toISOString();
+      const connRef = doc(firestore, 'users', user.uid, 'integrations', 'google-drive');
+      await setDoc(connRef, { lastSyncAt: nowIso, lastSyncStatus: 'Success', updatedAt: nowIso }, { merge: true });
+
+      setDriveConnection((prev: any) => prev ? { ...prev, lastSyncAt: nowIso, lastSyncStatus: 'Success' } : prev);
+
+      // Emit global custom event for open views to refresh immediately
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('analyzeup_drive_sync_complete', { detail: { nowIso, ingestedCount } }));
+      }
+
+      if (showToast || ingestedCount > 0) {
+        toast({
+          title: 'Google Drive Synchronized 🚀',
+          description: ingestedCount > 0
+            ? `Automatically ingested ${ingestedCount} spreadsheet(s) from Drive.`
+            : `Folder checked. All spreadsheets are up to date (${formatLastSyncTime(nowIso)}).`,
+        });
+      }
+    } catch (err) {
+      console.error('Error during autoSyncGoogleDriveNow:', err);
+    }
+  }, [user, firestore, driveConnection, getMappingProfiles, bulkAddProducts, bulkAddTransactions, recordSyncSuccess, saveMappingProfile, toast]);
+
+  // Global background auto-sync runner (checks every 20s across any dashboard route)
+  useEffect(() => {
+    if (!user || !firestore || !driveConnection || !driveConnection.selectedFolderId) return;
+    if (driveConnection.autoSyncEnabled === false) return;
+
+    const checkAutoSync = () => {
+      if (isAutoSyncDue(driveConnection)) {
+        console.log('[Global AutoSync] Schedule is due. Triggering automatic background ingestion for:', driveConnection.selectedFolderName);
+        autoSyncGoogleDriveNow(false);
+      }
+    };
+
+    // Immediate check on connection load
+    checkAutoSync();
+
+    const intervalId = setInterval(checkAutoSync, 20 * 1000);
+    return () => clearInterval(intervalId);
+  }, [user, firestore, driveConnection, autoSyncGoogleDriveNow]);
+
   const value = useMemo(() => ({
     products,
     orders,
@@ -1189,6 +1462,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     bulkUpdateProducts,
     bulkAddTransactions,
     clearAllData,
+    driveConnection,
+    autoSyncGoogleDriveNow,
     subscribeGoogleDriveConnection,
     getGoogleDriveFiles,
     getSyncHistory,
@@ -1248,11 +1523,14 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     bulkUpdateProducts,
     bulkAddTransactions,
     clearAllData,
+    driveConnection,
+    autoSyncGoogleDriveNow,
     subscribeGoogleDriveConnection,
     getGoogleDriveFiles,
     getSyncHistory,
     getMappingProfiles,
     disconnectGoogleDrive,
+    updateGoogleDriveSettings,
     recordSyncSuccess,
     saveMappingProfile,
     activePlan,

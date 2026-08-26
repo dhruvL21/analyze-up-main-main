@@ -259,6 +259,21 @@ export function FeatureTour() {
     };
   }, [isTourOpen, isPlaying, currentStepIndex]);
 
+  const handleNext = useCallback(() => {
+    if (currentStepIndex < TOUR_STEPS.length - 1) {
+      setCurrentStepIndex((prev) => prev + 1);
+    } else {
+      setIsTourOpen(false);
+      setCurrentStepIndex(0);
+    }
+  }, [currentStepIndex, setIsTourOpen]);
+
+  const handlePrev = useCallback(() => {
+    if (currentStepIndex > 0) {
+      setCurrentStepIndex((prev) => prev - 1);
+    }
+  }, [currentStepIndex]);
+
   // Handle keyboard shortcuts
   useEffect(() => {
     if (!isTourOpen) return;
@@ -277,24 +292,9 @@ export function FeatureTour() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isTourOpen, currentStepIndex]);
+  }, [isTourOpen, handleNext, handlePrev, setIsTourOpen]);
 
   if (!isTourOpen) return null;
-
-  const handleNext = () => {
-    if (currentStepIndex < TOUR_STEPS.length - 1) {
-      setCurrentStepIndex((prev) => prev + 1);
-    } else {
-      setIsTourOpen(false);
-      setCurrentStepIndex(0);
-    }
-  };
-
-  const handlePrev = () => {
-    if (currentStepIndex > 0) {
-      setCurrentStepIndex((prev) => prev - 1);
-    }
-  };
 
   const handleClose = () => {
     setIsTourOpen(false);

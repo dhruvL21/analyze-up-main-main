@@ -329,7 +329,7 @@ export function DataVisualizer() {
     } finally {
       setIsExporting(null);
     }
-  }, [chartType, metric, data, canShare, isMobile]);
+  }, [metric, data, canShare, isMobile]);
   
   const renderChart = () => {
     const commonProps = {

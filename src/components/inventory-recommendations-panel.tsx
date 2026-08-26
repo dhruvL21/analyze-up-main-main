@@ -239,35 +239,6 @@ export function InventoryRecommendationsPanel() {
               <CardDescription className="text-xs">Continuous 1-click optimization advice for your catalog</CardDescription>
             </div>
           </div>
-
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setIsAuditModalOpen(true)}
-              className="rounded-xl text-xs gap-1.5 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 font-semibold"
-            >
-              <History className="w-3.5 h-3.5" />
-              Change History
-            </Button>
-
-            {appliedIds.size > 0 && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setConfirmData({
-                    title: 'Reset Optimization History',
-                    description: 'Are you sure you want to reset your applied recommendation history? This will re-analyze the entire catalog for low stock, dead stock, and price optimizations.',
-                    onConfirm: handleResetApplied,
-                  });
-                }}
-                className="h-7 text-[11px] text-muted-foreground hover:text-emerald-400 gap-1 px-2.5 rounded-xl"
-              >
-                <RefreshCw className="w-3 h-3" /> Reset History
-              </Button>
-            )}
-          </div>
         </CardHeader>
 
         <CardContent className="p-0 text-xs pt-1">

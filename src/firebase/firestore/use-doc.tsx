@@ -43,7 +43,7 @@ export function useDoc<T>(ref: DocumentReference | null) {
       }
     );
     return () => unsubscribe();
-  }, [ref?.path]);
+  }, [ref]);
 
   return state;
 }

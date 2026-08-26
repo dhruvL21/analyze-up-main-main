@@ -39,7 +39,6 @@ import {
 import { useData } from '@/context/data-context';
 import { useUser } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
-import { useRouter } from 'next/navigation';
 import {
   Crown,
   TrendingUp,
@@ -91,6 +90,8 @@ import {
   generateAIExecutiveBrief,
   createReportSnapshot,
   getStoredReportSnapshots,
+  deleteStoredReportSnapshot,
+  clearAllStoredReportSnapshots,
   ReportSnapshot,
 } from '@/lib/executive-intelligence-engine';
 import {
@@ -127,12 +128,12 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet';
+import { cn } from '@/lib/utils';
 
 export default function ExecutiveIntelligencePage() {
   const { products, transactions, suppliers, orders, returns, businessProfile, activePlan, handleUpgrade, isProcessingPayment, aiQueryCount } = useData();
   const { user } = useUser();
   const { toast } = useToast();
-  const router = useRouter();
 
   // Unified Navigation Tab State
   const [activeTab, setActiveTab] = useState<'overview' | 'forecasting' | 'growth' | 'simulation' | 'billing' | 'team'>('overview');
@@ -152,21 +153,26 @@ export default function ExecutiveIntelligencePage() {
   const [simValue, setSimValue] = useState<number>(10);
   const [scenarioNameInput, setScenarioNameInput] = useState<string>('');
   const [savedSimTick, setSavedSimTick] = useState(0);
+  const [snapshotTick, setSnapshotTick] = useState(0);
 
-  // Sync opportunity status updates & simulation updates
+  // Sync opportunity status updates, simulation updates & snapshot updates
   React.useEffect(() => {
     const sync = () => setGrowthTick(t => t + 1);
     const syncSims = () => setSavedSimTick(t => t + 1);
+    const syncSnaps = () => setSnapshotTick(t => t + 1);
     window.addEventListener('analyzeup_growth_opps_updated', sync);
     window.addEventListener('analyzeup_simulations_updated', syncSims);
+    window.addEventListener('analyzeup_snapshots_updated', syncSnaps);
     return () => {
       window.removeEventListener('analyzeup_growth_opps_updated', sync);
       window.removeEventListener('analyzeup_simulations_updated', syncSims);
+      window.removeEventListener('analyzeup_snapshots_updated', syncSnaps);
     };
   }, []);
 
   // Growth Intelligence Engine
   const growthReport = useMemo(() => {
+    void growthTick;
     return computeCustomerGrowthIntelligence(products, transactions, suppliers, orders, returns, businessProfile);
   }, [products, transactions, suppliers, orders, returns, businessProfile, growthTick]);
 
@@ -183,6 +189,7 @@ export default function ExecutiveIntelligencePage() {
   }, [simType, simTargetProductId, simValue, products, transactions, suppliers, orders, businessProfile]);
 
   const savedScenarios = useMemo(() => {
+    void savedSimTick;
     return getSavedScenarios();
   }, [savedSimTick]);
 
@@ -280,19 +287,18 @@ export default function ExecutiveIntelligencePage() {
   }, [forecastingReport.stockoutProjections, searchQuery]);
 
   const reportHistory = useMemo(() => {
+    void historyDrawerOpen;
+    void snapshotTick;
     return getStoredReportSnapshots();
-  }, [historyDrawerOpen]);
+  }, [historyDrawerOpen, snapshotTick]);
 
   // Dynamic Billing usage calculations
   const productCount = products.length;
   const currentAiQueryCount = aiQueryCount;
   const reportCount = reportHistory.length || 1;
-  const teamMemberCount = members.length;
 
   const productUsage = checkUsageLimit(currentPlanKey, 'products', productCount);
   const aiUsage = checkUsageLimit(currentPlanKey, 'aiQueries', currentAiQueryCount);
-  const reportUsage = checkUsageLimit(currentPlanKey, 'reports', reportCount);
-  const teamUsage = checkUsageLimit(currentPlanKey, 'teamMembers', teamMemberCount);
 
   // Handlers
   const handleGenerateSnapshot = (type: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY') => {
@@ -302,6 +308,29 @@ export default function ExecutiveIntelligencePage() {
       title: `📷 Report Snapshot Generated`,
       description: `Immutable ${type} Executive Report snapshot created.`,
     });
+  };
+
+  const handleDeleteSnapshot = (snapshotId: string, title?: string) => {
+    deleteStoredReportSnapshot(snapshotId);
+    if (selectedSnapshot?.id === snapshotId) {
+      setSelectedSnapshot(null);
+    }
+    toast({
+      title: 'Snapshot Deleted',
+      description: title ? `Deleted "${title}".` : 'Report snapshot removed.',
+    });
+  };
+
+  const handleClearAllSnapshots = () => {
+    if (reportHistory.length === 0) return;
+    if (window.confirm('Are you sure you want to delete all report snapshots? This cannot be undone.')) {
+      clearAllStoredReportSnapshots();
+      setSelectedSnapshot(null);
+      toast({
+        title: 'All Snapshots Cleared',
+        description: 'All saved report snapshots have been deleted.',
+      });
+    }
   };
 
   const handleExportCSV = () => {
@@ -1651,22 +1680,194 @@ export default function ExecutiveIntelligencePage() {
 
       {/* Report History Drawer */}
       <Sheet open={historyDrawerOpen} onOpenChange={setHistoryDrawerOpen}>
-        <SheetContent side="right" className="w-[95vw] sm:max-w-md p-6 ios-glass flex flex-col justify-between">
-          <SheetHeader className="pb-3 border-b border-border/40">
-            <SheetTitle className="text-lg font-bold flex items-center gap-2">
-              <History className="w-5 h-5 text-primary" /> Report Snapshots
-            </SheetTitle>
+        <SheetContent side="right" className="w-[95vw] sm:max-w-md p-6 ios-glass flex flex-col justify-between max-h-screen overflow-hidden">
+          <SheetHeader className="pb-3 border-b border-border/40 flex flex-row items-center justify-between space-y-0">
+            <div className="flex items-center gap-2">
+              <History className="w-5 h-5 text-primary" />
+              <SheetTitle className="text-base font-bold">Report Snapshots</SheetTitle>
+              <Badge variant="secondary" className="text-[11px] font-semibold px-2 py-0.5 rounded-lg">
+                {reportHistory.length}
+              </Badge>
+            </div>
+            {reportHistory.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleClearAllSnapshots}
+                className="h-8 px-2.5 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-xl transition-colors cursor-pointer gap-1.5"
+                title="Clear all report snapshots"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span className="text-[11px]">Clear All</span>
+              </Button>
+            )}
           </SheetHeader>
-          <div className="flex-1 overflow-y-auto py-4 space-y-3">
-            {reportHistory.map(snap => (
-              <div key={snap.id} className="p-3.5 rounded-2xl bg-secondary/30 border border-border/40 text-xs">
-                <span className="font-bold text-foreground text-xs block">{snap.title}</span>
-                <span className="text-[10px] text-muted-foreground block">Health: {snap.scorecard.businessHealthScore}/100</span>
+
+          <div className="flex-1 overflow-y-auto py-4 space-y-3 pr-1">
+            {reportHistory.length === 0 ? (
+              <div className="py-16 text-center space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-secondary/50 border border-border/50 flex items-center justify-center mx-auto text-muted-foreground">
+                  <FileText className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-bold text-foreground">No Snapshots Saved</p>
+                  <p className="text-[11px] text-muted-foreground max-w-[240px] mx-auto">
+                    Click "Record Snapshot" in the Executive dashboard to save point-in-time business health reports.
+                  </p>
+                </div>
               </div>
-            ))}
+            ) : (
+              reportHistory.map(snap => {
+                const healthScore = snap.scorecard?.businessHealthScore ?? 80;
+                const healthBadgeClass =
+                  healthScore >= 80
+                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                    : healthScore >= 60
+                    ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                    : 'bg-rose-500/15 text-rose-400 border-rose-500/30';
+
+                const formattedDate = snap.generatedAt
+                  ? new Date(snap.generatedAt).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })
+                  : snap.periodLabel || 'Recent Snapshot';
+
+                return (
+                  <div
+                    key={snap.id}
+                    onClick={() => setSelectedSnapshot(snap)}
+                    className="p-3.5 rounded-2xl bg-secondary/30 border border-border/40 hover:border-primary/40 hover:bg-secondary/50 transition-all text-xs flex items-center justify-between gap-3 group cursor-pointer"
+                  >
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-foreground text-xs truncate">
+                          {snap.title}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground flex-wrap">
+                        <span className="truncate">{formattedDate}</span>
+                        <span>•</span>
+                        <Badge className={cn('text-[9px] px-1.5 py-0 h-4 font-semibold border', healthBadgeClass)}>
+                          Health: {healthScore}/100
+                        </Badge>
+                      </div>
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteSnapshot(snap.id, snap.title);
+                      }}
+                      className="h-8 w-8 rounded-xl text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-colors cursor-pointer shrink-0 opacity-70 group-hover:opacity-100"
+                      title="Delete this snapshot"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                );
+              })
+            )}
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Snapshot Detail Modal */}
+      <Dialog open={selectedSnapshot !== null} onOpenChange={(open) => { if (!open) setSelectedSnapshot(null); }}>
+        <DialogContent className="sm:max-w-xl bg-zinc-950/95 border border-border/50 rounded-3xl ios-glass text-white shadow-2xl p-6 max-h-[88vh] flex flex-col overflow-hidden">
+          {selectedSnapshot && (
+            <>
+              <DialogHeader className="pb-3 border-b border-zinc-800/60 shrink-0">
+                <div className="flex items-center justify-between gap-2 pr-6">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <History className="w-5 h-5 text-primary shrink-0" />
+                    <DialogTitle className="text-base font-bold truncate text-zinc-100">
+                      {selectedSnapshot.title}
+                    </DialogTitle>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] font-bold border-primary/30 text-primary uppercase shrink-0">
+                    {selectedSnapshot.reportType}
+                  </Badge>
+                </div>
+                <DialogDescription className="text-xs text-zinc-400">
+                  Captured on {new Date(selectedSnapshot.generatedAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="flex-1 overflow-y-auto py-3 space-y-4 pr-1 text-xs">
+                {/* Scorecard Summary */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="p-3 rounded-2xl bg-zinc-900/80 border border-zinc-800 space-y-1 text-center">
+                    <span className="text-[10px] text-zinc-400 uppercase font-semibold">Health Score</span>
+                    <p className="text-base font-extrabold text-emerald-400">{selectedSnapshot.scorecard?.businessHealthScore || 80}/100</p>
+                  </div>
+                  <div className="p-3 rounded-2xl bg-zinc-900/80 border border-zinc-800 space-y-1 text-center">
+                    <span className="text-[10px] text-zinc-400 uppercase font-semibold">Revenue</span>
+                    <p className="text-base font-extrabold text-zinc-100">{formatCur(selectedSnapshot.comparison?.currentPeriod?.revenue || 0)}</p>
+                  </div>
+                  <div className="p-3 rounded-2xl bg-zinc-900/80 border border-zinc-800 space-y-1 text-center">
+                    <span className="text-[10px] text-zinc-400 uppercase font-semibold">Gross Profit</span>
+                    <p className="text-base font-extrabold text-zinc-100">{formatCur(selectedSnapshot.comparison?.currentPeriod?.grossProfit || 0)}</p>
+                  </div>
+                  <div className="p-3 rounded-2xl bg-zinc-900/80 border border-zinc-800 space-y-1 text-center">
+                    <span className="text-[10px] text-zinc-400 uppercase font-semibold">Profit Margin</span>
+                    <p className="text-base font-extrabold text-zinc-100">{selectedSnapshot.comparison?.currentPeriod?.profitMarginPercent || 0}%</p>
+                  </div>
+                </div>
+
+                {/* AI Executive Brief Summary */}
+                {selectedSnapshot.brief && (
+                  <div className="p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/20 space-y-2">
+                    <div className="flex items-center gap-1.5 text-blue-400 font-bold text-xs">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Executive Synthesis</span>
+                    </div>
+                    <p className="text-xs text-zinc-200 leading-relaxed">
+                      {selectedSnapshot.brief.overallStatus}
+                    </p>
+                    {selectedSnapshot.brief.recommendedActions?.length > 0 && (
+                      <div className="pt-1.5 space-y-1">
+                        <span className="text-[10px] font-semibold text-zinc-400 uppercase">Key Actions:</span>
+                        <ul className="list-disc list-inside space-y-0.5 text-zinc-300 text-[11px]">
+                          {selectedSnapshot.brief.recommendedActions.slice(0, 3).map((act, i) => (
+                            <li key={i}>{act}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter className="pt-3 border-t border-zinc-800/60 shrink-0 flex items-center justify-between sm:justify-between">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleDeleteSnapshot(selectedSnapshot.id, selectedSnapshot.title)}
+                  className="rounded-xl text-xs text-destructive hover:bg-destructive/15 gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete Snapshot
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => setSelectedSnapshot(null)}
+                  className="bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-xs px-4"
+                >
+                  Close
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Reorder PO Modal */}
       <CreatePurchaseOrderModal

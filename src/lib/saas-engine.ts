@@ -1,5 +1,3 @@
-import { Product, Transaction, Supplier, PurchaseOrder, ProductReturn, BusinessProfile } from './types';
-
 // 1. Types & Data Models
 export type WorkspaceRole = 'OWNER' | 'ADMIN' | 'MANAGER' | 'STAFF' | 'VIEWER';
 

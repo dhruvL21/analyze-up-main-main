@@ -47,3 +47,20 @@ export function serializePlainData<T>(val: any): T {
 }
 
 export const sanitizePlainData = serializePlainData;
+
+export function getCurSymbol(profile?: { currency?: string } | null): string {
+  return profile?.currency?.includes('USD') ? '$' : '₹';
+}
+
+export function formatCur(val: number, profile?: { currency?: string } | null): string {
+  const sym = getCurSymbol(profile);
+  return `${sym}${Math.round(val || 0).toLocaleString('en-IN')}`;
+}
+
+export function formatCurrency(val: number, currency: string = 'INR'): string {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 0,
+  }).format(Math.round(val || 0));
+}

@@ -94,6 +94,7 @@ export function Header() {
   }, [products, transactions, suppliers, orders, returns, businessProfile]);
 
   const activeAlertCount = useMemo(() => {
+    void healthTick;
     const statuses = getStoredEventStatuses();
     return businessEvents.filter(e => {
       const status = statuses[e.id] || e.status;
@@ -102,6 +103,7 @@ export function Header() {
   }, [businessEvents, healthTick]);
 
   const healthSummary = useMemo(() => {
+    void healthTick;
     return computeBusinessHealth(products, transactions, suppliers, returns);
   }, [products, transactions, suppliers, returns, healthTick]);
 

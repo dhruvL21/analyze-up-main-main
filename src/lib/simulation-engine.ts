@@ -11,6 +11,7 @@ import {
 } from './types';
 import { computeProductIntelligence } from './product-intelligence-engine';
 import { calculateSupplierPerformanceScore } from './supplier-intelligence-engine';
+import { formatCur } from './utils';
 
 const SAVED_SIMULATIONS_KEY = 'analyzeup_saved_simulations_v1';
 
@@ -74,9 +75,6 @@ export function runBusinessSimulation(
   orders: PurchaseOrder[] = [],
   businessProfile?: BusinessProfile | null
 ): SimulationResult {
-  const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
-  const formatCur = (val: number) => `${currencySymbol}${Math.round(val).toLocaleString('en-IN')}`;
-
   const selectedProduct = products.find(p => p.id === targetProductId) || products[0] || {
     id: 'p-default',
     name: 'Sample Product SKU',

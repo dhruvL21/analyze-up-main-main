@@ -16,18 +16,18 @@ export function InventoryQualitySnapshot() {
   return (
     <Card className="ios-glass rounded-3xl border-border/50 p-5 shadow-xl space-y-4 h-full flex flex-col justify-between">
       <div>
-        <CardHeader className="p-0 pb-3 border-b border-border/40 flex flex-row items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-primary/10 text-primary border border-primary/20">
+        <CardHeader className="p-0 pb-3 border-b border-border/40 flex flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-2 rounded-xl bg-primary/10 text-primary border border-primary/20 shrink-0">
               <Boxes className="w-5 h-5 text-primary" />
             </div>
-            <div>
-              <CardTitle className="text-base font-bold">Inventory Quality Snapshot</CardTitle>
-              <CardDescription className="text-xs">Asset health & catalog composition analytics</CardDescription>
+            <div className="min-w-0">
+              <CardTitle className="text-base font-bold whitespace-nowrap">Inventory Quality Snapshot</CardTitle>
+              <CardDescription className="text-xs truncate">Asset health & catalog composition analytics</CardDescription>
             </div>
           </div>
 
-          <Badge variant="outline" className="text-xs font-semibold">
+          <Badge variant="outline" className="text-xs font-semibold whitespace-nowrap shrink-0 px-2.5 py-1">
             {products.length} Total SKUs
           </Badge>
         </CardHeader>
