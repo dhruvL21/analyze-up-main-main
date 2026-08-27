@@ -1,6 +1,8 @@
+'use client';
+
 import Image from 'next/image';
-import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { PlusCircle, MoreHorizontal, Database, Sparkles, Loader2, ArrowRightLeft, Eye, X, Filter, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo, Suspense } from 'react';
+import { PlusCircle, MoreHorizontal, Database, ArrowRightLeft, Eye, X, Filter, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const PRESET_QUICK_QUERIES = [
@@ -30,7 +32,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
@@ -42,16 +43,13 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-  DialogClose,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { useData } from '@/context/data-context';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ImportDialog } from '@/components/import-dialog';
 import { AddProductModal } from '@/components/add-product-modal';
-import { generateProductDescription } from '@/ai/flows/product-descriptor';
 import { useToast } from '@/hooks/use-toast';
 import { computeProductIntelligence, filterProductsByNaturalLanguage } from '@/lib/product-intelligence-engine';
 import { InventoryInsightsTicker } from '@/components/inventory-insights-ticker';
@@ -62,7 +60,7 @@ import { ProductComparisonModal } from '@/components/product-comparison-modal';
 import { useSearchParams } from 'next/navigation';
 import { OperationsSubNav } from '@/components/operations-sub-nav';
 
-export default function InventoryPage() {
+function InventoryPageContent() {
   const searchParams = useSearchParams();
   const { products, addProduct, updateProduct, deleteProduct, recordSale, isLoading, categories, suppliers, addCategory, addSupplier, transactions, returns, businessProfile } = useData();
 
@@ -615,6 +613,14 @@ export default function InventoryPage() {
         onOpenChange={setIsAddProductOpen}
       />
     </>
+  );
+}
+
+export default function InventoryPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-xs text-muted-foreground animate-pulse">Loading Inventory Intelligence...</div>}>
+      <InventoryPageContent />
+    </Suspense>
   );
 }
 
