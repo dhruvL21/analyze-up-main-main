@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   Card,
@@ -54,7 +54,7 @@ function parseDateValue(raw: any): Date {
   return isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
-export default function InsightsPage() {
+function InsightsPageContent() {
   const { products, transactions, isLoading } = useData();
   const searchParams = useSearchParams();
   const [reportType, setReportType] = useState<ReportType>('inventory_summary');
@@ -649,6 +649,14 @@ export default function InsightsPage() {
        )}
         </>
       )}
-     </div>
+      </div>
+   );
+}
+
+export default function InsightsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-xs text-muted-foreground animate-pulse">Loading Business Insights...</div>}>
+      <InsightsPageContent />
+    </Suspense>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -132,7 +132,7 @@ import {
 } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 
-export default function ExecutiveIntelligencePage() {
+function ExecutivePageContent() {
   const { products, transactions, suppliers, orders, returns, businessProfile, activePlan, handleUpgrade, isProcessingPayment, aiQueryCount } = useData();
   const { user } = useUser();
   const { toast } = useToast();
@@ -2026,5 +2026,13 @@ export default function ExecutiveIntelligencePage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+export default function ExecutiveIntelligencePage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-xs text-muted-foreground animate-pulse">Loading Executive Intelligence...</div>}>
+      <ExecutivePageContent />
+    </Suspense>
   );
 }

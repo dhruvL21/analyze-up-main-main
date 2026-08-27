@@ -1,5 +1,7 @@
+'use client';
+
 import Image from 'next/image';
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, Suspense } from 'react';
 import { PlusCircle, MoreHorizontal, Database, Sparkles, Loader2, ArrowRightLeft, Eye, X, Filter, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -62,7 +64,7 @@ import { ProductComparisonModal } from '@/components/product-comparison-modal';
 import { useSearchParams } from 'next/navigation';
 import { OperationsSubNav } from '@/components/operations-sub-nav';
 
-export default function InventoryPage() {
+function InventoryPageContent() {
   const searchParams = useSearchParams();
   const { products, addProduct, updateProduct, deleteProduct, recordSale, isLoading, categories, suppliers, addCategory, addSupplier, transactions, returns, businessProfile } = useData();
 
@@ -615,6 +617,14 @@ export default function InventoryPage() {
         onOpenChange={setIsAddProductOpen}
       />
     </>
+  );
+}
+
+export default function InventoryPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-xs text-muted-foreground animate-pulse">Loading Inventory Intelligence...</div>}>
+      <InventoryPageContent />
+    </Suspense>
   );
 }
 
