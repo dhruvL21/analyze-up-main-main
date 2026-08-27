@@ -194,70 +194,164 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
   const handleDownloadTemplate = () => {
     const headers = [
       'Invoice No',
+      'Order ID',
       'Order Date',
+      'Customer ID',
       'Customer Name',
+      'SKU',
       'Item Name',
       'Category',
-      'SKU',
+      'Supplier ID',
+      'Supplier Name',
       'Qty Sold',
-      'Purchase Price (₹)',
+      'Purchase Price',
       'Retail Price',
-      'Supplier / Vendor',
+      'Discount',
+      'Tax',
+      'Current Stock',
+      'Reorder Level',
+      'Safety Stock',
+      'Lead Time Days',
       'Payment Mode',
+      'Order Status',
+      'Warehouse',
     ];
 
     const sampleRows = [
       [
         'INV-2026-001',
+        'ORD-88201',
         '2026-08-01',
+        'CUST-1001',
         'Rahul Sharma',
+        'TSHIRT-ORG-001',
         'Organic Cotton T-Shirt',
         'Apparel',
-        'TSHIRT-ORG-001',
+        'SUP-501',
+        'Apex Apparel Global',
         '2',
         '450',
         '1299',
-        'Apex Apparel Global',
+        '100',
+        '60',
+        '85',
+        '20',
+        '15',
+        '5',
         'UPI',
+        'Completed',
+        'Central Hub - Mumbai',
       ],
       [
         'INV-2026-002',
+        'ORD-88202',
         '2026-08-02',
+        'CUST-1002',
         'Priya Patel',
+        'MOUSE-WIRELESS-02',
         'Ergonomic Wireless Mouse',
         'Electronics',
-        'MOUSE-WIRELESS-02',
+        'SUP-502',
+        'Zenith Electronics Corp',
         '1',
         '850',
         '2499',
-        'Zenith Electronics Corp',
+        '150',
+        '120',
+        '42',
+        '10',
+        '8',
+        '7',
         'Credit Card',
+        'Completed',
+        'North Facility - Delhi',
       ],
       [
         'INV-2026-003',
+        'ORD-88203',
         '2026-08-03',
+        'CUST-1003',
         'Amit Verma',
+        'COFFEE-ARABICA-1K',
         'Arabica Whole Beans (1kg)',
         'Gourmet',
-        'COFFEE-ARABICA-1K',
+        'SUP-503',
+        'Himalayan Coffee Estate',
         '3',
         '480',
         '1499',
-        'Himalayan Coffee Estate',
+        '50',
+        '75',
+        '120',
+        '30',
+        '25',
+        '4',
         'Cash',
+        'Completed',
+        'South Facility - Bangalore',
+      ],
+      [
+        'INV-2026-004',
+        'ORD-88204',
+        '2026-08-04',
+        'CUST-1004',
+        'Ananya Roy',
+        'FLASK-STEEL-750',
+        'Insulated Steel Flask (750ml)',
+        'Home & Living',
+        'SUP-504',
+        'EcoVessel Supplies Ltd',
+        '2',
+        '350',
+        '999',
+        '0',
+        '45',
+        '64',
+        '15',
+        '10',
+        '6',
+        'Net Banking',
+        'Shipped',
+        'West Warehouse - Pune',
+      ],
+      [
+        'INV-2026-005',
+        'ORD-88205',
+        '2026-08-05',
+        'CUST-1005',
+        'Vikram Malhotra',
+        'SERUM-VITC-30ML',
+        'Hydrating Vitamin C Serum (30ml)',
+        'Beauty & Wellness',
+        'SUP-505',
+        'Botanica Organics Lab',
+        '4',
+        '280',
+        '899',
+        '80',
+        '40',
+        '95',
+        '25',
+        '20',
+        '3',
+        'UPI',
+        'Delivered',
+        'East Hub - Kolkata',
       ],
     ];
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...sampleRows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
+    const csvContent = Papa.unparse({ fields: headers, data: sampleRows });
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
+    link.setAttribute('href', url);
     link.setAttribute('download', 'AnalyzeUp_Business_Import_Template.csv');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
 
-    toast({ title: 'Template Downloaded', description: 'AnalyzeUp CSV template saved to your downloads folder.' });
+    toast({ title: 'Template Downloaded', description: 'AnalyzeUp CSV database template saved to your downloads folder.' });
   };
 
   // Stage 1: File Upload & AI Detection (CSV & Excel)
@@ -411,20 +505,25 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
 
       // Type-specific field parsing & normalization
       if (detectedFileType === 'SALES_REPORT') {
-        const name = obj.productName || obj.name || '';
-        const price = parseFloat((obj.sellingPrice || obj.price || '0').replace(/[^0-9.]/g, '')) || 0;
-        const costPrice = parseFloat((obj.costPrice || '0').replace(/[^0-9.]/g, '')) || 0;
-        const qty = parseInt((obj.quantity || obj.stock || '1').replace(/[^0-9]/g, ''), 10) || 1;
-        const orderNo = obj.orderNumber || `INV-${1000 + idx}`;
-        const customer = obj.customerName || 'Retail Customer';
-        const city = obj.city || '';
-        const status = obj.status || 'Completed';
+        const name = obj.productName || obj.name || obj.itemName || '';
+        const price = parseFloat((obj.sellingPrice || obj.price || obj.retailPrice || '0').replace(/[^0-9.]/g, '')) || 0;
+        const costPrice = parseFloat((obj.costPrice || obj.purchasePrice || '0').replace(/[^0-9.]/g, '')) || 0;
+        const qty = parseInt((obj.quantity || obj.qtySold || obj.stock || '1').replace(/[^0-9]/g, ''), 10) || 1;
+        const orderNo = obj.orderNumber || obj.orderId || obj.invoiceNo || `INV-${1000 + idx}`;
+        const customer = obj.customerName || obj.customer || 'Retail Customer';
+        const city = obj.city || obj.warehouse || '';
+        const status = obj.status || obj.orderStatus || 'Completed';
         const remarks = obj.remarks || '';
         const paymentMode = obj.paymentMode || 'UPI';
         const discount = parseFloat((obj.discount || '0').replace(/[^0-9.]/g, '')) || 0;
         const tax = parseFloat((obj.tax || '0').replace(/[^0-9.]/g, '')) || 0;
         const date = obj.orderDate || new Date().toISOString().split('T')[0];
         const supplier = obj.supplier || obj.supplierName || '';
+        const supplierId = obj.supplierId || '';
+        const stock = parseInt((obj.stock || obj.currentStock || '0').replace(/[^0-9]/g, ''), 10) || 0;
+        const minStock = parseInt((obj.minStock || obj.reorderLevel || obj.safetyStock || '10').replace(/[^0-9]/g, ''), 10) || 10;
+        const leadTimeDays = parseInt((obj.leadTimeDays || '7').replace(/[^0-9]/g, ''), 10) || 7;
+        const category = obj.category || 'General';
 
         if (!name) obj.errors.push('Missing product name');
         if (price <= 0) obj.errors.push('Invalid or zero selling price');
@@ -435,26 +534,36 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
           price,
           costPrice,
           qty,
+          stock,
+          minStock,
+          leadTimeDays,
           orderNo,
           customer,
           city,
+          warehouse: city,
           status,
           remarks,
           paymentMode,
           discount,
           tax,
           supplier,
+          supplierId,
+          category,
           date,
           sku: obj.sku || `SKU-${idx + 1}`,
         };
       } else if (detectedFileType === 'INVENTORY_MASTER' || detectedFileType === 'WAREHOUSE_STOCK') {
-        const name = obj.name || obj.productName || '';
-        const price = parseFloat((obj.price || obj.sellingPrice || '0').replace(/[^0-9.]/g, '')) || 0;
-        const costPrice = parseFloat((obj.costPrice || '0').replace(/[^0-9.]/g, '')) || 0;
-        const stock = parseInt((obj.stock || obj.quantity || '0').replace(/[^0-9]/g, ''), 10) || 0;
+        const name = obj.name || obj.productName || obj.itemName || '';
+        const price = parseFloat((obj.price || obj.sellingPrice || obj.retailPrice || '0').replace(/[^0-9.]/g, '')) || 0;
+        const costPrice = parseFloat((obj.costPrice || obj.purchasePrice || '0').replace(/[^0-9.]/g, '')) || 0;
+        const stock = parseInt((obj.stock || obj.currentStock || obj.quantity || obj.qtySold || '0').replace(/[^0-9]/g, ''), 10) || 0;
+        const minStock = parseInt((obj.minStock || obj.reorderLevel || obj.safetyStock || '10').replace(/[^0-9]/g, ''), 10) || 10;
+        const leadTimeDays = parseInt((obj.leadTimeDays || '7').replace(/[^0-9]/g, ''), 10) || 7;
         const sku = (obj.sku || `AUTOSKU-${idx + 1}`).toUpperCase();
         const category = obj.category || 'General';
         const supplier = obj.supplier || obj.supplierName || '';
+        const supplierId = obj.supplierId || '';
+        const city = obj.city || obj.warehouse || '';
 
         if (!name) obj.errors.push('Missing product name');
         if (price <= 0) obj.errors.push('Invalid or zero selling price');
@@ -466,12 +575,27 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
 
         if (costPrice > price && price > 0) obj.warnings.push('Cost price is higher than selling price');
 
-        obj.parsed = { name, price, costPrice, stock, sku, category, supplier, unit: obj.unit || 'Piece', description: obj.description || '' };
+        obj.parsed = {
+          name,
+          price,
+          costPrice,
+          stock,
+          minStock,
+          leadTimeDays,
+          sku,
+          category,
+          supplier,
+          supplierId,
+          city,
+          warehouse: city,
+          unit: obj.unit || 'Piece',
+          description: obj.description || '',
+        };
       } else {
         // Fallback general object
-        const name = obj.name || obj.productName || obj.supplierName || obj.customerName || `Item #${idx + 1}`;
-        const price = parseFloat((obj.price || obj.sellingPrice || obj.unitCost || '0').replace(/[^0-9.]/g, '')) || 0;
-        const qty = parseInt((obj.quantity || obj.stock || '1').replace(/[^0-9]/g, ''), 10) || 1;
+        const name = obj.name || obj.productName || obj.itemName || obj.supplierName || obj.customerName || `Item #${idx + 1}`;
+        const price = parseFloat((obj.price || obj.sellingPrice || obj.retailPrice || obj.unitCost || '0').replace(/[^0-9.]/g, '')) || 0;
+        const qty = parseInt((obj.quantity || obj.qtySold || obj.stock || obj.currentStock || '1').replace(/[^0-9]/g, ''), 10) || 1;
         if (!name) obj.errors.push('Missing name');
         obj.parsed = { name, price, qty, sku: obj.sku || `ITEM-${idx + 1}` };
       }
@@ -547,34 +671,40 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
     const startTime = performance.now();
 
     try {
-      // 1. Auto-create Categories
+      // 1. Auto-create Categories (in parallel for high speed)
       const fileCategories = Array.from(new Set(validRows.map(r => r.parsed.category || 'General').filter(Boolean)));
       const existingCatMap = new Map(categories.map(c => [c.name.toLowerCase(), c.id]));
       let newCatCount = 0;
 
-      for (const catName of fileCategories) {
-        if (!existingCatMap.has(catName.toLowerCase())) {
-          await addCategory({ name: catName, description: 'Created during AI business import' });
-          newCatCount++;
-        }
+      const missingCats = fileCategories.filter(catName => !existingCatMap.has(catName.toLowerCase()));
+      if (missingCats.length > 0) {
+        await Promise.all(
+          missingCats.map(catName =>
+            addCategory({ name: catName, description: 'Created during AI business import' })
+          )
+        );
+        newCatCount = missingCats.length;
       }
 
-      // 2. Auto-create Suppliers
+      // 2. Auto-create Suppliers (in parallel for high speed)
       const fileSuppliers = Array.from(new Set(validRows.map(r => r.parsed.supplier || 'Import Vendor').filter(Boolean)));
       const existingSupMap = new Map(suppliers.map(s => [s.name.toLowerCase(), s.id]));
       let newSupCount = 0;
 
-      for (const supName of fileSuppliers) {
-        if (!existingSupMap.has(supName.toLowerCase())) {
-          await addSupplier({
-            name: supName,
-            contactName: 'Import Contact',
-            email: `orders@${supName.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`,
-            phone: '+91 90000 00000',
-            address: 'Imported via AI Engine',
-          });
-          newSupCount++;
-        }
+      const missingSups = fileSuppliers.filter(supName => !existingSupMap.has(supName.toLowerCase()));
+      if (missingSups.length > 0) {
+        await Promise.all(
+          missingSups.map(supName =>
+            addSupplier({
+              name: supName,
+              contactName: 'Import Contact',
+              email: `orders@${supName.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`,
+              phone: '+91 90000 00000',
+              address: 'Imported via AI Engine',
+            })
+          )
+        );
+        newSupCount = missingSups.length;
       }
 
       // 3. Format Products Catalog Items
@@ -582,7 +712,7 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
         const name = r.parsed.name;
         const price = r.parsed.price || 499;
         const costPrice = r.parsed.costPrice && r.parsed.costPrice > 0 ? r.parsed.costPrice : Math.round(price * 0.6);
-        const stock = r.parsed.stock !== undefined ? r.parsed.stock : Math.max(10, (r.parsed.qty || 1) * 5);
+        const stock = r.parsed.stock !== undefined && r.parsed.stock > 0 ? r.parsed.stock : Math.max(10, (r.parsed.qty || 1) * 5);
         const sku = r.parsed.sku || `SKU-${name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
 
         return {
@@ -590,17 +720,18 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
           sku,
           description: r.parsed.description || `Imported ${name}`,
           categoryId: existingCatMap.get((r.parsed.category || '').toLowerCase()) || 'cat-general',
+          category: r.parsed.category || 'General',
           supplier: r.parsed.supplier || '',
-          supplierId: existingSupMap.get((r.parsed.supplier || '').toLowerCase()) || '',
+          supplierId: existingSupMap.get((r.parsed.supplier || '').toLowerCase()) || r.parsed.supplierId || '',
           price,
           costPrice,
           stock,
-          minStock: 5,
+          minStock: r.parsed.minStock || 5,
           maxStock: Math.max(100, stock * 2),
           unit: r.parsed.unit || 'Piece',
           status: 'Active' as const,
           averageDailySales: Math.max(0.5, Number(((r.parsed.qty || 1) * 0.8).toFixed(1))),
-          leadTimeDays: 7,
+          leadTimeDays: r.parsed.leadTimeDays || 7,
         };
       });
 
@@ -615,30 +746,28 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
         const costPrice = r.parsed.costPrice && r.parsed.costPrice > 0 ? r.parsed.costPrice : Math.round(price * 0.6);
         const qty = r.parsed.qty || Math.max(1, Math.floor(Math.random() * 4) + 1);
 
-        // Generate sales entries across the past 30 days to build historical time-series
-        for (let s = 0; s < (detectedFileType === 'SALES_REPORT' ? 1 : 3); s++) {
-          const d = new Date();
-          d.setDate(d.getDate() - (idx % 25) - (s * 4));
+        const d = new Date();
+        d.setDate(d.getDate() - (idx % 28));
 
-          transactionsToImport.push({
-            type: 'Sale' as const,
-            productId: `prod-${name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
-            productName: name,
-            quantity: qty,
-            price: price,
-            totalRevenue: price * qty,
-            costPerUnit: costPrice,
-            totalCost: costPrice * qty,
-            customerName: r.parsed.customer || `Customer #${(idx % 12) + 1}`,
-            customerCity: r.parsed.city || '',
-            transactionDate: r.parsed.date || d.toISOString().split('T')[0],
-            status: r.parsed.status || 'Completed',
-            paymentMethod: r.parsed.paymentMode || (idx % 2 === 0 ? 'UPI' : 'Credit Card'),
-            notes: r.parsed.remarks || '',
-            discount: r.parsed.discount || 0,
-            tax: r.parsed.tax || 0,
-          });
-        }
+        transactionsToImport.push({
+          type: 'Sale' as const,
+          productId: `prod-${name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+          productName: name,
+          quantity: qty,
+          price: price,
+          totalRevenue: price * qty,
+          costPerUnit: costPrice,
+          totalCost: costPrice * qty,
+          customerName: r.parsed.customer || `Customer #${(idx % 12) + 1}`,
+          customerCity: r.parsed.city || r.parsed.warehouse || '',
+          transactionDate: r.parsed.date || d.toISOString().split('T')[0],
+          status: r.parsed.status || 'Completed',
+          paymentMethod: r.parsed.paymentMode || (idx % 2 === 0 ? 'UPI' : 'Credit Card'),
+          notes: r.parsed.remarks || '',
+          discount: r.parsed.discount || 0,
+          tax: r.parsed.tax || 0,
+          orderNumber: r.parsed.orderNo || undefined,
+        });
       });
 
       if (transactionsToImport.length > 0) {
@@ -998,7 +1127,7 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {normalizedItems.map((item, idx) => (
+                  {normalizedItems.slice(0, 50).map((item, idx) => (
                     <TableRow key={idx} className={item.isValid ? '' : 'bg-rose-500/5'}>
                       <TableCell>
                         {item.isValid ? (
@@ -1021,6 +1150,11 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
                   ))}
                 </TableBody>
               </Table>
+              {normalizedItems.length > 50 && (
+                <div className="p-2.5 bg-secondary/60 text-center text-xs text-muted-foreground border-t border-border/40 font-medium">
+                  Showing first 50 preview records • <span className="text-emerald-400 font-semibold">All {normalizedItems.length.toLocaleString()} records</span> will be linked on import
+                </div>
+              )}
             </div>
           </div>
         )}

@@ -58,10 +58,10 @@ export function computeCustomerGrowthIntelligence(
     return {
       hasData: false,
       dataQualityMessage: 'Customer Intelligence unavailable. Import or record sales transactions to unlock customer RFM growth insights.',
-      growthHealthScore: 65,
+      growthHealthScore: 0,
       scoreCategory: 'Constrained Growth',
-      positiveDrivers: ['Baseline catalog structure active.'],
-      growthBottlenecks: ['Insufficient sales transaction history to model repeat purchasing behavior.'],
+      positiveDrivers: [],
+      growthBottlenecks: ['Insufficient sales transaction history to model repeat purchasing behavior. Upload your sales CSV to populate customer analytics.'],
       totalCustomers: 0,
       newCustomersCount: 0,
       returningCustomersCount: 0,
@@ -86,7 +86,7 @@ export function computeCustomerGrowthIntelligence(
         top5CustomersPercent: 0,
         top3ProductsPercent: 0,
         riskLevel: 'Low',
-        explanation: 'Transaction volume is accumulating; concentration risk is low.',
+        explanation: 'No transaction data available.',
       },
       opportunities: [],
     };

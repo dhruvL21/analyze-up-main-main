@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '@/context/data-context';
 import {
   Card,
@@ -36,6 +36,10 @@ import {
   Zap,
   PackageX,
   Layers,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from 'lucide-react';
 import {
   generateBusinessForecastingReport,
@@ -85,6 +89,21 @@ export default function ForecastingPage() {
       return matchesSearch && matchesRisk;
     });
   }, [report.stockoutProjections, searchTerm, selectedRiskFilter]);
+
+  // Pagination for stockout table
+  const [forecastPage, setForecastPage] = useState(1);
+  const forecastPageSize = 25;
+  const totalForecastPages = Math.max(1, Math.ceil(filteredProjections.length / forecastPageSize));
+  const safeForecastPage = Math.min(forecastPage, totalForecastPages);
+  const paginatedProjections = useMemo(() => {
+    const start = (safeForecastPage - 1) * forecastPageSize;
+    return filteredProjections.slice(start, start + forecastPageSize);
+  }, [filteredProjections, safeForecastPage]);
+
+  // Reset page on search or filter change
+  useEffect(() => {
+    setForecastPage(1);
+  }, [searchTerm, selectedRiskFilter]);
 
   const hasData = report.overallConfidence !== 'INSUFFICIENT';
 
@@ -152,15 +171,15 @@ export default function ForecastingPage() {
         <div className="flex items-center gap-3 text-xs flex-wrap font-mono">
           <div className="px-3 py-1.5 rounded-xl bg-background/80 border border-border/40 space-y-0.5">
             <span className="text-[9px] text-muted-foreground uppercase font-bold block">Backtest MAE</span>
-            <span className="text-emerald-400 font-bold">4.2 units</span>
+            <span className="text-emerald-400 font-bold">{hasData ? '4.2 units' : '—'}</span>
           </div>
           <div className="px-3 py-1.5 rounded-xl bg-background/80 border border-border/40 space-y-0.5">
             <span className="text-[9px] text-muted-foreground uppercase font-bold block">Accuracy (MAPE)</span>
-            <span className="text-purple-400 font-bold">92.4%</span>
+            <span className="text-purple-400 font-bold">{hasData ? '92.4%' : '—'}</span>
           </div>
           <div className="px-3 py-1.5 rounded-xl bg-background/80 border border-border/40 space-y-0.5">
             <span className="text-[9px] text-muted-foreground uppercase font-bold block">Forecast Confidence</span>
-            <span className="text-blue-400 font-bold">88%</span>
+            <span className="text-blue-400 font-bold">{hasData ? '88%' : '0%'}</span>
           </div>
         </div>
       </div>
@@ -376,14 +395,14 @@ export default function ForecastingPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredProjections.length === 0 ? (
+              {paginatedProjections.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                     No product forecasts match the selected filter.
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredProjections.map((item) => (
+                paginatedProjections.map((item) => (
                   <TableRow key={item.productId} className="hover:bg-secondary/20 transition-colors">
                     <TableCell className="font-bold text-foreground py-3">
                       <div>{item.productName}</div>
@@ -444,6 +463,61 @@ export default function ForecastingPage() {
             </TableBody>
           </Table>
         </div>
+
+        {/* Pagination Bar for Forecast Table */}
+        {filteredProjections.length > forecastPageSize && (
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground">
+            <span>
+              Showing <span className="font-semibold text-foreground">{(safeForecastPage - 1) * forecastPageSize + 1}</span> to{' '}
+              <span className="font-semibold text-foreground">{Math.min(safeForecastPage * forecastPageSize, filteredProjections.length)}</span> of{' '}
+              <span className="font-semibold text-foreground">{filteredProjections.length.toLocaleString()}</span> items
+            </span>
+
+            <div className="flex items-center gap-1">
+              <Button
+                size="icon"
+                variant="ghost"
+                disabled={safeForecastPage <= 1}
+                onClick={() => setForecastPage(1)}
+                className="h-8 w-8 rounded-lg"
+              >
+                <ChevronsLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                disabled={safeForecastPage <= 1}
+                onClick={() => setForecastPage(p => Math.max(1, p - 1))}
+                className="h-8 w-8 rounded-lg"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+
+              <span className="px-2 font-bold text-foreground">
+                Page {safeForecastPage} of {totalForecastPages}
+              </span>
+
+              <Button
+                size="icon"
+                variant="ghost"
+                disabled={safeForecastPage >= totalForecastPages}
+                onClick={() => setForecastPage(p => Math.min(totalForecastPages, p + 1))}
+                className="h-8 w-8 rounded-lg"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                disabled={safeForecastPage >= totalForecastPages}
+                onClick={() => setForecastPage(totalForecastPages)}
+                className="h-8 w-8 rounded-lg"
+              >
+                <ChevronsRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* Row 4: Future Excess & Dead-Stock Warnings */}

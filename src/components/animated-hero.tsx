@@ -1,40 +1,33 @@
-
 'use client';
 
 import { BarChart3, Boxes, DollarSign, ShoppingCart, RefreshCw, TrendingUp } from "lucide-react";
 import './animated-hero.css';
 
 const featureFaces = [
-    {
-        icon: <Boxes size={48} strokeWidth={1} />,
-        label: "Inventory",
-        className: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-    },
-    {
-        icon: <TrendingUp size={48} strokeWidth={1} />,
-        label: "Sales",
-        className: "bg-green-500/10 text-green-400 border-green-500/20",
-    },
-    {
-        icon: <RefreshCw size={48} strokeWidth={1} />,
-        label: "Returns",
-        className: "bg-purple-500/10 text-purple-400 border-purple-500/20",
-    },
-    {
-        icon: <BarChart3 size={48} strokeWidth={1} />,
-        label: "Reports",
-        className: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
-    },
-    {
-        icon: <ShoppingCart size={48} strokeWidth={1} />,
-        label: "Orders",
-        className: "bg-red-500/10 text-red-400 border-red-500/20",
-    },
-    {
-        icon: <DollarSign size={48} strokeWidth={1} />,
-        label: "Value",
-        className: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
-    },
+  {
+    icon: <Boxes size={48} strokeWidth={1.2} />,
+    label: "Inventory",
+  },
+  {
+    icon: <TrendingUp size={48} strokeWidth={1.2} />,
+    label: "Sales",
+  },
+  {
+    icon: <RefreshCw size={48} strokeWidth={1.2} />,
+    label: "Returns",
+  },
+  {
+    icon: <BarChart3 size={48} strokeWidth={1.2} />,
+    label: "Reports",
+  },
+  {
+    icon: <ShoppingCart size={48} strokeWidth={1.2} />,
+    label: "Orders",
+  },
+  {
+    icon: <DollarSign size={48} strokeWidth={1.2} />,
+    label: "Value",
+  },
 ];
 
 export function AnimatedHero() {
@@ -43,11 +36,11 @@ export function AnimatedHero() {
       <div className="scene">
         <div className="cube">
           {featureFaces.map((face, index) => (
-            <div key={index} className={`cube__face cube__face--${index + 1} ${face.className}`}>
-                <div className="flex flex-col items-center justify-center gap-2">
-                    {face.icon}
-                    <p className="font-semibold text-lg">{face.label}</p>
-                </div>
+            <div key={index} className={`cube__face cube__face--${index + 1}`}>
+              <div className="flex flex-col items-center justify-center gap-2 text-primary">
+                {face.icon}
+                <p className="font-bold text-base tracking-wide text-foreground/90">{face.label}</p>
+              </div>
             </div>
           ))}
         </div>

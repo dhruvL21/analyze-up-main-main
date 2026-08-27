@@ -75,21 +75,56 @@ export function runBusinessSimulation(
   orders: PurchaseOrder[] = [],
   businessProfile?: BusinessProfile | null
 ): SimulationResult {
-  const selectedProduct = products.find(p => p.id === targetProductId) || products[0] || {
-    id: 'p-default',
-    name: 'Sample Product SKU',
-    price: 2500,
-    costPrice: 1500,
-    stock: 120,
-    minStock: 15,
-  };
+  if (!products || products.length === 0) {
+    const emptyBaseline: SimulationBaseline = {
+      revenue: 0,
+      grossProfit: 0,
+      profitMarginPercent: 0,
+      productPrice: 0,
+      productCost: 0,
+      stock: 0,
+      daysOfStock: 0,
+      dailyVelocity: 0,
+      supplierLeadTime: 0,
+      supplierReliability: 0,
+    };
+    return {
+      id: `sim-empty-${Date.now()}`,
+      type,
+      title: 'Simulation Unavailable (No Products)',
+      targetEntityName: 'None',
+      baseline: emptyBaseline,
+      simulated: {
+        newPrice: 0,
+        newCost: 0,
+        demandChangePercent: 0,
+        projectedRevenue: 0,
+        projectedProfit: 0,
+        marginChangePercentagePoints: 0,
+        projectedStockRemaining: 0,
+        daysOfStockRemaining: 0,
+        capitalRequired: 0,
+        capitalRecovered: 0,
+        stockoutRiskLevel: 'Low',
+      },
+      opportunityScore: 0,
+      riskScore: 0,
+      confidence: 'LOW',
+      confidenceReason: 'No product data loaded in workspace.',
+      assumptions: ['No product data currently loaded in workspace.'],
+      risks: ['Import products or upload CSV to run What-If strategic simulations.'],
+      recommendation: 'Add or import products into your workspace to test pricing, order quantities, and supplier decision scenarios.',
+    };
+  }
+
+  const selectedProduct = products.find(p => p.id === targetProductId) || products[0];
 
   const pReport = computeProductIntelligence(selectedProduct, transactions, [], suppliers);
 
-  const price = selectedProduct.price || 2500;
+  const price = selectedProduct.price || 0;
   const cost = selectedProduct.costPrice || (price * 0.6);
   const stock = selectedProduct.stock || 0;
-  const dailyVel = Math.max(0.3, pReport.averageDailySales);
+  const dailyVel = Math.max(0.1, pReport.averageDailySales);
   const marginPct = pReport.profitMarginPercent;
 
   const prefSupplier = suppliers.find(s => s.id === selectedProduct.supplierId || s.name === selectedProduct.supplier) || suppliers[0];
@@ -102,7 +137,7 @@ export function runBusinessSimulation(
     productPrice: price,
     productCost: cost,
     stock,
-    daysOfStock: Math.round(stock / dailyVel),
+    daysOfStock: dailyVel > 0 ? Math.round(stock / dailyVel) : 0,
     dailyVelocity: Number(dailyVel.toFixed(1)),
     supplierLeadTime: selectedProduct.leadTimeDays || prefSupplier?.leadTimeDays || 7,
     supplierReliability: sMetrics?.score || 85,

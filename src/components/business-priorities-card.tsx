@@ -30,9 +30,9 @@ export function BusinessPrioritiesCard() {
           </div>
           <Badge 
             variant="outline" 
-            onClick={() => router.push('/dashboard/ai-advisor')}
+            onClick={() => window.dispatchEvent(new CustomEvent('analyzeup_open_copilot', { detail: { query: 'What should I focus on today?' } }))}
             className="text-primary border-primary/30 text-xs font-bold cursor-pointer hover:bg-primary/20 hover:border-primary/50 transition-all active:scale-95"
-            title="Open Focus Mode AI Advisor"
+            title="Open Focus Mode AI Copilot"
           >
             Focus Mode ✨
           </Badge>

@@ -6,7 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { X, Send, Bot, Sparkles, Loader2, Lock, PlusCircle, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { askAnalyzeUpChat, ChatMessage } from '@/ai/flows/chat';
-import { processCopilotQuery, COPILOT_SUGGESTIONS, CopilotResponse } from '@/lib/copilot-engine';
+import { processCopilotQuery, getCopilotSuggestions, CopilotResponse } from '@/lib/copilot-engine';
 import { logBusinessAction } from '@/lib/audit-store';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,12 +18,16 @@ export function ChatWidget() {
   const { toast } = useToast();
   const router = useRouter();
 
+  const hasData = (products && products.length > 0) || (transactions && transactions.length > 0);
+
   const [isOpen, setIsOpen] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
   const [messages, setMessages] = useState<(ChatMessage & { copilotRes?: CopilotResponse })[]>([
     {
       role: 'assistant',
-      content: "Hello! I'm your AnalyzeUp AI Business Copilot. Ask me questions like 'What should I do today?', 'Why did profit drop?', or 'Which supplier is best?'.",
+      content: hasData
+        ? "Hello! I'm your AnalyzeUp AI Business Copilot. Ask me questions like 'What should I do today?', 'Why did profit drop?', or 'Which supplier is best?'."
+        : "Hello! I am your AI Business Copilot. Ask me questions about uploading your business data, our 22-column CSV template, or click any of the quick questions below to get started!",
     },
   ]);
   const [isPending, startTransition] = useTransition();
@@ -329,7 +333,7 @@ export function ChatWidget() {
               {/* Suggestions & Input Bar */}
               <div className="p-3 border-t border-border/40 bg-secondary/10 space-y-2 shrink-0">
                 <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                  {COPILOT_SUGGESTIONS.slice(0, 4).map((s, idx) => (
+                  {getCopilotSuggestions(hasData).slice(0, 4).map((s, idx) => (
                     <button
                       key={idx}
                       onClick={() => handleSendMessage(s.question)}

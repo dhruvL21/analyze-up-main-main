@@ -10,6 +10,7 @@ import { runBusinessSimulation } from './simulation-engine';
 import { formatCur } from './utils';
 
 export type IntentType =
+  | 'ONBOARDING_GUIDE'
   | 'PRODUCT_ANALYSIS'
   | 'INVENTORY_ANALYSIS'
   | 'SUPPLIER_ANALYSIS'
@@ -47,7 +48,18 @@ export interface CopilotResponse {
   suggestedFollowUps: string[];
 }
 
-export const COPILOT_SUGGESTIONS = [
+export const ONBOARDING_COPILOT_SUGGESTIONS = [
+  { category: 'Getting Started', question: 'How do I upload my business data?' },
+  { category: 'CSV Template', question: 'What 22 columns are in the CSV template?' },
+  { category: 'CSV Template', question: 'How do I download the sample CSV template?' },
+  { category: 'Data Upload', question: 'Can I upload products and sales together?' },
+  { category: 'Data Upload', question: 'How does AnalyzeUp auto-map custom CSV headers?' },
+  { category: 'Integrations', question: 'Can I connect Shopify or Google Drive?' },
+  { category: 'Data Security', question: 'Is my uploaded business data private and secure?' },
+  { category: 'Getting Started', question: 'What insights will I get after uploading?' },
+];
+
+export const BUSINESS_COPILOT_SUGGESTIONS = [
   { category: 'Priorities', question: 'What should I focus on today?' },
   { category: 'Forecasting', question: 'What will my revenue look like next month?' },
   { category: 'Forecasting', question: 'Which products will run out of stock next week?' },
@@ -59,6 +71,18 @@ export const COPILOT_SUGGESTIONS = [
   { category: 'Suppliers', question: 'Which supplier is becoming risky?' },
   { category: 'Procurement', question: 'Where can I reduce costs?' },
 ];
+
+export const COPILOT_SUGGESTIONS = BUSINESS_COPILOT_SUGGESTIONS;
+
+export function getCopilotSuggestions(hasData: boolean) {
+  return hasData ? BUSINESS_COPILOT_SUGGESTIONS : ONBOARDING_COPILOT_SUGGESTIONS;
+}
+
+export function getCopilotCategories(hasData: boolean) {
+  return hasData
+    ? ['All', 'Priorities', 'Forecasting', 'Profitability', 'Inventory', 'Suppliers', 'Procurement', 'Revenue']
+    : ['All', 'Getting Started', 'CSV Template', 'Data Upload', 'Integrations', 'Data Security'];
+}
 
 function normalize(str: string): string {
   return (str || '').toLowerCase().trim();
@@ -82,6 +106,32 @@ export function classifyBusinessIntent(
       intent: lastIntent.intent,
       intentLabel: `${lastIntent.intentLabel} (Follow-Up Root Cause)`,
     };
+  }
+
+  // Upload, Template, and Onboarding Questions
+  if (
+    q.includes('upload') ||
+    q.includes('csv') ||
+    q.includes('template') ||
+    q.includes('22 column') ||
+    q.includes('columns') ||
+    q.includes('import') ||
+    q.includes('how do i add') ||
+    q.includes('how to start') ||
+    q.includes('get started') ||
+    q.includes('auto-map') ||
+    q.includes('mapping') ||
+    q.includes('secure') ||
+    q.includes('security') ||
+    q.includes('privacy') ||
+    q.includes('private') ||
+    q.includes('drive') ||
+    q.includes('shopify') ||
+    q.includes('excel') ||
+    q.includes('spreadsheet') ||
+    q.includes('doubt')
+  ) {
+    return { intent: 'ONBOARDING_GUIDE', intentLabel: 'Data Upload & CSV Onboarding Guide' };
   }
 
   // Executive Report & Performance Summaries
@@ -264,6 +314,213 @@ export function processCopilotQuery(
 
   let confidence: CopilotResponse['confidence'] = forecastReport.overallConfidence;
   let confidenceReason: string | undefined = forecastReport.confidenceReason;
+
+  const hasData = (products && products.length > 0) || (transactions && transactions.length > 0);
+
+  // 0. ONBOARDING & EMPTY WORKSPACE INTELLIGENCE
+  if (!hasData || intent === 'ONBOARDING_GUIDE') {
+    const qLower = query.toLowerCase();
+
+    // Doubt 1: 22 Columns in CSV Template
+    if (qLower.includes('column') || qLower.includes('22') || qLower.includes('fields') || qLower.includes('header') || qLower.includes('format')) {
+      const what = 'AnalyzeUp uses a standardized 22-column database template designed for complete inventory, supplier, and sales intelligence.';
+      const why = 'The 22 columns capture transaction identifiers, customer profiles, product SKU specs, supplier lead times, sales metrics, and safety stock thresholds in a single unified schema.';
+      const actionText = 'Download our official 22-column CSV template from the Import Data dialog and paste your records into it.';
+
+      const answerMarkdown = `### 📋 22-COLUMN CSV DATABASE SCHEMA\n\n` +
+        `Our universal database template contains **22 standardized columns**:\n\n` +
+        `1. **Transaction & Order:** \`Invoice No\`, \`Order ID\`, \`Order Date\`, \`Payment Mode\`, \`Order Status\`\n` +
+        `2. **Customer Identification:** \`Customer ID\`, \`Customer Name\`\n` +
+        `3. **Product Catalog:** \`SKU\`, \`Item Name\`, \`Category\`\n` +
+        `4. **Supplier Logistics:** \`Supplier ID\`, \`Supplier Name\`, \`Lead Time Days\`\n` +
+        `5. **Sales & Financials:** \`Qty Sold\`, \`Purchase Price\`, \`Retail Price\`, \`Discount\`, \`Tax\`\n` +
+        `6. **Warehouse & Stock:** \`Current Stock\`, \`Reorder Level\`, \`Safety Stock\`, \`Warehouse\`\n\n` +
+        `**Tip:** You don't need to fill all 22 columns immediately. Any missing columns will be assigned safe default operational values automatically.`;
+
+      return {
+        intent: 'ONBOARDING_GUIDE',
+        intentLabel: '22-Column CSV Template Guide',
+        answerMarkdown,
+        what,
+        why,
+        actionText,
+        confidence: 'HIGH',
+        confidenceReason: 'Universal 22-column schema standard across AnalyzeUp.',
+        supportingData: [
+          { label: 'Total Columns', value: '22 Standardized' },
+          { label: 'File Format', value: 'CSV (.csv)' },
+          { label: 'AI Auto-Mapping', value: 'Enabled' },
+          { label: 'Sample Data', value: 'Available in Modal' },
+        ],
+        recommendedAction: {
+          label: 'Open Import Modal & Download Template',
+          actionType: 'navigate',
+          targetRoute: '/dashboard/inventory',
+        },
+        suggestedFollowUps: [
+          'How do I download the sample CSV template?',
+          'Can I upload products and sales together?',
+          'How does AnalyzeUp auto-map custom CSV headers?',
+        ],
+      };
+    }
+
+    // Doubt 2: How to download the sample CSV template
+    if (qLower.includes('download') || qLower.includes('sample')) {
+      const what = 'You can download the pre-populated 22-column sample CSV template directly from the Import dialog.';
+      const why = 'The sample template includes realistic multi-industry test records showing the exact column layout and data formatting.';
+      const actionText = 'Navigate to Inventory or Settings and click "Import Data" -> "Download Sample CSV".';
+
+      const answerMarkdown = `### 📥 HOW TO DOWNLOAD THE SAMPLE CSV TEMPLATE\n\n` +
+        `1. Navigate to **[Inventory & Catalog](/dashboard/inventory)** from the sidebar.\n` +
+        `2. Click the **"Import Data"** button at the top right.\n` +
+        `3. In the dialog, click **"Download Sample CSV Template"**.\n` +
+        `4. Open the downloaded file in Microsoft Excel, Google Sheets, or Apple Numbers, replace the sample rows with your real business data, and save as \`.csv\`.\n\n` +
+        `**Note:** You can also trigger Google Drive Auto-Sync or connect your store directly from the **Integrations** tab.`;
+
+      return {
+        intent: 'ONBOARDING_GUIDE',
+        intentLabel: 'Download Sample Template Guide',
+        answerMarkdown,
+        what,
+        why,
+        actionText,
+        confidence: 'HIGH',
+        confidenceReason: 'Standard sample templates built into AnalyzeUp.',
+        supportingData: [
+          { label: 'Template Type', value: '22-Column CSV' },
+          { label: 'Download Location', value: 'Import Dialog' },
+          { label: 'Editor Compatibility', value: 'Excel / Sheets / Numbers' },
+        ],
+        recommendedAction: {
+          label: 'Go to Inventory & Import Data',
+          actionType: 'navigate',
+          targetRoute: '/dashboard/inventory',
+        },
+        suggestedFollowUps: [
+          'What 22 columns are in the CSV template?',
+          'How does AnalyzeUp auto-map custom CSV headers?',
+          'Is my uploaded business data private and secure?',
+        ],
+      };
+    }
+
+    // Doubt 3: Auto-mapping custom headers
+    if (qLower.includes('map') || qLower.includes('custom header') || qLower.includes('auto-map') || qLower.includes('different name')) {
+      const what = 'AnalyzeUp features an AI Data Mapper that automatically recognizes and aligns custom column names.';
+      const why = 'You do not need to rename your existing spreadsheet headers manually. Our AI fuzzy matcher and LLM aliasing match headers like "Cost", "Price", "Qty", or "Stock" to the canonical 22-column schema.';
+      const actionText = 'Upload your existing CSV directly and review the visual column mapping preview before importing.';
+
+      const answerMarkdown = `### 🤖 AUTOMATIC AI HEADER MAPPING\n\n` +
+        `- **Zero Formatting Hassle:** If your export uses different header names (e.g., \`Unit Cost\` instead of \`Purchase Price\`, or \`Available Qty\` instead of \`Current Stock\`), our built-in mapper recognizes them instantly.\n` +
+        `- **Interactive Preview:** You get a step-by-step visual mapping preview where you can verify or adjust any column before importing.\n` +
+        `- **Saved Profiles:** Once mapped, AnalyzeUp remembers your file schema for automatic one-click recurring syncs in the future.`;
+
+      return {
+        intent: 'ONBOARDING_GUIDE',
+        intentLabel: 'AI Auto-Mapping Guide',
+        answerMarkdown,
+        what,
+        why,
+        actionText,
+        confidence: 'HIGH',
+        confidenceReason: 'Smart data normalization enabled.',
+        supportingData: [
+          { label: 'Matcher Engine', value: 'Fuzzy + AI Aliasing' },
+          { label: 'Manual Overrides', value: 'Interactive UI' },
+          { label: 'Profile Memory', value: 'Persistent' },
+        ],
+        recommendedAction: {
+          label: 'Upload CSV with Smart Mapping',
+          actionType: 'navigate',
+          targetRoute: '/dashboard/inventory',
+        },
+        suggestedFollowUps: [
+          'What 22 columns are in the CSV template?',
+          'Can I upload products and sales together?',
+          'Can I connect Shopify or Google Drive?',
+        ],
+      };
+    }
+
+    // Doubt 4: Data Security & Privacy
+    if (qLower.includes('secur') || qLower.includes('privacy') || qLower.includes('private') || qLower.includes('safe')) {
+      const what = 'Your business records, cost margins, supplier lists, and sales transactions are 100% private and encrypted.';
+      const why = 'AnalyzeUp implements multi-tenant cryptographic isolation with AES-256 Firestore security rules. No other workspace or organization can access your business data.';
+      const actionText = 'Upload your business data with complete peace of mind.';
+
+      const answerMarkdown = `### 🔒 DATA SECURITY & PRIVACY ARCHITECTURE\n\n` +
+        `- **Multi-Tenant Isolation:** All records are compartmentalized strictly under your authenticated User ID (\`users/{uid}\`).\n` +
+        `- **AES-256 Encryption:** Data in transit and at rest is secured using enterprise-grade encryption.\n` +
+        `- **Zero Public Sharing:** Your supplier purchase costs, margins, and customer identities are never exposed or used for public model training.\n` +
+        `- **Instant Reset:** You can permanently purge all data at any time via Settings -> Reset Workspace.`;
+
+      return {
+        intent: 'ONBOARDING_GUIDE',
+        intentLabel: 'Data Security & Privacy',
+        answerMarkdown,
+        what,
+        why,
+        actionText,
+        confidence: 'HIGH',
+        confidenceReason: 'Enterprise multi-tenant security architecture.',
+        supportingData: [
+          { label: 'Encryption', value: 'AES-256 In-Transit & At-Rest' },
+          { label: 'Isolation', value: 'Per-User Tenant Rules' },
+          { label: 'Data Retention', value: 'User Controlled' },
+        ],
+        recommendedAction: {
+          label: 'Review Settings & Security',
+          actionType: 'navigate',
+          targetRoute: '/dashboard/settings',
+        },
+        suggestedFollowUps: [
+          'How do I upload my business data?',
+          'What 22 columns are in the CSV template?',
+          'What insights will I get after uploading?',
+        ],
+      };
+    }
+
+    // General Empty State / Getting Started / "What should I focus on today?"
+    const what = 'Your workspace is initialized and awaiting your business data.';
+    const why = 'AnalyzeUp requires your product catalog or sales transactions to calculate business health scores, forecast 30-day stockouts, detect tied-up dead capital, and generate tailored operational priorities.';
+    const actionText = 'Download our 22-column CSV database template and upload your inventory or sales records via the Import Data button.';
+
+    const answerMarkdown = `### 🚀 WELCOME TO ANALYZEUP AI COPILOT\n\n` +
+      `- **Current Status:** Workspace is clean and awaiting your first data upload.\n` +
+      `- **Top Priority Today:** Upload your product catalog and sales history to activate live AI intelligence.\n` +
+      `- **Supported Formats:** Official 22-column CSV template, custom Excel/CSV exports, Google Drive auto-sync, or Shopify store integration.\n\n` +
+      `**Next Step:** Click below to open the Import dialog, download the sample template, or upload your file. Once uploaded, I will immediately generate your daily priorities, revenue forecasts, and supplier recommendations!`;
+
+    return {
+      intent: 'ONBOARDING_GUIDE',
+      intentLabel: 'Getting Started & Data Upload Guide',
+      answerMarkdown,
+      what,
+      why,
+      actionText,
+      confidence: 'HIGH',
+      confidenceReason: 'Workspace awaiting initial data upload.',
+      supportingData: [
+        { label: 'Workspace Status', value: 'Awaiting Data Upload' },
+        { label: 'Catalog SKUs', value: '0 Loaded' },
+        { label: 'Sales Records', value: '0 Logged' },
+        { label: 'Template Format', value: '22-Column CSV Ready' },
+      ],
+      recommendedAction: {
+        label: 'Import CSV Data Now',
+        actionType: 'navigate',
+        targetRoute: '/dashboard/inventory',
+      },
+      suggestedFollowUps: [
+        'What 22 columns are in the CSV template?',
+        'How do I download the sample CSV template?',
+        'Can I upload products and sales together?',
+        'How does AnalyzeUp auto-map custom CSV headers?',
+      ],
+    };
+  }
 
   // 0. GROWTH ANALYSIS INTENT
   if (intent === 'GROWTH_ANALYSIS') {

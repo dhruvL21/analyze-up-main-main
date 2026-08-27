@@ -24,6 +24,15 @@ import { useData } from "@/context/data-context";
 import { BusinessType, BusinessSize } from "@/lib/types";
 import { INDUSTRY_CONFIGS } from "@/lib/industry-intelligence";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -34,7 +43,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Check, Loader2, X, Sparkles, Building2, Zap, Trash2, RefreshCw, LogOut, Sun, Moon, KeyRound, Lock, Eye, EyeOff, ShieldCheck } from "lucide-react";
+import { Check, Loader2, X, Sparkles, Building2, Zap, Trash2, RefreshCw, LogOut, Sun, Moon, KeyRound, Lock, Eye, EyeOff, ShieldCheck, AlertTriangle } from "lucide-react";
 import { useUser, useAuth } from "@/firebase";
 import { signOut, updateUserPassword } from "@/firebase/auth/auth-service";
 import { useRouter } from "next/navigation";
@@ -135,12 +144,30 @@ export default function SettingsPage() {
     }
   };
 
+  // Reset Workspace Dialog State
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [resetConfirmInput, setResetConfirmInput] = useState("");
+  const [isResetting, setIsResetting] = useState(false);
+
   const handleResetWorkspace = async () => {
+    if (resetConfirmInput.trim().toUpperCase() !== "RESET DATA") {
+      toast({
+        variant: "destructive",
+        title: "Confirmation Mismatch",
+        description: 'Please type "RESET DATA" exactly to confirm workspace reset.',
+      });
+      return;
+    }
+    setIsResetting(true);
     try {
       await clearAllData();
-      toast({ title: "Workspace Cleared", description: "All inventory and transaction records have been reset." });
+      setResetConfirmInput("");
+      setResetDialogOpen(false);
+      router.push("/dashboard");
     } catch (error) {
       console.error("Reset failed:", error);
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -550,32 +577,90 @@ export default function SettingsPage() {
               <div>
                 <h4 className="text-sm font-semibold text-rose-500">Reset Workspace Data</h4>
                 <p className="text-xs text-muted-foreground">
-                  Permanently delete all products, suppliers, purchase orders & transactions.
+                  Permanently delete all products, transactions, insights, demographs, forecasts, and history.
                 </p>
               </div>
 
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
+              <Dialog open={resetDialogOpen} onOpenChange={(open) => {
+                setResetDialogOpen(open);
+                if (!open) setResetConfirmInput("");
+              }}>
+                <DialogTrigger asChild>
                   <Button variant="destructive" className="rounded-xl text-xs gap-1.5 shrink-0">
                     <Trash2 className="w-3.5 h-3.5" />
                     Reset Workspace
                   </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent className="rounded-2xl">
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Reset Workspace?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This action cannot be undone. All products, orders, and transactions will be deleted.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleResetWorkspace} className="rounded-xl bg-rose-600">
-                      Yes, Clear Workspace
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+                </DialogTrigger>
+                <DialogContent className="rounded-3xl max-w-md bg-card dark:bg-zinc-950 border border-rose-500/30 p-6 shadow-2xl">
+                  <DialogHeader className="space-y-2">
+                    <div className="w-10 h-10 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 flex items-center justify-center">
+                      <AlertTriangle className="w-5 h-5" />
+                    </div>
+                    <DialogTitle className="text-lg font-bold text-foreground">
+                      Reset Entire Workspace?
+                    </DialogTitle>
+                    <DialogDescription className="text-xs text-muted-foreground leading-relaxed">
+                      This action will permanently wipe all products, sales transactions, purchase orders, customer insights, demographs, simulations, and audit history. Your account login credentials and business settings will remain intact as a brand-new clean workspace.
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="space-y-3 py-2">
+                    <div className="rounded-2xl bg-rose-500/10 border border-rose-500/25 p-3.5 space-y-1.5">
+                      <div className="text-xs font-semibold text-rose-400">
+                        Type confirmation text:
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-sm font-extrabold text-rose-400 bg-rose-500/20 px-3 py-1 rounded-xl border border-rose-500/40 select-all tracking-wider">
+                          RESET DATA
+                        </span>
+                        <span className="text-[11px] text-muted-foreground">(type in the box below)</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Input
+                        value={resetConfirmInput}
+                        onChange={(e) => setResetConfirmInput(e.target.value)}
+                        placeholder="Type RESET DATA here to confirm"
+                        className="rounded-xl text-sm font-medium border-rose-500/40 focus-visible:ring-rose-500/40 bg-secondary/60 h-11 px-3.5"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+
+                  <DialogFooter className="flex flex-row items-center justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setResetDialogOpen(false);
+                        setResetConfirmInput("");
+                      }}
+                      className="rounded-xl text-xs"
+                      disabled={isResetting}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={handleResetWorkspace}
+                      disabled={resetConfirmInput.trim().toUpperCase() !== "RESET DATA" || isResetting}
+                      className="rounded-xl text-xs bg-rose-600 hover:bg-rose-700 font-bold gap-1.5 disabled:opacity-50"
+                    >
+                      {isResetting ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          Clearing Workspace...
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Permanently Reset Workspace
+                        </>
+                      )}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </div>
           </CardContent>
         </Card>

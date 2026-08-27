@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   PlusCircle,
   MoreHorizontal,
@@ -89,8 +90,16 @@ import { useToast } from '@/hooks/use-toast';
 export default function SuppliersPage() {
   const { suppliers, products, orders, transactions, deleteSupplier, isLoading, businessProfile } = useData();
   const { toast } = useToast();
+  const searchParams = useSearchParams();
 
   const [activeTab, setActiveTab] = useState<'suppliers' | 'savings'>('suppliers');
+
+  useEffect(() => {
+    const tab = searchParams?.get('tab');
+    if (tab && ['suppliers', 'savings'].includes(tab)) {
+      setActiveTab(tab as any);
+    }
+  }, [searchParams]);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [poModalOpen, setPoModalOpen] = useState(false);
   const [selectedSupplierForPo, setSelectedSupplierForPo] = useState<string | undefined>(undefined);

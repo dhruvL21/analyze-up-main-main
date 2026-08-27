@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Card,
   CardContent,
@@ -55,9 +56,17 @@ function parseDateValue(raw: any): Date {
 
 export default function InsightsPage() {
   const { products, transactions, isLoading } = useData();
+  const searchParams = useSearchParams();
   const [reportType, setReportType] = useState<ReportType>('inventory_summary');
   const [dateRange, setDateRange] = useState<DateRange>('30');
   const [activeTab, setActiveTab] = useState<'insights' | 'health'>('insights');
+
+  useEffect(() => {
+    const tab = searchParams?.get('tab');
+    if (tab && ['insights', 'health'].includes(tab)) {
+      setActiveTab(tab as any);
+    }
+  }, [searchParams]);
 
   const getFilteredTransactions = () => {
     if (dateRange === 'all') return transactions;
@@ -78,51 +87,77 @@ export default function InsightsPage() {
     });
   };
 
-  const filteredTransactions = getFilteredTransactions();
+  const filteredTransactions = React.useMemo(() => getFilteredTransactions(), [transactions, dateRange]);
 
-  const totalRevenue =
-    filteredTransactions
-      .filter((t) => t.type === 'Sale')
-      .reduce((acc, t) => {
-        return acc + (t.totalRevenue || (t.quantity * (t.price || 0)));
-      }, 0) || 0;
+  const productsMap = React.useMemo(() => {
+    const map = new Map<string, typeof products[0]>();
+    products.forEach(p => {
+      map.set(p.id, p);
+      if (p.sku) map.set(p.sku, p);
+    });
+    return map;
+  }, [products]);
 
-  const totalExpenses =
-    filteredTransactions
-      .filter((t) => t.type === 'Purchase')
-      .reduce((acc, t) => {
-        return acc + (t.totalCost || t.totalRevenue || (t.quantity * (t.price || 0)));
-      }, 0) || 0;
+  const { totalRevenue, totalExpenses, totalCOGS } = React.useMemo(() => {
+    let rev = 0;
+    let exp = 0;
+    let cogs = 0;
 
-  const totalCOGS =
-    filteredTransactions
-      .filter((t) => t.type === 'Sale')
-      .reduce((acc, t) => {
-        if (t.totalCost !== undefined) return acc + t.totalCost;
-        if (t.costPerUnit !== undefined) return acc + (t.quantity * t.costPerUnit);
-        const product = products.find((p) => p.id === t.productId || p.sku === t.sku);
-        return acc + t.quantity * (product?.costPrice || 0);
-      }, 0) || 0;
+    filteredTransactions.forEach(t => {
+      if (t.type === 'Sale') {
+        const itemRev = t.totalRevenue || ((t.quantity || 1) * (t.price || 0));
+        rev += itemRev;
+
+        if (t.totalCost !== undefined) {
+          cogs += t.totalCost;
+        } else if (t.costPerUnit !== undefined) {
+          cogs += (t.quantity || 1) * t.costPerUnit;
+        } else {
+          const product = productsMap.get(t.productId || '') || productsMap.get(t.sku || '');
+          cogs += (t.quantity || 1) * (product?.costPrice || (product?.price ? product.price * 0.6 : 0));
+        }
+      } else if (t.type === 'Purchase') {
+        exp += t.totalCost || t.totalRevenue || ((t.quantity || 1) * (t.price || 0));
+      }
+    });
+
+    return { totalRevenue: rev, totalExpenses: exp, totalCOGS: cogs };
+  }, [filteredTransactions, productsMap]);
 
   const totalNetProfit = totalRevenue - totalCOGS;
 
-  const topSellingProducts = [...products]
-    .map(product => {
-      const sales =
-        filteredTransactions
-          .filter((t) => t.productId === product.id && t.type === 'Sale')
-          .reduce((acc, t) => acc + t.quantity, 0) || 0;
-      const revenue = sales * product.price;
-      return { ...product, revenue };
-    })
-    .sort((a,b) => b.revenue - a.revenue)
-    .slice(0, 5);
+  const topSellingProducts = React.useMemo(() => {
+    const salesMap = new Map<string, number>();
+    filteredTransactions.forEach(t => {
+      if (t.type === 'Sale') {
+        const id = t.productId || t.sku;
+        if (id) {
+          salesMap.set(id, (salesMap.get(id) || 0) + (t.quantity || 1));
+        }
+      }
+    });
 
-  const totalProductsInStock =
-    products.reduce((acc, p) => acc + p.stock, 0) || 0;
-  const totalSalesCount = filteredTransactions.filter((t) => t.type === 'Sale').length || 0;
-  const totalInventoryValue =
-    products.reduce((acc, p) => acc + p.stock * p.price, 0) || 0;
+    return [...products]
+      .map(product => {
+        const sales = salesMap.get(product.id) || salesMap.get(product.sku || '') || 0;
+        const revenue = sales * (product.price || 0);
+        return { ...product, revenue };
+      })
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5);
+  }, [products, filteredTransactions]);
+
+  const totalProductsInStock = React.useMemo(() => {
+    return products.reduce((acc, p) => acc + (p.stock || 0), 0);
+  }, [products]);
+
+  const totalSalesCount = React.useMemo(() => {
+    return filteredTransactions.filter((t) => t.type === 'Sale').length;
+  }, [filteredTransactions]);
+
+  const totalInventoryValue = React.useMemo(() => {
+    return products.reduce((acc, p) => acc + (p.stock || 0) * (p.price || 0), 0);
+  }, [products]);
 
   const handleDownloadCsv = () => {
     let dataToExport: any[] = [];

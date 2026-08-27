@@ -64,6 +64,10 @@ import {
   Pencil,
   Settings,
   X,
+  FileSpreadsheet,
+  Download,
+  UploadCloud,
+  Table,
 } from 'lucide-react';
 import {
   Dialog,
@@ -215,6 +219,30 @@ export default function IntegrationsPage() {
   // Preset file for ImportDialog integration
   const [presetFile, setPresetFile] = useState<{ name: string; content: string; driveFileId?: string } | null>(null);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [showSchemaModal, setShowSchemaModal] = useState(false);
+
+  const handleDownload22ColumnTemplate = () => {
+    const sample22ColumnCsv = `Invoice No,Order ID,Order Date,Customer ID,Customer Name,SKU,Item Name,Category,Supplier ID,Supplier Name,Qty Sold,Purchase Price,Retail Price,Discount,Tax,Current Stock,Reorder Level,Safety Stock,Lead Time Days,Payment Mode,Order Status,Warehouse
+INV-1001,ORD-5001,2026-08-20,CUST-101,John Doe,SKU-ELEC-01,Wireless Noise-Cancelling Headphones,Electronics,SUP-101,Acoustic Tech Ltd,2,3200,4999,10,18,45,15,5,7,UPI,Completed,Main Warehouse
+INV-1002,ORD-5002,2026-08-21,CUST-102,TechCorp Solutions,SKU-ELEC-02,Mechanical Gaming Keyboard,Electronics,SUP-101,Acoustic Tech Ltd,1,1800,2999,0,18,8,10,4,5,Credit Card,Completed,North Hub
+INV-1003,ORD-5003,2026-08-22,CUST-103,Alice Smith,SKU-FASH-01,Classic Oxford Leather Shoes,Footwear,SUP-102,Prime Leather Crafts,1,1400,2499,5,12,30,8,3,10,Net Banking,Shipped,Main Warehouse
+INV-1004,ORD-5004,2026-08-23,CUST-104,Rahul Sharma,SKU-HOME-01,Ceramic Pour-Over Coffee Maker,Home & Kitchen,SUP-103,Artisan Living,3,650,1199,0,5,18,12,5,4,UPI,Completed,South Depot
+INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast USB-C 65W GaN Charger,Accessories,SUP-101,Acoustic Tech Ltd,5,750,1499,15,18,120,25,10,3,Card,Completed,Main Warehouse`;
+
+    const blob = new Blob([sample22ColumnCsv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'analyzeup_universal_22_columns_template.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast({
+      title: 'Template Downloaded',
+      description: 'analyzeup_universal_22_columns_template.csv is ready in your downloads folder.',
+    });
+  };
 
   // Sync Stats derived from Firestore tracked files
   const [syncStats, setSyncStats] = useState({
@@ -697,47 +725,52 @@ export default function IntegrationsPage() {
         }
       }
 
-      // Ingest Products or Transactions
-      if (fileType === 'INVENTORY_MASTER' || fileType === 'WAREHOUSE_STOCK') {
-        const productsToImport = validRows.map(r => ({
-          name: r.parsed.name,
-          sku: r.parsed.sku,
-          description: r.parsed.description || `Imported ${r.parsed.name}`,
-          categoryId: existingCatMap.get((r.parsed.category || '').toLowerCase()) || 'cat-general',
-          supplier: r.parsed.supplier || '',
-          supplierId: existingSupMap.get((r.parsed.supplier || '').toLowerCase()) || '',
-          price: r.parsed.price,
-          costPrice: r.parsed.costPrice && r.parsed.costPrice > 0 ? r.parsed.costPrice : Math.round(r.parsed.price * 0.6),
-          stock: r.parsed.stock,
-          minStock: 5,
-          maxStock: Math.max(100, r.parsed.stock * 2),
-          unit: r.parsed.unit || 'Piece',
-          status: 'Active' as const,
-          averageDailySales: 1.5,
-          leadTimeDays: 7,
-        }));
+      // Ingest Products & Transactions to drive live dashboard, catalog table, health scores, and charts
+      const productsToImport = validRows.map(r => ({
+        name: r.parsed.name,
+        sku: r.parsed.sku || `SKU-${r.parsed.name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10)}`,
+        description: r.parsed.description || `Imported ${r.parsed.name}`,
+        categoryId: existingCatMap.get((r.parsed.category || '').toLowerCase()) || 'cat-general',
+        category: r.parsed.category || 'General',
+        supplier: r.parsed.supplier || 'Google Drive Vendor',
+        supplierId: existingSupMap.get((r.parsed.supplier || '').toLowerCase()) || '',
+        price: r.parsed.price || 499,
+        costPrice: r.parsed.costPrice && r.parsed.costPrice > 0 ? r.parsed.costPrice : Math.round((r.parsed.price || 499) * 0.6),
+        stock: r.parsed.stock !== undefined && r.parsed.stock > 0 ? r.parsed.stock : 25,
+        minStock: 5,
+        maxStock: Math.max(100, (r.parsed.stock || 25) * 2),
+        unit: r.parsed.unit || 'Piece',
+        status: 'Active' as const,
+        averageDailySales: 1.5,
+        leadTimeDays: 7,
+      }));
 
-        await bulkAddProducts(productsToImport, true); // overwriteStock = true
-      } else if (fileType === 'SALES_REPORT') {
-        const transactionsToImport = validRows.map((r) => ({
+      await bulkAddProducts(productsToImport, true); // overwriteStock = true
+
+      const transactionsToImport = validRows.map((r, idx) => {
+        const d = new Date();
+        d.setDate(d.getDate() - (idx % 28));
+
+        return {
           type: 'Sale' as const,
           productId: `prod-${r.parsed.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
           productName: r.parsed.name,
-          quantity: r.parsed.qty,
-          price: r.parsed.price,
-          totalRevenue: r.parsed.price * r.parsed.qty,
-          costPerUnit: r.parsed.costPrice && r.parsed.costPrice > 0 ? r.parsed.costPrice : Math.round(r.parsed.price * 0.6),
-          totalCost: (r.parsed.costPrice && r.parsed.costPrice > 0 ? r.parsed.costPrice : Math.round(r.parsed.price * 0.6)) * r.parsed.qty,
-          customerName: r.parsed.customer,
+          quantity: r.parsed.qty || 1,
+          price: r.parsed.price || 499,
+          totalRevenue: (r.parsed.price || 499) * (r.parsed.qty || 1),
+          costPerUnit: r.parsed.costPrice && r.parsed.costPrice > 0 ? r.parsed.costPrice : Math.round((r.parsed.price || 499) * 0.6),
+          totalCost: (r.parsed.costPrice && r.parsed.costPrice > 0 ? r.parsed.costPrice : Math.round((r.parsed.price || 499) * 0.6)) * (r.parsed.qty || 1),
+          customerName: r.parsed.customer || 'Retail Customer',
           customerCity: r.parsed.city || '',
-          transactionDate: r.parsed.date,
+          transactionDate: r.parsed.date || d.toISOString().split('T')[0],
           status: r.parsed.status || 'Completed',
           paymentMethod: r.parsed.paymentMode || 'UPI',
-          notes: r.parsed.remarks || '',
-        }));
+          notes: r.parsed.remarks || 'Synced from Google Drive',
+          orderNumber: r.parsed.orderNo,
+        };
+      });
 
-        await bulkAddTransactions(transactionsToImport);
-      }
+      await bulkAddTransactions(transactionsToImport);
 
       // Track Google Drive file and sync history via DataContext
       await recordSyncSuccess(
@@ -1166,78 +1199,180 @@ export default function IntegrationsPage() {
         </div>
       </div>
 
-      {/* Available Section */}
+      {/* Section 1: Available Channels & CSV Upload */}
       <div className="space-y-3">
         <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
           <Zap className="w-4 h-4 text-emerald-500" />
-          Available Connections
+          Available Channels & CSV Upload
         </h3>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Card className="ios-glass border-emerald-500/30 hover:border-emerald-500/60 transition-all rounded-2xl overflow-hidden relative group flex flex-col h-full">
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="text-3xl p-2 rounded-2xl bg-emerald-500/10 border border-emerald-500/20">
-                    🛍️
-                  </div>
-                  <div>
-                    <CardTitle className="text-base font-bold flex items-center gap-2">
-                      Shopify
-                      {isShopifyConnected ? (
-                        <Badge className="bg-emerald-500/20 text-emerald-500 border-emerald-500/30 text-[10px] gap-1 py-0 px-2">
-                          <CheckCircle2 className="w-3 h-3" /> Connected
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {/* 1. CSV Database Import Card */}
+          <Card className="ios-glass border-amber-500/30 hover:border-amber-500/60 transition-all rounded-3xl overflow-hidden relative group flex flex-col h-full shadow-lg">
+              <CardHeader className="pb-3 border-b border-border/20">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="text-2xl p-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 shrink-0">
+                      📄
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <CardTitle className="text-base font-bold truncate">
+                          CSV Database
+                        </CardTitle>
+                        <Badge variant="outline" className="bg-amber-500/15 text-amber-400 border-amber-500/30 text-[10px] py-0 px-2 font-semibold shrink-0">
+                          22 Columns
                         </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-emerald-500 border-emerald-500/30 text-[10px]">
-                          Available
-                        </Badge>
-                      )}
-                    </CardTitle>
-                    <CardDescription className="text-xs">E-commerce Platform Sync</CardDescription>
+                      </div>
+                      <CardDescription className="text-xs truncate mt-0.5">
+                        Universal Database Upload
+                      </CardDescription>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4 flex-1 flex flex-col justify-between">
-              <div className="space-y-4">
-                <p className="text-xs text-muted-foreground">
-                  Sync catalog, live stock levels, sales orders & variants automatically from your Shopify storefront.
-                </p>
+              </CardHeader>
+              <CardContent className="p-5 space-y-4 flex-1 flex flex-col justify-between">
+                <div className="space-y-3.5">
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Upload your unified 22-column CSV database containing product catalog, unit costs, retail prices, suppliers, warehouse stock, and sales logs in one go.
+                  </p>
 
-                {isShopifyConnected ? (
-                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs space-y-1">
-                    <div className="flex items-center justify-between text-emerald-600 font-semibold">
-                      <span>Store: {businessProfile?.shopifyStoreName}</span>
-                      <span className="font-mono text-[11px]">{businessProfile?.shopifyStoreUrl}</span>
+                  <div className="grid grid-cols-2 gap-2.5 text-xs">
+                    <div className="p-3 rounded-2xl bg-secondary/30 border border-border/40 space-y-1">
+                      <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Standard Schema</span>
+                      <span className="font-semibold text-foreground text-xs block">22 Canonical Fields</span>
                     </div>
-                    <p className="text-[11px] text-muted-foreground">Live webhook sync active.</p>
+                    <div className="p-3 rounded-2xl bg-secondary/30 border border-border/40 space-y-1">
+                      <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">AI Data Mapper</span>
+                      <span className="font-semibold text-emerald-400 text-xs block">Auto-Match Active</span>
+                    </div>
                   </div>
-                ) : null}
-              </div>
 
-              <Button
-                onClick={() => setShowShopifyModal(true)}
-                className="w-full rounded-xl text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white shadow-md mt-auto"
-              >
-                <ShoppingBag className="w-3.5 h-3.5" />
-                {isShopifyConnected ? 'Manage Shopify Settings' : 'Connect Shopify Store'}
-                <ArrowRight className="w-3.5 h-3.5 ml-auto" />
-              </Button>
-            </CardContent>
-          </Card>
+                  <div className="grid grid-cols-2 gap-2.5 pt-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleDownload22ColumnTemplate}
+                      className="w-full text-xs h-9 rounded-xl gap-2 bg-secondary/40 hover:bg-secondary border-border/60 text-foreground font-semibold transition-all shadow-sm"
+                    >
+                      <Download className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span>Sample CSV</span>
+                    </Button>
 
-          {/* Real Google Drive Card */}
-          <Card className="ios-glass border-blue-500/30 hover:border-blue-500/60 transition-all rounded-2xl overflow-hidden relative group flex flex-col h-full">
-            <CardHeader className="pb-2">
-              <div className="flex items-start sm:items-center justify-between gap-2.5">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="text-3xl p-2 rounded-2xl bg-blue-500/10 border border-blue-500/20 shrink-0">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setShowSchemaModal(true)}
+                      className="w-full text-xs h-9 rounded-xl gap-2 bg-secondary/40 hover:bg-secondary border-border/60 text-foreground font-semibold transition-all shadow-sm"
+                    >
+                      <Table className="w-3.5 h-3.5 text-primary shrink-0" />
+                      <span>Inspect 22 Fields</span>
+                    </Button>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={() => setIsImportDialogOpen(true)}
+                  className="w-full rounded-2xl text-xs font-bold gap-2 bg-amber-600 hover:bg-amber-500 text-white shadow-md shadow-amber-600/20 h-10 mt-auto"
+                >
+                  <UploadCloud className="w-4 h-4" />
+                  Upload CSV / Open Wizard
+                  <ArrowRight className="w-3.5 h-3.5 ml-auto" />
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* 2. Shopify Store Card */}
+            <Card className="ios-glass border-emerald-500/30 hover:border-emerald-500/60 transition-all rounded-3xl overflow-hidden relative group flex flex-col h-full shadow-lg">
+              <CardHeader className="pb-3 border-b border-border/20">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="text-2xl p-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shrink-0">
+                      🛍️
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <CardTitle className="text-base font-bold truncate">
+                          Shopify
+                        </CardTitle>
+                        {isShopifyConnected ? (
+                          <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[10px] gap-1 py-0 px-2 shrink-0">
+                            <CheckCircle2 className="w-3 h-3" /> Connected
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-emerald-400 border-emerald-500/30 text-[10px] py-0 px-2 shrink-0">
+                            Available
+                          </Badge>
+                        )}
+                      </div>
+                      <CardDescription className="text-xs truncate mt-0.5">
+                        E-commerce Platform Sync
+                      </CardDescription>
+                    </div>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-5 space-y-4 flex-1 flex flex-col justify-between">
+                <div className="space-y-3.5">
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Sync catalog, live stock levels, sales orders & variants automatically from your connected Shopify storefront.
+                  </p>
+
+                  {isShopifyConnected ? (
+                    <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs space-y-1.5">
+                      <div className="flex items-center justify-between text-emerald-400 font-semibold">
+                        <span className="truncate">Store: {businessProfile?.shopifyStoreName}</span>
+                        <span className="font-mono text-[11px] text-muted-foreground truncate">{businessProfile?.shopifyStoreUrl}</span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        Live webhook synchronization active
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2.5 text-xs">
+                      <div className="p-3 rounded-2xl bg-secondary/30 border border-border/40 space-y-1">
+                        <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Sync Scope</span>
+                        <span className="font-semibold text-foreground text-xs block">Catalog & Orders</span>
+                      </div>
+                      <div className="p-3 rounded-2xl bg-secondary/30 border border-border/40 space-y-1">
+                        <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Frequency</span>
+                        <span className="font-semibold text-emerald-400 text-xs block">Real-time Webhooks</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <Button
+                  onClick={() => setShowShopifyModal(true)}
+                  className="w-full rounded-2xl text-xs font-bold gap-2 bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20 h-10 mt-auto"
+                >
+                  <ShoppingBag className="w-4 h-4" />
+                  {isShopifyConnected ? 'Manage Shopify Settings' : 'Connect Shopify Store'}
+                  <ArrowRight className="w-3.5 h-3.5 ml-auto" />
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {/* Section 2: Google Drive Auto-Sync (Single Unified Card) */}
+        <div className="space-y-3 pt-2">
+          <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+            <Cloud className="w-4 h-4 text-blue-500" />
+            Google Drive Cloud Auto-Sync
+          </h3>
+
+          <Card className="ios-glass border-blue-500/30 hover:border-blue-500/60 transition-all rounded-3xl overflow-hidden relative group shadow-lg">
+            <CardHeader className="pb-4 border-b border-border/20">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="text-2xl p-2.5 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 shrink-0">
                     📁
                   </div>
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <CardTitle className="text-base font-bold whitespace-nowrap">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <CardTitle className="text-base font-bold truncate">
                         Google Drive
                       </CardTitle>
                       {isLoadingConnection ? (
@@ -1245,83 +1380,84 @@ export default function IntegrationsPage() {
                           <Loader2 className="w-3 h-3 animate-spin" /> Loading
                         </Badge>
                       ) : driveConnection ? (
-                        <span className="relative flex h-2.5 w-2.5 shrink-0 ml-0.5" title="Connected & Active">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                        </span>
+                        <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-[10px] gap-1 py-0 px-2 shrink-0 font-semibold">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-400" /> Connected
+                        </Badge>
                       ) : (
-                        <Badge variant="outline" className="text-blue-500 border-blue-500/30 text-[10px] shrink-0">
+                        <Badge variant="outline" className="text-blue-400 border-blue-500/30 text-[10px] py-0 px-2 shrink-0">
                           Available
                         </Badge>
                       )}
                     </div>
                     <CardDescription className="text-xs truncate mt-0.5">
-                      Cloud Folder & Sheet Sync
+                      Background Cloud Folder & Spreadsheet Synchronization
                     </CardDescription>
                   </div>
                 </div>
 
-                {/* Top Right Corner Google Account Pill */}
                 {driveConnection && (
-                  <div className="flex items-center gap-1.5 bg-zinc-900/90 border border-blue-500/20 rounded-xl px-2.5 py-1 text-xs shadow-inner shrink-0">
+                  <div className="flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 rounded-2xl px-3 py-1.5 text-xs shrink-0 self-start sm:self-auto">
                     <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 text-white font-bold flex items-center justify-center text-[10px] shrink-0 shadow-sm">
                       {driveConnection.googleEmail ? driveConnection.googleEmail.charAt(0).toUpperCase() : 'G'}
                     </div>
-                    <span className="text-xs font-semibold text-zinc-100 max-w-[100px] sm:max-w-[160px] truncate" title={driveConnection.googleEmail}>
+                    <span className="text-xs font-semibold text-foreground max-w-[200px] truncate" title={driveConnection.googleEmail}>
                       {driveConnection.googleEmail || 'Google Drive'}
                     </span>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={switchGoogleAccount}
-                      className="h-6 w-6 p-0 text-blue-400 hover:text-blue-300 hover:bg-blue-500/15 rounded-lg ml-0.5 shrink-0"
+                      className="h-6 px-2 text-[11px] text-blue-400 hover:text-blue-300 hover:bg-blue-500/15 rounded-lg shrink-0 gap-1 font-medium"
                       title="Switch Google Account"
                     >
-                      <ArrowRightLeft className="w-3 h-3" />
+                      <ArrowRightLeft className="w-3 h-3" /> Switch
                     </Button>
                   </div>
                 )}
               </div>
             </CardHeader>
-            <CardContent className="space-y-4 flex-1 flex flex-col justify-between">
+
+            <CardContent className="p-6 space-y-5">
               {isLoadingConnection ? (
-                <div className="py-6 flex items-center justify-center">
+                <div className="py-8 flex items-center justify-center">
                   <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
                 </div>
               ) : !driveConnection ? (
                 // State 1: Disconnected
-                <div className="space-y-4 flex-1 flex flex-col justify-between">
-                  <p className="text-xs text-muted-foreground">
-                    Connect your business data folder to automatically sync sales spreadsheets and catalog updates without manual uploads.
-                  </p>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 py-2">
+                  <div className="space-y-1 max-w-xl">
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Connect your Google Drive business folder to automatically sync and ingest sales spreadsheets, orders, and product catalog files in the background.
+                    </p>
+                  </div>
                   <Button
                     onClick={connectGoogleDrive}
-                    className="w-full rounded-xl text-xs gap-1.5 bg-blue-600 hover:bg-blue-500 text-white shadow-md font-bold mt-4"
+                    className="rounded-2xl text-xs font-bold gap-2 bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/20 h-10 px-6 shrink-0 w-full sm:w-auto"
                   >
-                    <Cloud className="w-3.5 h-3.5" />
+                    <Cloud className="w-4 h-4" />
                     Connect Google Drive
                     <ArrowRight className="w-3.5 h-3.5 ml-auto" />
                   </Button>
                 </div>
               ) : !driveConnection.selectedFolderId ? (
                 // State 2: Connected but folder not selected
-                <div className="space-y-4 flex-1 flex flex-col justify-between">
-                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 py-2">
+                  <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs flex items-center gap-2.5 flex-1">
+                    <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
                     <div>
                       <p className="font-semibold text-amber-500">Folder Required</p>
-                      <p className="text-muted-foreground mt-0.5">Please select a sync folder to scan spreadsheets.</p>
+                      <p className="text-muted-foreground text-[11px]">Select a Google Drive folder to scan and sync spreadsheets.</p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 pt-1">
+                  <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
                     <Button
                       variant="default"
                       onClick={() => {
                         setShowFolderModal(true);
                         fetchFolders();
                       }}
-                      className="flex-1 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold gap-1.5"
+                      className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold gap-1.5 h-9 px-5 flex-1 sm:flex-initial"
                     >
                       <FolderOpen className="w-3.5 h-3.5" />
                       Select Sync Folder
@@ -1329,7 +1465,7 @@ export default function IntegrationsPage() {
                     <Button
                       onClick={handleDisconnectGoogleDrive}
                       variant="ghost"
-                      className="text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 rounded-xl text-xs px-3 shrink-0"
+                      className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-xl text-xs h-9 px-3 shrink-0"
                     >
                       Disconnect
                     </Button>
@@ -1337,236 +1473,224 @@ export default function IntegrationsPage() {
                 </div>
               ) : (
                 // State 3: Connected & Active Folder Selected
-                <div className="space-y-3.5 flex-1 flex flex-col justify-between">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs text-muted-foreground flex-wrap gap-1">
-                      <p>
-                        Connected to folder <span className="font-semibold text-blue-400">"{driveConnection.selectedFolderName || 'AnalyzeUp'}"</span>
+                <div className="space-y-6">
+                  {/* Top Stats Overview */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="p-3.5 rounded-2xl bg-secondary/30 border border-border/40 space-y-1">
+                      <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Sync Folder</span>
+                      <p className="font-semibold text-blue-400 text-xs truncate">
+                        "{driveConnection.selectedFolderName || 'AnalyzeUp'}"
                       </p>
-                      <div className="flex items-center gap-1 text-[11px] text-zinc-400 font-medium">
-                        <Clock className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                        <span>Last Synced: <strong className="text-zinc-200">{formatLastSyncTime(driveConnection.lastSyncAt)}</strong></span>
-                      </div>
                     </div>
 
-                    {/* Interactive Auto-Sync Schedule Badge */}
-                    <div className="flex items-center justify-between gap-2 flex-wrap pt-0.5">
+                    <div className="p-3.5 rounded-2xl bg-secondary/30 border border-border/40 space-y-1">
+                      <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Schedule</span>
                       <button
                         type="button"
                         onClick={() => setShowAutoSyncModal(true)}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/25 text-xs text-blue-400 font-medium transition-all group cursor-pointer"
-                        title="Click to customize auto-sync schedule"
+                        className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 font-semibold transition-colors group text-left"
                       >
                         <span className={cn(
-                          "w-2 h-2 rounded-full",
+                          "w-2 h-2 rounded-full shrink-0",
                           (driveConnection.autoSyncEnabled !== false) ? "bg-emerald-400 animate-pulse" : "bg-zinc-500"
                         )} />
-                        <span>
-                          Auto-Sync: <strong className="text-blue-300 font-semibold">{formatScheduleSummary(driveConnection)}</strong>
-                        </span>
-                        <Pencil className="w-3 h-3 ml-0.5 opacity-60 group-hover:opacity-100 transition-opacity" />
+                        <span className="truncate">{formatScheduleSummary(driveConnection)}</span>
+                        <Pencil className="w-3 h-3 opacity-60 group-hover:opacity-100 shrink-0" />
                       </button>
+                    </div>
 
-                      <div className="flex items-center gap-1 text-[11px] text-zinc-400">
-                        <span className="font-mono">{getNextSyncTimeDisplay(driveConnection)}</span>
+                    <div className="p-3.5 rounded-2xl bg-secondary/30 border border-border/40 space-y-1">
+                      <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Last Synced</span>
+                      <div className="flex items-center gap-1.5 text-xs text-foreground font-medium">
+                        <Clock className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                        <span className="truncate">{formatLastSyncTime(driveConnection.lastSyncAt)}</span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 pt-2">
-                    <Button
-                      onClick={() => syncFolderWithAutoIngest()}
-                      disabled={isLoadingScan || syncState === 'syncing'}
-                      className="flex-1 rounded-xl text-xs gap-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-md h-9 cursor-pointer"
-                    >
-                      {isLoadingScan || syncState === 'syncing' ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Syncing Folder...
-                        </>
-                      ) : (
-                        <>
-                          <RefreshCw className="w-3.5 h-3.5" /> Sync Folder Now
-                        </>
-                      )}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setShowFolderModal(true);
-                        fetchFolders();
-                      }}
-                      className="rounded-xl text-xs font-semibold h-9 px-3 shrink-0"
-                    >
-                      Change Folder
-                    </Button>
-                    <Button
-                      onClick={handleDisconnectGoogleDrive}
-                      variant="ghost"
-                      className="text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 rounded-xl text-xs h-9 px-3 shrink-0"
-                    >
-                      Disconnect
-                    </Button>
+                  {/* Actions & Next check banner */}
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1 border-t border-border/20">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span className="font-mono text-[11px]">Next check: {getNextSyncTimeDisplay(driveConnection)}</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <Button
+                        onClick={() => syncFolderWithAutoIngest()}
+                        disabled={isLoadingScan || syncState === 'syncing'}
+                        className="rounded-xl text-xs font-bold gap-2 bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/20 h-9 px-5 flex-1 sm:flex-initial cursor-pointer"
+                      >
+                        {isLoadingScan || syncState === 'syncing' ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Syncing Folder...
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5" /> Sync Folder Now
+                          </>
+                        )}
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setShowFolderModal(true);
+                          fetchFolders();
+                        }}
+                        className="rounded-xl text-xs font-medium h-9 px-3.5 border-border/60 hover:bg-secondary/60 shrink-0"
+                      >
+                        <FolderOpen className="w-3.5 h-3.5 mr-1 text-blue-400" />
+                        Change Folder
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        onClick={handleDisconnectGoogleDrive}
+                        variant="ghost"
+                        className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-xl text-xs h-9 px-3 shrink-0"
+                      >
+                        Disconnect
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Folder Files List Table (Integrated Inside the Same Single Card) */}
+                  <div className="pt-4 border-t border-border/30 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FolderOpen className="w-4 h-4 text-blue-400" />
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">
+                          Detected Folder Files
+                        </h4>
+                        <Badge variant="secondary" className="text-[10px] font-semibold">
+                          {driveFiles.length} {driveFiles.length === 1 ? 'file' : 'files'}
+                        </Badge>
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => syncFolderWithAutoIngest()}
+                        disabled={isLoadingScan || syncState === 'syncing'}
+                        className="rounded-xl text-xs gap-2 h-8 px-3.5 font-semibold bg-secondary/50 hover:bg-secondary border-border/60 text-foreground transition-all shadow-sm cursor-pointer"
+                      >
+                        <RefreshCw className={cn("w-3.5 h-3.5 text-blue-400 shrink-0", (isLoadingScan || syncState === 'syncing') && "animate-spin")} />
+                        <span>Scan & Sync All</span>
+                      </Button>
+                    </div>
+
+                    {isLoadingScan && driveFiles.length === 0 ? (
+                      <div className="py-8 flex flex-col items-center justify-center space-y-2">
+                        <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+                        <p className="text-xs text-muted-foreground">Scanning folder contents...</p>
+                      </div>
+                    ) : driveFiles.length === 0 ? (
+                      <div className="py-8 text-center space-y-2 border border-dashed border-border/60 rounded-2xl">
+                        <AlertCircle className="w-6 h-6 text-zinc-500 mx-auto" />
+                        <h5 className="text-xs font-semibold text-zinc-300">No spreadsheets found</h5>
+                        <p className="text-[11px] text-zinc-500 max-w-sm mx-auto">
+                          Place CSV or Excel files inside your <code className="bg-secondary px-1 py-0.5 rounded font-mono text-blue-400">{driveConnection.selectedFolderName}</code> folder, then click Scan & Sync All.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto rounded-2xl border border-border/30 bg-secondary/15">
+                        <table className="w-full text-xs text-left text-zinc-300">
+                          <thead>
+                            <tr className="border-b border-border/30 text-muted-foreground bg-secondary/30">
+                              <th className="py-2.5 px-3 font-bold">File Name</th>
+                              <th className="py-2.5 px-3 font-bold">Size</th>
+                              <th className="py-2.5 px-3 font-bold">Last Modified</th>
+                              <th className="py-2.5 px-3 font-bold">Synced Status</th>
+                              <th className="py-2.5 px-3 font-bold text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {driveFiles.map((file) => {
+                              const isSyncing = isSyncingFileId === file.id;
+                              const dateStr = new Date(file.modifiedTime).toLocaleDateString('en-IN', {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              });
+
+                              return (
+                                <tr key={file.id} className="border-b border-border/20 hover:bg-secondary/20 transition-colors">
+                                  <td className="py-2.5 px-3 font-semibold text-zinc-200">{file.name}</td>
+                                  <td className="py-2.5 px-3 text-zinc-400">
+                                    {file.sizeBytes ? `${(file.sizeBytes / 1024).toFixed(1)} KB` : '0 KB'}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-zinc-400">{dateStr}</td>
+                                  <td className="py-2.5 px-3">
+                                    {file.status === 'Synced' ? (
+                                      <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] gap-1 px-2 py-0">
+                                        <Check className="w-3 h-3" /> Synced
+                                      </Badge>
+                                    ) : file.status === 'Modified' ? (
+                                      <Badge className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] gap-1 px-2 py-0">
+                                        <RefreshCw className="w-2.5 h-2.5 animate-spin" /> Modified
+                                      </Badge>
+                                    ) : file.status === 'Needs Review' ? (
+                                      <Badge className="bg-rose-500/10 text-rose-400 border border-rose-500/20 text-[10px] gap-1 px-2 py-0">
+                                        <AlertCircle className="w-3 h-3" /> Review Required
+                                      </Badge>
+                                    ) : (
+                                      <Badge variant="secondary" className="text-[10px] px-2 py-0">
+                                        New File
+                                      </Badge>
+                                    )}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right">
+                                    {file.status === 'Synced' ? (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => syncFile(file)}
+                                        disabled={isSyncing}
+                                        className="h-7 text-[10px] font-semibold text-zinc-400 hover:text-white"
+                                      >
+                                        {isSyncing ? 'Processing...' : 'Re-Sync'}
+                                      </Button>
+                                    ) : file.status === 'Needs Review' ? (
+                                      <Button
+                                        size="sm"
+                                        onClick={() => syncFile(file)}
+                                        disabled={isSyncing}
+                                        className="h-7 text-[10px] font-bold bg-rose-500 hover:bg-rose-600 text-white rounded-lg px-2.5"
+                                      >
+                                        Review & Map
+                                      </Button>
+                                    ) : (
+                                      <Button
+                                        size="sm"
+                                        onClick={() => syncFile(file)}
+                                        disabled={isSyncing}
+                                        className="h-7 text-[10px] font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-2.5"
+                                      >
+                                        {isSyncing ? (
+                                          <>
+                                            <Loader2 className="w-3 h-3 animate-spin mr-1" /> Syncing...
+                                          </>
+                                        ) : (
+                                          'Sync Now'
+                                        )}
+                                      </Button>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
             </CardContent>
           </Card>
         </div>
-      </div>
-
-      {/* Scanned Files Section (Connected Folder view) */}
-      {driveConnection && driveConnection.selectedFolderId && (
-        <Card className="ios-glass border-border/40 rounded-3xl overflow-hidden p-6 space-y-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-border/40 pb-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-                  <FolderOpen className="w-5 h-5 text-blue-400" />
-                  Folder Files List
-                </h3>
-                <Badge variant="secondary" className="text-[11px] font-semibold">
-                  {driveFiles.length} {driveFiles.length === 1 ? 'file' : 'files'}
-                </Badge>
-              </div>
-              <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
-                <span>Spreadsheets detected inside your connected folder.</span>
-                <span>•</span>
-                <span>Last Synced: <strong className="text-zinc-200 font-medium">{formatLastSyncTime(driveConnection.lastSyncAt)}</strong></span>
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {driveConnection.googleEmail && (
-                <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-blue-500/10 border border-blue-500/20 text-[11px] text-zinc-300">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                  <span className="font-medium">{driveConnection.googleEmail}</span>
-                  <button
-                    onClick={switchGoogleAccount}
-                    className="text-blue-400 hover:text-blue-300 underline ml-1 font-semibold cursor-pointer"
-                    title="Switch Google account"
-                  >
-                    Switch
-                  </button>
-                </div>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => syncFolderWithAutoIngest()}
-                disabled={isLoadingScan || syncState === 'syncing'}
-                className="rounded-xl text-xs gap-1.5 h-8 font-semibold border-blue-500/20 text-blue-400 hover:bg-blue-500/10 cursor-pointer"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingScan || syncState === 'syncing' ? 'animate-spin' : ''}`} /> Scan & Sync All
-              </Button>
-            </div>
-          </div>
-
-          {isLoadingScan && driveFiles.length === 0 ? (
-            <div className="py-12 flex flex-col items-center justify-center space-y-2">
-              <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-              <p className="text-xs text-muted-foreground">Scanning folder contents...</p>
-            </div>
-          ) : driveFiles.length === 0 ? (
-            <div className="py-12 text-center space-y-2 border border-dashed border-border/60 rounded-2xl">
-              <AlertCircle className="w-8 h-8 text-zinc-500 mx-auto" />
-              <h4 className="text-sm font-semibold text-zinc-300">No spreadsheets found</h4>
-              <p className="text-xs text-zinc-500 max-w-sm mx-auto">
-                Place CSV or Excel files inside your <code className="bg-secondary px-1 py-0.5 rounded font-mono text-blue-400">{driveConnection.selectedFolderName}</code> Google Drive folder, then click Scan.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left text-zinc-300">
-                <thead>
-                  <tr className="border-b border-border/40 text-muted-foreground pb-2">
-                    <th className="py-2.5 font-bold">File Name</th>
-                    <th className="py-2.5 font-bold">Size</th>
-                    <th className="py-2.5 font-bold">Last Modified</th>
-                    <th className="py-2.5 font-bold">Synced Status</th>
-                    <th className="py-2.5 font-bold text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {driveFiles.map((file) => {
-                    const isSyncing = isSyncingFileId === file.id;
-                    const dateStr = new Date(file.modifiedTime).toLocaleDateString('en-IN', {
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    });
-
-                    return (
-                      <tr key={file.id} className="border-b border-zinc-900/50 hover:bg-secondary/10">
-                        <td className="py-3 font-semibold text-zinc-200">{file.name}</td>
-                        <td className="py-3 text-zinc-400">
-                          {file.sizeBytes ? `${(file.sizeBytes / 1024).toFixed(1)} KB` : '0 KB'}
-                        </td>
-                        <td className="py-3 text-zinc-400">{dateStr}</td>
-                        <td className="py-3">
-                          {file.status === 'Synced' ? (
-                            <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] gap-1 px-2 py-0">
-                              <Check className="w-3 h-3" /> Synced
-                            </Badge>
-                          ) : file.status === 'Modified' ? (
-                            <Badge className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] gap-1 px-2 py-0">
-                              <RefreshCw className="w-2.5 h-2.5 animate-spin" /> Modified
-                            </Badge>
-                          ) : file.status === 'Needs Review' ? (
-                            <Badge className="bg-rose-500/10 text-rose-400 border border-rose-500/20 text-[10px] gap-1 px-2 py-0">
-                              <AlertCircle className="w-3 h-3" /> Review Required
-                            </Badge>
-                          ) : (
-                            <Badge variant="secondary" className="text-[10px] px-2 py-0">
-                              New File
-                            </Badge>
-                          )}
-                        </td>
-                        <td className="py-3 text-right">
-                          {file.status === 'Synced' ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => syncFile(file)}
-                              disabled={isSyncing}
-                              className="h-7 text-[10px] font-semibold text-zinc-400 hover:text-white"
-                            >
-                              {isSyncing ? 'Processing...' : 'Re-Sync'}
-                            </Button>
-                          ) : file.status === 'Needs Review' ? (
-                            <Button
-                              size="sm"
-                              onClick={() => syncFile(file)}
-                              disabled={isSyncing}
-                              className="h-7 text-[10px] font-bold bg-rose-500 hover:bg-rose-600 text-white rounded-lg px-2.5"
-                            >
-                              Review & Map
-                            </Button>
-                          ) : (
-                            <Button
-                              size="sm"
-                              onClick={() => syncFile(file)}
-                              disabled={isSyncing}
-                              className="h-7 text-[10px] font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-2.5"
-                            >
-                              {isSyncing ? (
-                                <>
-                                  <Loader2 className="w-3 h-3 animate-spin mr-1" /> Syncing...
-                                </>
-                              ) : (
-                                'Sync Now'
-                              )}
-                            </Button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
-      )}
 
       {/* Coming Soon Section */}
       <div className="space-y-3 pt-4">
@@ -2059,6 +2183,96 @@ export default function IntegrationsPage() {
               ) : (
                 'Save Schedule'
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 22-Column Universal Database Schema Modal */}
+      <Dialog open={showSchemaModal} onOpenChange={setShowSchemaModal}>
+        <DialogContent className="max-w-2xl ios-glass rounded-3xl p-6 border-border/40 max-h-[85vh] overflow-y-auto scrollbar-thin">
+          <DialogHeader className="space-y-1 pb-3 border-b border-border/40">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500">
+                <FileSpreadsheet className="w-5 h-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold">22-Column Universal Database Schema</DialogTitle>
+                <DialogDescription className="text-xs">
+                  Standardized database columns supported for complete financial, inventory, forecasting, and supplier intelligence.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-4 py-3 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="p-3 rounded-2xl bg-secondary/30 border border-border/40 space-y-2">
+                <span className="font-bold text-foreground text-xs block text-amber-400">1. Orders & Transactions</span>
+                <ul className="space-y-1 text-muted-foreground text-[11px]">
+                  <li>• <strong className="text-foreground">Invoice No:</strong> Unique billing invoice reference</li>
+                  <li>• <strong className="text-foreground">Order ID:</strong> Transaction order tracking ID</li>
+                  <li>• <strong className="text-foreground">Order Date:</strong> Transaction timestamp (YYYY-MM-DD)</li>
+                  <li>• <strong className="text-foreground">Payment Mode:</strong> UPI, Card, Cash, NetBanking</li>
+                  <li>• <strong className="text-foreground">Order Status:</strong> Completed, Pending, Shipped</li>
+                </ul>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-secondary/30 border border-border/40 space-y-2">
+                <span className="font-bold text-foreground text-xs block text-blue-400">2. Customer Identification</span>
+                <ul className="space-y-1 text-muted-foreground text-[11px]">
+                  <li>• <strong className="text-foreground">Customer ID:</strong> Unique customer identifier</li>
+                  <li>• <strong className="text-foreground">Customer Name:</strong> Buyer entity or full name</li>
+                </ul>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-secondary/30 border border-border/40 space-y-2">
+                <span className="font-bold text-foreground text-xs block text-purple-400">3. Product Catalog</span>
+                <ul className="space-y-1 text-muted-foreground text-[11px]">
+                  <li>• <strong className="text-foreground">SKU:</strong> Stock Keeping Unit (Unique ID)</li>
+                  <li>• <strong className="text-foreground">Item Name:</strong> Product title & specs</li>
+                  <li>• <strong className="text-foreground">Category:</strong> Classification category</li>
+                </ul>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-secondary/30 border border-border/40 space-y-2">
+                <span className="font-bold text-foreground text-xs block text-emerald-400">4. Supplier & Logistics</span>
+                <ul className="space-y-1 text-muted-foreground text-[11px]">
+                  <li>• <strong className="text-foreground">Supplier ID:</strong> Unique vendor code</li>
+                  <li>• <strong className="text-foreground">Supplier Name:</strong> Primary supplier or vendor</li>
+                  <li>• <strong className="text-foreground">Lead Time Days:</strong> Delivery transit timeframe in days</li>
+                </ul>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-secondary/30 border border-border/40 space-y-2">
+                <span className="font-bold text-foreground text-xs block text-rose-400">5. Sales & Financials</span>
+                <ul className="space-y-1 text-muted-foreground text-[11px]">
+                  <li>• <strong className="text-foreground">Qty Sold:</strong> Quantity sold in transaction</li>
+                  <li>• <strong className="text-foreground">Purchase Price:</strong> Unit purchase cost (COGS)</li>
+                  <li>• <strong className="text-foreground">Retail Price:</strong> Unit selling / MRP price</li>
+                  <li>• <strong className="text-foreground">Discount:</strong> Applied promotional discount</li>
+                  <li>• <strong className="text-foreground">Tax:</strong> GST / VAT / Tax applied</li>
+                </ul>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-secondary/30 border border-border/40 space-y-2">
+                <span className="font-bold text-foreground text-xs block text-teal-400">6. Warehouse & Inventory</span>
+                <ul className="space-y-1 text-muted-foreground text-[11px]">
+                  <li>• <strong className="text-foreground">Current Stock:</strong> Available on-hand quantity</li>
+                  <li>• <strong className="text-foreground">Reorder Level:</strong> Threshold triggering reorder</li>
+                  <li>• <strong className="text-foreground">Safety Stock:</strong> Minimum buffer stock level</li>
+                  <li>• <strong className="text-foreground">Warehouse:</strong> Location or storage facility</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="flex flex-row items-center justify-between gap-2 border-t border-border/40 pt-3">
+            <Button variant="outline" size="sm" onClick={handleDownload22ColumnTemplate} className="rounded-xl text-xs gap-1.5">
+              <Download className="w-3.5 h-3.5" /> Download Template CSV
+            </Button>
+            <Button size="sm" onClick={() => { setShowSchemaModal(false); setIsImportDialogOpen(true); }} className="rounded-xl text-xs gap-1.5 bg-primary text-primary-foreground">
+              <UploadCloud className="w-3.5 h-3.5" /> Open Import Wizard
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -126,13 +126,19 @@ export function calculatePeriodMetrics(
     return tDate >= cutoff;
   });
 
+  const productsMap = new Map<string, typeof products[0]>();
+  products.forEach(p => {
+    if (p.id) productsMap.set(p.id, p);
+    if (p.sku) productsMap.set(p.sku, p);
+  });
+
   const totalUnitsSold = sales.reduce((sum, t) => sum + (t.quantity || 0), 0);
-  const revenue = sales.reduce((sum, t) => sum + (t.totalRevenue || (t.price || 0) * (t.quantity || 0)), 0);
+  const revenue = sales.reduce((sum, t) => sum + (t.totalRevenue || ((t.price || 0) * (t.quantity || 0))), 0);
 
   // COGS calculation
   const cogs = sales.reduce((sum, t) => {
     if (t.totalCost) return sum + t.totalCost;
-    const p = products.find(prod => prod.id === t.productId || prod.sku === t.sku);
+    const p = productsMap.get(t.productId || '') || productsMap.get(t.sku || '');
     const unitCost = t.costPerUnit || p?.costPrice || (t.price || 100) * 0.6;
     return sum + (t.quantity || 0) * unitCost;
   }, 0);
@@ -185,25 +191,27 @@ export function comparePeriods(
   const revenueChangeAbsolute = currentPeriod.revenue - priorPeriod.revenue;
   const revenueChangePercent = priorPeriod.revenue > 0
     ? Math.round(((currentPeriod.revenue - priorPeriod.revenue) / priorPeriod.revenue) * 1000) / 10
-    : 12.4;
+    : (currentPeriod.revenue > 0 ? 100 : 0);
 
   const profitChangeAbsolute = currentPeriod.grossProfit - priorPeriod.grossProfit;
   const profitChangePercent = priorPeriod.grossProfit > 0
     ? Math.round(((currentPeriod.grossProfit - priorPeriod.grossProfit) / priorPeriod.grossProfit) * 1000) / 10
-    : 8.2;
+    : (currentPeriod.grossProfit > 0 ? 100 : 0);
 
   const marginChangePercentagePoints = Math.round((currentPeriod.profitMarginPercent - priorPeriod.profitMarginPercent) * 10) / 10;
   const ordersChangePercent = priorPeriod.totalOrders > 0
     ? Math.round(((currentPeriod.totalOrders - priorPeriod.totalOrders) / priorPeriod.totalOrders) * 100)
-    : 15;
+    : (currentPeriod.totalOrders > 0 ? 100 : 0);
   const returnsChangePercent = priorPeriod.totalReturns > 0
     ? Math.round(((currentPeriod.totalReturns - priorPeriod.totalReturns) / priorPeriod.totalReturns) * 100)
-    : 3;
+    : (currentPeriod.totalReturns > 0 ? 100 : 0);
   const inventoryValueChangePercent = priorPeriod.inventoryValue > 0
     ? Math.round(((currentPeriod.inventoryValue - priorPeriod.inventoryValue) / priorPeriod.inventoryValue) * 100)
-    : 7;
+    : (currentPeriod.inventoryValue > 0 ? 100 : 0);
 
-  const summaryText = `Revenue shifted by ${revenueChangePercent >= 0 ? '+' : ''}${revenueChangePercent}% (${formatCur(revenueChangeAbsolute, businessProfile)}) while gross profit shifted by ${profitChangePercent >= 0 ? '+' : ''}${profitChangePercent}%. Margin changed by ${marginChangePercentagePoints >= 0 ? '+' : ''}${marginChangePercentagePoints} percentage points.`;
+  const summaryText = currentPeriod.revenue === 0 && priorPeriod.revenue === 0
+    ? 'No sales transactions recorded in this period. Import sales records or connect a store to begin period-over-period tracking.'
+    : `Revenue shifted by ${revenueChangePercent >= 0 ? '+' : ''}${revenueChangePercent}% (${formatCur(revenueChangeAbsolute, businessProfile)}) while gross profit shifted by ${profitChangePercent >= 0 ? '+' : ''}${profitChangePercent}%. Margin changed by ${marginChangePercentagePoints >= 0 ? '+' : ''}${marginChangePercentagePoints} percentage points.`;
 
   return {
     currentPeriod,
@@ -225,8 +233,8 @@ export function calculateProfitBridge(
   comparison: PeriodComparison,
   businessProfile?: BusinessProfile | null
 ): ProfitBridge {
-  const priorProfit = comparison.priorPeriod.grossProfit || 195000;
-  const currentProfit = comparison.currentPeriod.grossProfit || 214000;
+  const priorProfit = comparison.priorPeriod.grossProfit || 0;
+  const currentProfit = comparison.currentPeriod.grossProfit || 0;
 
   const revContrib = Math.round(comparison.revenueChangeAbsolute * 0.4);
   const supplierCostImpact = Math.round(comparison.currentPeriod.cogs * -0.06);
@@ -331,13 +339,25 @@ export function generateExecutiveScorecard(
   suppliers: Supplier[] = [],
   returns: ProductReturn[] = []
 ): ExecutiveScorecard {
+  if (!products || products.length === 0) {
+    return {
+      businessHealthScore: 0,
+      financialHealthScore: 0,
+      inventoryHealthScore: 0,
+      supplierHealthScore: 0,
+      productHealthScore: 0,
+      forecastConfidence: 'INSUFFICIENT' as any,
+      statusSentence: 'Workspace has no active inventory data. Import products to begin live tracking.',
+    };
+  }
+
   const health = computeBusinessHealth(products, transactions, suppliers, returns);
   const forecastingReport = generateBusinessForecastingReport(products, transactions, suppliers, []);
 
-  const financialHealthScore = Math.min(100, Math.max(40, health.score + 4));
-  const inventoryHealthScore = Math.min(100, Math.max(35, health.score - 2));
-  const supplierHealthScore = Math.min(100, Math.max(50, health.score + 5));
-  const productHealthScore = Math.min(100, Math.max(40, health.score + 1));
+  const financialHealthScore = Math.min(100, Math.max(0, health.score + 4));
+  const inventoryHealthScore = Math.min(100, Math.max(0, health.score - 2));
+  const supplierHealthScore = Math.min(100, Math.max(0, health.score + 5));
+  const productHealthScore = Math.min(100, Math.max(0, health.score + 1));
 
   return {
     businessHealthScore: health.score,
@@ -358,6 +378,21 @@ export function generateAIExecutiveBrief(
   opportunities: ExecutiveOpportunity[],
   businessProfile?: BusinessProfile | null
 ): AIExecutiveBrief {
+  if (scorecard.businessHealthScore === 0) {
+    return {
+      overallStatus: 'Workspace is ready for your data. Import a CSV or connect your store to generate real-time executive analytics.',
+      biggestPositiveChange: 'Clean workspace initialized.',
+      biggestNegativeChange: 'No transaction history detected.',
+      mainRisk: 'Awaiting data import.',
+      mainOpportunity: 'Upload your 22-column CSV template to unlock live AI diagnostics.',
+      recommendedActions: [
+        'Download the official 22-column CSV database template',
+        'Import your product catalog and sales history',
+        'Review real-time AI forecasts and simulations',
+      ],
+    };
+  }
+
   const revTrend = comparison.revenueChangePercent >= 0 ? 'improving' : 'experiencing friction';
   const negFactor = comparison.marginChangePercentagePoints < 0
     ? `Profit margin compressed by ${Math.abs(comparison.marginChangePercentagePoints)} percentage points due to vendor cost increases.`
@@ -374,7 +409,7 @@ export function generateAIExecutiveBrief(
 
   return {
     overallStatus: `Overall business performance is ${revTrend} with a Business Health Score of ${scorecard.businessHealthScore}/100 (${scorecard.statusSentence}).`,
-    biggestPositiveChange: `Revenue increased ${comparison.revenueChangePercent}% (${formatCur(comparison.revenueChangeAbsolute, businessProfile)}) driven by strong sales volume.`,
+    biggestPositiveChange: `Revenue shifted ${comparison.revenueChangePercent >= 0 ? '+' : ''}${comparison.revenueChangePercent}% (${formatCur(comparison.revenueChangeAbsolute, businessProfile)}) driven by sales activity.`,
     biggestNegativeChange: negFactor,
     mainRisk,
     mainOpportunity,

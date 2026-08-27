@@ -89,16 +89,16 @@ export function computeBusinessHealth(
 
   if (!products || products.length === 0) {
     return {
-      score: 75,
+      score: 0,
       category: 'Needs Attention',
-      color: '#a07e50',
-      badgeClass: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+      color: '#6b7280',
+      badgeClass: 'bg-muted text-muted-foreground border-border',
       factors: {
-        inventoryHealth: 50,
-        marginHealth: 60,
-        capitalEfficiency: 70,
-        supplierPerformance: 75,
-        deadStockRatio: 80,
+        inventoryHealth: 0,
+        marginHealth: 0,
+        capitalEfficiency: 0,
+        supplierPerformance: 0,
+        deadStockRatio: 0,
       },
       summarySentence: 'Workspace has no active inventory data. Import products to begin live tracking.',
     };
@@ -118,11 +118,17 @@ export function computeBusinessHealth(
     ? Math.round(Math.max(10, 100 - (deadStockValuation / totalValuation) * 100))
     : 100;
 
-  const totalSales = transactions.filter(t => t.type === 'Sale').reduce((acc, t) => acc + (t.totalRevenue || (t.quantity * (t.price || 0))), 0);
+  const productsMap = new Map<string, typeof products[0]>();
+  products.forEach(p => {
+    if (p.id) productsMap.set(p.id, p);
+    if (p.sku) productsMap.set(p.sku, p);
+  });
+
+  const totalSales = transactions.filter(t => t.type === 'Sale').reduce((acc, t) => acc + (t.totalRevenue || ((t.quantity || 1) * (t.price || 0))), 0);
   const totalCOGS = transactions.filter(t => t.type === 'Sale').reduce((acc, t) => {
     if (t.totalCost !== undefined) return acc + t.totalCost;
-    const p = products.find(prod => prod.id === t.productId || prod.sku === t.sku);
-    return acc + (t.quantity * (p?.costPrice || 0));
+    const p = productsMap.get(t.productId || '') || productsMap.get(t.sku || '');
+    return acc + ((t.quantity || 1) * (p?.costPrice || (p?.price ? p.price * 0.6 : 0)));
   }, 0);
   const profitMarginPercent = totalSales > 0 ? ((totalSales - totalCOGS) / totalSales) * 100 : 35;
   let marginHealth = Math.min(100, Math.round((profitMarginPercent / 45) * 100));

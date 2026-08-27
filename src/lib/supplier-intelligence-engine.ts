@@ -408,23 +408,30 @@ export function detectProcurementRisks(
 ): ProcurementRiskItem[] {
   const risks: ProcurementRiskItem[] = [];
 
-  // Group products by supplier to detect single-supplier dependency
+  // Pre-index products by supplier for O(1) grouping
   const supplierProductMap = new Map<string, Product[]>();
   allProducts.forEach(p => {
     const supName = p.supplier || 'Unassigned';
     if (!supplierProductMap.has(supName)) supplierProductMap.set(supName, []);
     supplierProductMap.get(supName)!.push(p);
+
+    if (p.supplierId) {
+      if (!supplierProductMap.has(p.supplierId)) supplierProductMap.set(p.supplierId, []);
+      supplierProductMap.get(p.supplierId)!.push(p);
+    }
   });
 
-  // Calculate supplier scores
+  // Calculate supplier scores using pre-filtered products
   const supplierPerfMap = new Map<string, SupplierPerformanceMetrics>();
   allSuppliers.forEach(sup => {
-    const metrics = calculateSupplierPerformanceScore(sup, allOrders, allProducts, allTransactions);
+    const prodsForSup = supplierProductMap.get(sup.name) || supplierProductMap.get(sup.id) || [];
+    const metrics = calculateSupplierPerformanceScore(sup, allOrders, prodsForSup, allTransactions);
     supplierPerfMap.set(sup.name, metrics);
   });
 
-  // 1. High Single-Supplier Dependency on Top SKUs
-  allProducts.forEach(prod => {
+  // 1. High Single-Supplier Dependency on Top SKUs (evaluate top 100 products max)
+  const topProducts = allProducts.slice(0, 100);
+  topProducts.forEach(prod => {
     const supName = prod.supplier;
     if (!supName) return;
 
@@ -488,7 +495,7 @@ export function detectProcurementRisks(
   return risks;
 }
 
-// 4. Calculate Potential Procurement Savings
+// 4. Calculate Procurement Cost Saving Opportunities
 export function calculateProcurementSavings(
   allProducts: Product[] = [],
   allSuppliers: Supplier[] = [],
@@ -515,7 +522,8 @@ export function calculateProcurementSavings(
     const sortedByCost = [...prods].sort((a, b) => (a.costPrice || 0) - (b.costPrice || 0));
     const cheapest = sortedByCost[0];
 
-    prods.forEach(p => {
+    // Evaluate top 30 products per category for speed
+    prods.slice(0, 30).forEach(p => {
       if (p.id === cheapest.id) return;
       const currentCost = p.costPrice || 500;
       const cheapestCost = cheapest.costPrice || 400;

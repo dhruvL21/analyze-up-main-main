@@ -1,11 +1,11 @@
-Item Name,SKU,Category,Selling Price,Buying Price,Current Stock,Description
-Classic Denim Jacket,DJ-001,Apparel,4500,1800,25,Premium cotton denim jacket with stone wash finish.
-Wireless Earbuds Pro,EB-202,Electronics,2999,1200,40,High-fidelity audio with active noise cancellation.
-Minimalist Leather Wallet,WL-101,Accessories,1500,450,15,Genuine top-grain leather slim wallet.
-Ergonomic Office Chair,OC-505,Furniture,12500,5500,10,Adjustable height and lumbar support for long work hours.
-Smart Fitness Tracker,FT-303,Electronics,3500,1100,50,Heart rate and sleep monitoring with OLED display.
-Ceramic Coffee Mug Set,MG-007,Home Decor,850,250,30,Set of 4 hand-painted ceramic mugs.
-Yoga Mat Non-Slip,YM-404,Fitness,1200,400,20,Eco-friendly TPE material with double-sided texture.
-Stainless Steel Water Bottle,WB-606,Essentials,950,300,60,Vacuum insulated 1-liter bottle.
-Bamboo Toothbrush Pack,BT-909,Essentials,450,120,100,Biodegradable bamboo handles with soft charcoal bristles.
-Organic Green Tea,GT-111,Food,350,150,80,Hand-picked organic loose leaf green tea.
+Invoice No,Order ID,Order Date,Customer ID,Customer Name,SKU,Item Name,Category,Supplier ID,Supplier Name,Qty Sold,Purchase Price,Retail Price,Discount,Tax,Current Stock,Reorder Level,Safety Stock,Lead Time Days,Payment Mode,Order Status,Warehouse
+INV-2026-001,ORD-88201,2026-08-01,CUST-1001,Rahul Sharma,DJ-001,Classic Denim Jacket,Apparel,SUP-501,Apex Apparel Global,2,1800,4500,200,150,25,10,8,5,UPI,Completed,Central Hub - Mumbai
+INV-2026-002,ORD-88202,2026-08-02,CUST-1002,Priya Patel,EB-202,Wireless Earbuds Pro,Electronics,SUP-502,Zenith Electronics Corp,1,1200,2999,100,90,40,15,10,7,Credit Card,Completed,North Facility - Delhi
+INV-2026-003,ORD-88203,2026-08-03,CUST-1003,Amit Verma,WL-101,Minimalist Leather Wallet,Accessories,SUP-503,Craftsman Leatherworks,3,450,1500,50,45,15,5,4,4,Cash,Completed,South Facility - Bangalore
+INV-2026-004,ORD-88204,2026-08-04,CUST-1004,Ananya Roy,OC-505,Ergonomic Office Chair,Furniture,SUP-504,ErgoComfort Living,1,5500,12500,500,400,10,4,3,10,Net Banking,Completed,West Warehouse - Pune
+INV-2026-005,ORD-88205,2026-08-05,CUST-1005,Vikram Malhotra,FT-303,Smart Fitness Tracker,Electronics,SUP-502,Zenith Electronics Corp,4,1100,3500,250,120,50,12,8,6,UPI,Delivered,East Hub - Kolkata
+INV-2026-006,ORD-88206,2026-08-06,CUST-1006,Neha Gupta,MG-007,Ceramic Coffee Mug Set,Home Decor,SUP-505,Studio Clay & Craft,2,250,850,0,30,30,10,6,5,UPI,Completed,Central Hub - Mumbai
+INV-2026-007,ORD-88207,2026-08-07,CUST-1007,Rohan Desai,YM-404,Yoga Mat Non-Slip,Fitness,SUP-506,FlexiFit Gear,1,400,1200,50,40,20,8,5,4,Credit Card,Shipped,North Facility - Delhi
+INV-2026-008,ORD-88208,2026-08-08,CUST-1008,Kavita Iyer,WB-606,Stainless Steel Water Bottle,Essentials,SUP-507,EcoVessel Supplies,5,300,950,50,35,60,15,10,4,Net Banking,Completed,South Facility - Bangalore
+INV-2026-009,ORD-88209,2026-08-09,CUST-1009,Arjun Nair,BT-909,Bamboo Toothbrush Pack,Essentials,SUP-508,GreenLife Organics,10,120,450,20,15,100,25,20,3,Cash,Delivered,West Warehouse - Pune
+INV-2026-010,ORD-88210,2026-08-10,CUST-1010,Sunita Rao,GT-111,Organic Green Tea,Food,SUP-509,Himalayan Plantation,3,150,350,0,15,80,20,15,5,UPI,Completed,Central Hub - Mumbai

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   PlusCircle,
   MoreHorizontal,
@@ -15,6 +15,10 @@ import {
   Search,
   Package,
   Calendar,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -85,6 +89,9 @@ export default function OrdersPage() {
 
   const [activeTab, setActiveTab] = useState<OrderFilterTab>('pending');
   const [searchQuery, setSearchQuery] = useState('');
+  const [ordersPage, setOrdersPage] = useState(1);
+  const ordersPageSize = 25;
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [viewingOrder, setViewingOrder] = useState<PurchaseOrder | null>(null);
   const [receivingOrder, setReceivingOrder] = useState<PurchaseOrder | null>(null);
@@ -92,45 +99,88 @@ export default function OrdersPage() {
 
   const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
 
+  // Fast pre-indexed lookups
+  const suppliersMap = React.useMemo(() => {
+    const map = new Map<string, typeof suppliers[0]>();
+    suppliers.forEach(s => map.set(s.id, s));
+    return map;
+  }, [suppliers]);
+
+  const productsMap = React.useMemo(() => {
+    const map = new Map<string, typeof products[0]>();
+    products.forEach(p => map.set(p.id, p));
+    return map;
+  }, [products]);
+
   // Sort orders newest first
-  const sortedOrders = [...orders].sort((a, b) => {
-    const dateA = new Date(a.orderDate || 0).getTime();
-    const dateB = new Date(b.orderDate || 0).getTime();
-    return dateB - dateA;
-  });
+  const sortedOrders = React.useMemo(() => {
+    return [...orders].sort((a, b) => {
+      const dateA = new Date(a.orderDate || 0).getTime();
+      const dateB = new Date(b.orderDate || 0).getTime();
+      return dateB - dateA;
+    });
+  }, [orders]);
 
-  const pendingOrders = sortedOrders.filter(
-    (o) => o.status === 'Pending' || o.status === 'Shipped' || o.status === 'Delivered'
-  );
-  const fulfilledOrders = sortedOrders.filter((o) => o.status === 'Fulfilled');
-  const cancelledOrders = sortedOrders.filter((o) => o.status === 'Cancelled');
+  const pendingOrders = React.useMemo(() => {
+    return sortedOrders.filter(
+      (o) => o.status === 'Pending' || o.status === 'Shipped' || o.status === 'Delivered'
+    );
+  }, [sortedOrders]);
 
-  const filteredOrders = sortedOrders.filter((order) => {
-    if (activeTab === 'pending') {
-      if (order.status === 'Fulfilled' || order.status === 'Cancelled') return false;
-    } else if (activeTab === 'fulfilled') {
-      if (order.status !== 'Fulfilled') return false;
-    } else if (activeTab === 'cancelled') {
-      if (order.status !== 'Cancelled') return false;
-    }
+  const fulfilledOrders = React.useMemo(() => {
+    return sortedOrders.filter((o) => o.status === 'Fulfilled');
+  }, [sortedOrders]);
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const sup = suppliers.find((s) => s.id === order.supplierId)?.name?.toLowerCase() || '';
-      const prod = products.find((p) => p.id === order.productId)?.name?.toLowerCase() || '';
-      const id = order.id.toLowerCase();
-      return sup.includes(q) || prod.includes(q) || id.includes(q);
-    }
-    return true;
-  });
+  const cancelledOrders = React.useMemo(() => {
+    return sortedOrders.filter((o) => o.status === 'Cancelled');
+  }, [sortedOrders]);
+
+  const filteredOrders = React.useMemo(() => {
+    return sortedOrders.filter((order) => {
+      if (activeTab === 'pending') {
+        if (order.status === 'Fulfilled' || order.status === 'Cancelled') return false;
+      } else if (activeTab === 'fulfilled') {
+        if (order.status !== 'Fulfilled') return false;
+      } else if (activeTab === 'cancelled') {
+        if (order.status !== 'Cancelled') return false;
+      }
+
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const sup = (suppliersMap.get(order.supplierId)?.name || order.supplierName || '').toLowerCase();
+        const prod = (productsMap.get(order.productId)?.name || order.productName || '').toLowerCase();
+        const id = order.id.toLowerCase();
+        return sup.includes(q) || prod.includes(q) || id.includes(q);
+      }
+      return true;
+    });
+  }, [sortedOrders, activeTab, searchQuery, suppliersMap, productsMap]);
+
+  // Pagination for orders table
+  const totalOrderPages = Math.max(1, Math.ceil(filteredOrders.length / ordersPageSize));
+  const safeOrderPage = Math.min(ordersPage, totalOrderPages);
+  const paginatedOrders = React.useMemo(() => {
+    const start = (safeOrderPage - 1) * ordersPageSize;
+    return filteredOrders.slice(start, start + ordersPageSize);
+  }, [filteredOrders, safeOrderPage, ordersPageSize]);
+
+  // Reset pagination on tab or search change
+  useEffect(() => {
+    setOrdersPage(1);
+  }, [activeTab, searchQuery]);
 
   // Calculate Inbound Metrics
-  const totalInboundUnits = pendingOrders.reduce((sum, o) => sum + (o.quantity || 0), 0);
-  const totalInboundSpend = pendingOrders.reduce((sum, o) => {
-    const prod = products.find((p) => p.id === o.productId);
-    const unitCost = o.unitCost || prod?.costPrice || (prod?.price || 500) * 0.6;
-    return sum + unitCost * o.quantity;
-  }, 0);
+  const totalInboundUnits = React.useMemo(() => {
+    return pendingOrders.reduce((sum, o) => sum + (o.quantity || 0), 0);
+  }, [pendingOrders]);
+
+  const totalInboundSpend = React.useMemo(() => {
+    return pendingOrders.reduce((sum, o) => {
+      const prod = productsMap.get(o.productId);
+      const unitCost = o.unitCost || prod?.costPrice || (prod?.price || 500) * 0.6;
+      return sum + unitCost * (o.quantity || 1);
+    }, 0);
+  }, [pendingOrders, productsMap]);
 
   const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -386,9 +436,9 @@ export default function OrdersPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody className="divide-y divide-border/30">
-                      {filteredOrders.map((order) => {
-                        const sup = suppliers.find((s) => s.id === order.supplierId);
-                        const prod = products.find((p) => p.id === order.productId);
+                      {paginatedOrders.map((order) => {
+                        const sup = suppliersMap.get(order.supplierId);
+                        const prod = productsMap.get(order.productId);
                         const pName = prod?.name || order.productName || 'Product';
                         const supName = sup?.name || order.supplierName || 'Supplier';
                         const unitCost = order.unitCost || prod?.costPrice || (prod?.price || 500) * 0.6;
@@ -433,20 +483,20 @@ export default function OrdersPage() {
                               </div>
                             </TableCell>
 
-                            {/* Status Badge (Clean single-line) */}
+                            {/* Status */}
                             <TableCell className="py-3 text-center">
                               {order.status === 'Fulfilled' ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 whitespace-nowrap shadow-xs">
-                                  <CheckCircle2 className="w-3 h-3 shrink-0" /> Received
-                                </span>
-                              ) : isPending ? (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 whitespace-nowrap shadow-xs">
-                                  <Truck className="w-3.5 h-3.5 shrink-0 animate-pulse" /> In Transit
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30 whitespace-nowrap">
+                                <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 text-[10px] font-bold px-2.5 py-0.5">
+                                  <CheckCircle2 className="w-3 h-3 mr-1" /> Received
+                                </Badge>
+                              ) : order.status === 'Cancelled' ? (
+                                <Badge className="bg-rose-500/15 text-rose-400 border-rose-500/30 text-[10px] font-bold px-2.5 py-0.5">
                                   Cancelled
-                                </span>
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-amber-500/15 text-amber-400 border-amber-500/30 text-[10px] font-bold px-2.5 py-0.5">
+                                  <Truck className="w-3 h-3 mr-1" /> In Transit
+                                </Badge>
                               )}
                             </TableCell>
 
@@ -552,9 +602,9 @@ export default function OrdersPage() {
 
                 {/* Mobile Card List View */}
                 <div className="md:hidden divide-y divide-border/30">
-                  {filteredOrders.map((order) => {
-                    const sup = suppliers.find((s) => s.id === order.supplierId);
-                    const prod = products.find((p) => p.id === order.productId);
+                  {paginatedOrders.map((order) => {
+                    const sup = suppliersMap.get(order.supplierId);
+                    const prod = productsMap.get(order.productId);
                     const pName = prod?.name || order.productName || 'Product';
                     const supName = sup?.name || order.supplierName || 'Supplier';
                     const unitCost = order.unitCost || prod?.costPrice || (prod?.price || 500) * 0.6;
@@ -623,6 +673,61 @@ export default function OrdersPage() {
                     );
                   })}
                 </div>
+
+                {/* Pagination Controls Bar */}
+                {filteredOrders.length > ordersPageSize && (
+                  <div className="p-4 border-t border-border/40 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground">
+                    <span>
+                      Showing <span className="font-semibold text-foreground">{(safeOrderPage - 1) * ordersPageSize + 1}</span> to{' '}
+                      <span className="font-semibold text-foreground">{Math.min(safeOrderPage * ordersPageSize, filteredOrders.length)}</span> of{' '}
+                      <span className="font-semibold text-foreground">{filteredOrders.length.toLocaleString()}</span> purchase orders
+                    </span>
+
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        disabled={safeOrderPage <= 1}
+                        onClick={() => setOrdersPage(1)}
+                        className="h-8 w-8 rounded-lg"
+                      >
+                        <ChevronsLeft className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        disabled={safeOrderPage <= 1}
+                        onClick={() => setOrdersPage(p => Math.max(1, p - 1))}
+                        className="h-8 w-8 rounded-lg"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+
+                      <span className="px-2 font-bold text-foreground">
+                        Page {safeOrderPage} of {totalOrderPages}
+                      </span>
+
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        disabled={safeOrderPage >= totalOrderPages}
+                        onClick={() => setOrdersPage(p => Math.min(totalOrderPages, p + 1))}
+                        className="h-8 w-8 rounded-lg"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        disabled={safeOrderPage >= totalOrderPages}
+                        onClick={() => setOrdersPage(totalOrderPages)}
+                        className="h-8 w-8 rounded-lg"
+                      >
+                        <ChevronsRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </CardContent>
