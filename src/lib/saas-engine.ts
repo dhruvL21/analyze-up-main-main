@@ -90,20 +90,20 @@ export const PLAN_CONFIGS: Record<PlanType, PlanConfig> = {
     name: 'Free Trial',
     priceMonthly: 0,
     priceMonthlyUSD: 0,
-    productLimit: 50,
-    aiQueriesLimit: 20,
-    reportsLimit: 5,
-    teamMembersLimit: 1,
-    shopifySyncAllowed: false,
-    forecastingAllowed: false,
+    productLimit: 10000,
+    aiQueriesLimit: 50,
+    reportsLimit: 25,
+    teamMembersLimit: 2,
+    shopifySyncAllowed: true,
+    forecastingAllowed: true,
     proactiveMonitoringAllowed: true,
-    auditLogsAllowed: false,
+    auditLogsAllowed: true,
     features: [
-      'Up to 50 Products',
-      '20 Monthly AI Queries',
-      'Basic Inventory Intelligence',
-      '5 Report Snapshots',
-      'Single User Access',
+      'Up to 10,000 Records / Products',
+      '50 Monthly AI Queries',
+      'Full Inventory Intelligence',
+      'Demand Forecasting Engine',
+      'Universal CSV & Excel Ingestion',
     ],
   },
   STARTER: {
@@ -111,21 +111,21 @@ export const PLAN_CONFIGS: Record<PlanType, PlanConfig> = {
     name: 'Starter Plan',
     priceMonthly: 1499,
     priceMonthlyUSD: 19,
-    productLimit: 250,
-    aiQueriesLimit: 100,
-    reportsLimit: 25,
-    teamMembersLimit: 3,
+    productLimit: 25000,
+    aiQueriesLimit: 250,
+    reportsLimit: 100,
+    teamMembersLimit: 5,
     shopifySyncAllowed: true,
     forecastingAllowed: true,
     proactiveMonitoringAllowed: true,
     auditLogsAllowed: true,
     features: [
-      'Up to 250 Products',
-      '100 Monthly AI Queries',
+      'Up to 25,000 Records / Products',
+      '250 Monthly AI Queries',
       'Supplier Intelligence',
       '30-Day Demand Forecasting',
-      'Shopify Sync Integration',
-      'Up to 3 Team Members',
+      'Shopify & ERP Sync Integrations',
+      'Up to 5 Team Members',
     ],
   },
   GROWTH: {
@@ -133,21 +133,21 @@ export const PLAN_CONFIGS: Record<PlanType, PlanConfig> = {
     name: 'Growth Plan',
     priceMonthly: 3999,
     priceMonthlyUSD: 49,
-    productLimit: 1000,
-    aiQueriesLimit: 500,
-    reportsLimit: 100,
-    teamMembersLimit: 10,
+    productLimit: 50000,
+    aiQueriesLimit: 1000,
+    reportsLimit: 500,
+    teamMembersLimit: 15,
     shopifySyncAllowed: true,
     forecastingAllowed: true,
     proactiveMonitoringAllowed: true,
     auditLogsAllowed: true,
     features: [
-      'Up to 1,000 Products',
-      '500 Monthly AI Queries',
+      'Up to 50,000 Records / Products',
+      '1,000 Monthly AI Queries',
       'Executive Intelligence Suite',
       '90-Day Demand Forecasting',
       'Full Proactive Automation',
-      'Up to 10 Team Members',
+      'Up to 15 Team Members',
       'Audit Logging',
     ],
   },
@@ -156,21 +156,21 @@ export const PLAN_CONFIGS: Record<PlanType, PlanConfig> = {
     name: 'Enterprise Pro',
     priceMonthly: 8999,
     priceMonthlyUSD: 99,
-    productLimit: 10000,
-    aiQueriesLimit: 5000,
-    reportsLimit: 1000,
-    teamMembersLimit: 25,
+    productLimit: 250000,
+    aiQueriesLimit: 10000,
+    reportsLimit: 5000,
+    teamMembersLimit: 50,
     shopifySyncAllowed: true,
     forecastingAllowed: true,
     proactiveMonitoringAllowed: true,
     auditLogsAllowed: true,
     features: [
-      'Up to 10,000 Products',
-      '5,000 Monthly AI Queries',
+      'Up to 250,000 Records / Products',
+      '10,000 Monthly AI Queries',
       'Unlimited Executive Reports',
       'Scenario Simulator',
       'Priority AI Copilot Engine',
-      'Up to 25 Team Members',
+      'Up to 50 Team Members',
       'Dedicated Account Support',
     ],
   },
@@ -336,5 +336,41 @@ export function getStoredAuditLogs(): AuditLogEntry[] {
     return JSON.parse(raw);
   } catch {
     return [];
+  }
+}
+
+// 7. Workspace Members Store
+const MEMBERS_STORAGE_KEY = 'analyzeup_workspace_members_v1';
+
+export function getStoredWorkspaceMembers(defaultUser?: { uid?: string; email?: string; displayName?: string }): WorkspaceMember[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(MEMBERS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {
+    // fallback
+  }
+
+  const defaultMembers: WorkspaceMember[] = [
+    {
+      userId: defaultUser?.uid || 'user-1',
+      email: defaultUser?.email || 'founder@business.com',
+      name: defaultUser?.displayName || 'Business Founder',
+      role: 'OWNER',
+      joinedAt: '2026-01-15',
+    },
+  ];
+  return defaultMembers;
+}
+
+export function saveStoredWorkspaceMembers(members: WorkspaceMember[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(MEMBERS_STORAGE_KEY, JSON.stringify(members));
+  } catch (err) {
+    console.error('Failed to save workspace members:', err);
   }
 }

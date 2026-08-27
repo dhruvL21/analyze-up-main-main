@@ -4,6 +4,7 @@ import { BotIcon, ZapIcon, BarChartIcon, TrendingUp, Package, Scale, RefreshCw }
 import { AnimatedHero } from '@/components/animated-hero';
 import { AnalyzeUpIcon } from '@/components/analyze-up-icon';
 import { RotatingText } from '@/components/rotating-text';
+import { Footer } from '@/components/footer';
 
 export default function LandingPage() {
   return (
@@ -78,7 +79,7 @@ export default function LandingPage() {
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-[16px] bg-primary/20 rounded-full blur-[6px]" />
         </div>
 
-        <section className="w-full py-12 md:py-24 lg:py-32">
+        <section className="w-full pt-8 pb-10 md:pt-12 md:pb-16">
           <div className="container px-4 md:px-6">
             <div className="flex flex-col items-center justify-center space-y-4 text-center">
               <div className="space-y-3">
@@ -88,7 +89,7 @@ export default function LandingPage() {
                 </p>
               </div>
             </div>
-            <div className="mx-auto grid max-w-5xl items-start gap-8 sm:grid-cols-2 md:gap-12 lg:grid-cols-3 lg:gap-16 mt-12">
+            <div className="mx-auto grid max-w-5xl items-start gap-8 sm:grid-cols-2 md:gap-12 lg:grid-cols-3 lg:gap-16 mt-10">
               <div className="grid gap-2">
                 <div className="flex items-center gap-3">
                   <div className="flex items-center justify-center rounded-lg bg-primary/10 p-3 text-primary">
@@ -134,7 +135,7 @@ export default function LandingPage() {
 
         <section
           id="features"
-          className="w-full py-12 md:py-24 lg:py-32"
+          className="w-full pt-8 pb-12 md:pt-12 md:pb-20"
         >
           <div className="container px-4 md:px-6">
             <div className="flex flex-col items-center justify-center space-y-4 text-center">
@@ -152,7 +153,7 @@ export default function LandingPage() {
                 </p>
               </div>
             </div>
-            <div className="mx-auto grid max-w-5xl items-start gap-8 py-12 md:grid-cols-2 lg:grid-cols-4 lg:gap-8">
+            <div className="mx-auto grid max-w-5xl items-start gap-8 pt-10 pb-6 md:grid-cols-2 lg:grid-cols-4 lg:gap-8">
               <div className="grid gap-2">
                  <div className="flex items-center gap-3">
                   <div className="flex items-center justify-center rounded-lg bg-primary/10 p-3 text-primary">
@@ -205,25 +206,7 @@ export default function LandingPage() {
           </div>
         </section>
       </main>
-      <footer className="flex flex-col gap-2 sm:flex-row py-6 w-full shrink-0 items-center px-4 md:px-6 border-t">
-        <p className="text-xs text-muted-foreground">
-          &copy; {new Date().getFullYear()} AnalyzeUp. All rights reserved.
-        </p>
-        <nav className="sm:ml-auto flex gap-4 sm:gap-6">
-          <Link
-            href="#"
-            className="text-xs hover:underline underline-offset-4 text-muted-foreground"
-          >
-            Terms of Service
-          </Link>
-          <Link
-            href="#"
-            className="text-xs hover:underline underline-offset-4 text-muted-foreground"
-          >
-            Privacy
-          </Link>
-        </nav>
-      </footer>
+      <Footer />
     </div>
   );
 }

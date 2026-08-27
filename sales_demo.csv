@@ -1,18 +1,11 @@
-Product SKU,Quantity,Unit Price,Date (MM/DD/YYYY),Type (Sale/Purchase)
-DJ-001,2,4500,01/15/2026,Sale
-EB-202,5,2999,01/20/2026,Sale
-WL-101,1,1500,02/05/2026,Sale
-OC-505,1,12500,02/12/2026,Sale
-FT-303,10,3500,02/25/2026,Sale
-DJ-001,3,4500,03/05/2026,Sale
-EB-202,8,2999,03/10/2026,Sale
-MG-007,15,850,03/18/2026,Sale
-YM-404,4,1200,03/25/2026,Sale
-WB-606,12,950,04/02/2026,Sale
-BT-909,25,450,04/05/2026,Sale
-GT-111,20,350,04/08/2026,Sale
-DJ-001,1,4500,04/10/2026,Sale
-OC-505,2,12500,04/11/2026,Sale
-WL-101,5,1500,04/12/2026,Sale
-DJ-001,50,1800,01/01/2026,Purchase
-EB-202,100,1200,01/01/2026,Purchase
+Invoice No,Order ID,Order Date,Customer ID,Customer Name,SKU,Item Name,Category,Supplier ID,Supplier Name,Qty Sold,Purchase Price,Retail Price,Discount,Tax,Current Stock,Reorder Level,Safety Stock,Lead Time Days,Payment Mode,Order Status,Warehouse
+INV-2026-101,ORD-90101,2026-08-01,CUST-2001,Amit Sharma,DJ-001,Classic Denim Jacket,Apparel,SUP-501,Apex Apparel Global,2,1800,4500,200,150,25,10,8,5,UPI,Completed,Central Hub - Mumbai
+INV-2026-102,ORD-90102,2026-08-02,CUST-2002,Priya Sundaram,EB-202,Wireless Earbuds Pro,Electronics,SUP-502,Zenith Electronics Corp,5,1200,2999,300,225,40,15,10,7,Credit Card,Completed,North Facility - Delhi
+INV-2026-103,ORD-90103,2026-08-03,CUST-2003,Rahul Kapoor,WL-101,Minimalist Leather Wallet,Accessories,SUP-503,Craftsman Leatherworks,1,450,1500,0,45,15,5,4,4,Cash,Completed,South Facility - Bangalore
+INV-2026-104,ORD-90104,2026-08-04,CUST-2004,Divya Menon,OC-505,Ergonomic Office Chair,Furniture,SUP-504,ErgoComfort Living,1,5500,12500,500,400,10,4,3,10,Net Banking,Completed,West Warehouse - Pune
+INV-2026-105,ORD-90105,2026-08-05,CUST-2005,Siddharth Joshi,FT-303,Smart Fitness Tracker,Electronics,SUP-502,Zenith Electronics Corp,10,1100,3500,500,300,50,12,8,6,UPI,Delivered,East Hub - Kolkata
+INV-2026-106,ORD-90106,2026-08-06,CUST-2006,Meera Nair,MG-007,Ceramic Coffee Mug Set,Home Decor,SUP-505,Studio Clay & Craft,15,250,850,150,120,30,10,6,5,UPI,Completed,Central Hub - Mumbai
+INV-2026-107,ORD-90107,2026-08-07,CUST-2007,Aditya Sen,YM-404,Yoga Mat Non-Slip,Fitness,SUP-506,FlexiFit Gear,4,400,1200,100,80,20,8,5,4,Credit Card,Shipped,North Facility - Delhi
+INV-2026-108,ORD-90108,2026-08-08,CUST-2008,Tanya Bhatia,WB-606,Stainless Steel Water Bottle,Essentials,SUP-507,EcoVessel Supplies,12,300,950,120,100,60,15,10,4,Net Banking,Completed,South Facility - Bangalore
+INV-2026-109,ORD-90109,2026-08-09,CUST-2009,Kunal Singhal,BT-909,Bamboo Toothbrush Pack,Essentials,SUP-508,GreenLife Organics,25,120,450,50,40,100,25,20,3,Cash,Delivered,West Warehouse - Pune
+INV-2026-110,ORD-90110,2026-08-10,CUST-2010,Pooja Hegde,GT-111,Organic Green Tea,Food,SUP-509,Himalayan Plantation,20,150,350,50,30,80,20,15,5,UPI,Completed,Central Hub - Mumbai

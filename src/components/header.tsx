@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { useRouter, usePathname } from 'next/navigation';
 import { useState, useMemo, useEffect } from 'react';
 import { computeBusinessHealth } from '@/lib/command-center-engine';
-import { LogOut, Settings, Menu, Sun, Moon, X, LayoutDashboard, Boxes, ShoppingCart, Truck, BarChart3, Sparkles, Activity, RefreshCw, Compass, TrendingUp, Bell, Crown, Layers } from 'lucide-react';
+import { LogOut, Settings, Menu, Sun, Moon, X, LayoutDashboard, Boxes, ShoppingCart, Truck, BarChart3, Sparkles, Activity, RefreshCw, Compass, TrendingUp, Bell, Crown, Layers, CreditCard } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -38,7 +38,7 @@ const mobileNavItems = [
   { href: '/dashboard/executive', label: 'Executive', icon: Crown },
   { href: '/dashboard/integrations', label: 'Connect', icon: Layers },
   { href: '/dashboard/insights', label: 'Insights & Health', icon: BarChart3 },
-  { href: '/dashboard/ai-advisor', label: 'Ask?', icon: Sparkles },
+  { href: '/dashboard/billing', label: 'Pricing', icon: CreditCard },
 ];
 
 const containerVariants = {

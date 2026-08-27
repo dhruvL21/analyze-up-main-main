@@ -89,16 +89,16 @@ export function computeBusinessHealth(
 
   if (!products || products.length === 0) {
     return {
-      score: 75,
+      score: 0,
       category: 'Needs Attention',
-      color: '#a07e50',
-      badgeClass: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+      color: '#6b7280',
+      badgeClass: 'bg-muted text-muted-foreground border-border',
       factors: {
-        inventoryHealth: 50,
-        marginHealth: 60,
-        capitalEfficiency: 70,
-        supplierPerformance: 75,
-        deadStockRatio: 80,
+        inventoryHealth: 0,
+        marginHealth: 0,
+        capitalEfficiency: 0,
+        supplierPerformance: 0,
+        deadStockRatio: 0,
       },
       summarySentence: 'Workspace has no active inventory data. Import products to begin live tracking.',
     };
@@ -118,11 +118,17 @@ export function computeBusinessHealth(
     ? Math.round(Math.max(10, 100 - (deadStockValuation / totalValuation) * 100))
     : 100;
 
-  const totalSales = transactions.filter(t => t.type === 'Sale').reduce((acc, t) => acc + (t.totalRevenue || (t.quantity * (t.price || 0))), 0);
+  const productsMap = new Map<string, typeof products[0]>();
+  products.forEach(p => {
+    if (p.id) productsMap.set(p.id, p);
+    if (p.sku) productsMap.set(p.sku, p);
+  });
+
+  const totalSales = transactions.filter(t => t.type === 'Sale').reduce((acc, t) => acc + (t.totalRevenue || ((t.quantity || 1) * (t.price || 0))), 0);
   const totalCOGS = transactions.filter(t => t.type === 'Sale').reduce((acc, t) => {
     if (t.totalCost !== undefined) return acc + t.totalCost;
-    const p = products.find(prod => prod.id === t.productId || prod.sku === t.sku);
-    return acc + (t.quantity * (p?.costPrice || 0));
+    const p = productsMap.get(t.productId || '') || productsMap.get(t.sku || '');
+    return acc + ((t.quantity || 1) * (p?.costPrice || (p?.price ? p.price * 0.6 : 0)));
   }, 0);
   const profitMarginPercent = totalSales > 0 ? ((totalSales - totalCOGS) / totalSales) * 100 : 35;
   let marginHealth = Math.min(100, Math.round((profitMarginPercent / 45) * 100));
@@ -249,9 +255,15 @@ export function generateActionTasks(
     return `${sign}${currencySymbol}${Math.round(num).toLocaleString('en-IN')}`;
   };
 
-  // Task Group 1: Low / Critical Stock Items (All low stock items)
+  // Task Group 1: Low / Critical Stock Items (Calibrated by Lead Time Runway)
   const lowStock = [...products]
-    .filter(p => p && p.name && p.stock <= (p.minStock || 5))
+    .filter(p => {
+      if (!p || !p.name) return false;
+      const leadTime = p.leadTimeDays || 7;
+      const velocity = p.averageDailySales || (p.stock === 0 ? 0.5 : 0);
+      const daysOfStock = velocity > 0 ? p.stock / velocity : (p.stock === 0 ? 0 : 999);
+      return p.stock === 0 || p.stock <= (p.minStock || 5) || daysOfStock <= leadTime + 3;
+    })
     .sort((a, b) => (a.stock / (a.minStock || 5)) - (b.stock / (b.minStock || 5)) || (a.name || '').localeCompare(b.name || ''));
 
   lowStock.slice(0, 5).forEach((topLow) => {
@@ -259,16 +271,20 @@ export function generateActionTasks(
     const targetSlug = topLow.id || topLow.sku || getSlug(pName);
     const rawPrice = topLow.price && topLow.price > 0 ? topLow.price : (topLow.costPrice ? topLow.costPrice * 1.5 : 499);
     const pPrice = Math.min(25000, Math.max(50, rawPrice));
-    const reorderQty = topLow.minStock ? topLow.minStock * 4 : 50;
+    const leadTime = topLow.leadTimeDays || 7;
+    const velocity = topLow.averageDailySales || 1.2;
+    const targetOptimalStock = Math.ceil(velocity * (leadTime + 21)); // 28-day optimal buffer
+    const currentStock = topLow.stock || 0;
+    const reorderQty = Math.max(15, targetOptimalStock > currentStock ? targetOptimalStock - currentStock : Math.ceil(velocity * 21));
     const estimatedLoss = Math.round(pPrice * reorderQty);
 
     tasks.push({
       id: `task-reorder-${targetSlug}`,
-      title: `Running out of ${pName}`,
-      problem: `Current quantity is ${topLow.stock} ${topLow.unit || 'units'} (below alert threshold of ${topLow.minStock || 5}).`,
-      reason: `High sales velocity over recent cycles has depleted stock faster than supplier lead time.`,
+      title: `Restock Required: ${pName}`,
+      problem: `Current quantity is ${topLow.stock} ${topLow.unit || 'units'} (runway is below supplier lead time window of ${leadTime} days).`,
+      reason: `Consumer demand velocity (${velocity}/day) will deplete stock before the next supplier delivery cycle.`,
       impact: `Estimated revenue loss of ${formatCurrency(estimatedLoss)} if inventory empties before restock.`,
-      recommendation: `Place a purchase order for ${reorderQty} ${topLow.unit || 'units'} immediately with ${topLow.supplier || 'supplier'}.`,
+      recommendation: `Place a purchase order for ${reorderQty} ${topLow.unit || 'units'} with ${topLow.supplier || 'supplier'} to re-establish a healthy 4-week buffer.`,
       priority: topLow.stock === 0 ? 'High' : 'High',
       estimatedBenefit: `Protect ${formatCurrency(estimatedLoss)} revenue runway`,
       actionType: 'reorder',

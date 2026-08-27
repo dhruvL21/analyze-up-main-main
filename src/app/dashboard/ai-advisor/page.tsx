@@ -42,7 +42,7 @@ import {
 } from 'lucide-react';
 import { askAnalyzeUpChat, ChatMessage } from '@/ai/flows/chat';
 import { computeBusinessHealth, generateActionTasks } from '@/lib/command-center-engine';
-import { processCopilotQuery, COPILOT_SUGGESTIONS, CopilotResponse } from '@/lib/copilot-engine';
+import { processCopilotQuery, getCopilotSuggestions, getCopilotCategories, CopilotResponse } from '@/lib/copilot-engine';
 import { logBusinessAction } from '@/lib/audit-store';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
@@ -62,6 +62,8 @@ export default function AIAdvisorPage() {
   const { toast } = useToast();
   const router = useRouter();
 
+  const hasData = (products && products.length > 0) || (transactions && transactions.length > 0);
+
   const [confirmData, setConfirmData] = useState<{
     title: string;
     description: string;
@@ -78,15 +80,22 @@ export default function AIAdvisorPage() {
   const [chatHistory, setChatHistory] = useState<(ChatMessage & { copilotRes?: CopilotResponse })[]>([
     {
       role: 'assistant',
-      content: "Hello! I am your AI Business Copilot. Ask me questions like 'What should I do today?', 'Why did profit drop?', or 'Which products are dead stock?'.",
+      content: hasData
+        ? "Hello! I am your AI Business Copilot. Ask me questions like 'What should I do today?', 'Why did profit drop?', or 'Which products are dead stock?'."
+        : "Hello! I am your AI Business Copilot. You can ask me any questions about uploading your business data, our 22-column CSV template, or click any of the quick questions below to get started!",
     },
   ]);
 
   const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
 
   // Single Source-of-Truth Business Health Engine
-  const healthSummary = computeBusinessHealth(products, transactions, suppliers, returns);
-  const actionTasks = generateActionTasks(products, transactions, suppliers, orders, businessProfile);
+  const healthSummary = React.useMemo(() => {
+    return computeBusinessHealth(products, transactions, suppliers, returns);
+  }, [products, transactions, suppliers, returns]);
+
+  const actionTasks = React.useMemo(() => {
+    return generateActionTasks(products, transactions, suppliers, orders, businessProfile);
+  }, [products, transactions, suppliers, orders, businessProfile]);
 
   const isPaid = activePlan !== 'Free Trial';
 
@@ -179,11 +188,12 @@ export default function AIAdvisorPage() {
     }
   };
 
-  const categories = ['All', 'Priorities', 'Profitability', 'Inventory', 'Suppliers', 'Procurement', 'Revenue'];
+  const categories = getCopilotCategories(hasData);
+  const suggestions = getCopilotSuggestions(hasData);
 
   const filteredSuggestions = selectedCategory === 'All'
-    ? COPILOT_SUGGESTIONS
-    : COPILOT_SUGGESTIONS.filter(s => s.category === selectedCategory);
+    ? suggestions
+    : suggestions.filter(s => s.category === selectedCategory);
 
   return (
     <div className="flex flex-col gap-8 w-full max-w-[1600px] mx-auto px-2 sm:px-4 pb-12">

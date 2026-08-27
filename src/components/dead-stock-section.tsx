@@ -200,8 +200,8 @@ export function DeadStockSection() {
                 <span>AI Predicted Clearance Action</span>
               </div>
 
-              <div className="divide-y divide-border/40 rounded-2xl border border-border/40 overflow-hidden bg-secondary/20 max-h-[350px] overflow-y-auto">
-                {pendingItems.map((item) => {
+              <div className="divide-y divide-border/40 rounded-2xl border border-border/40 overflow-hidden bg-secondary/20 max-h-[420px] overflow-y-auto">
+                {pendingItems.slice(0, 6).map((item) => {
                   const costPrice = item.costPrice || (item.price || 500) * 0.6;
                   const tiedCapital = (item.stock || 0) * costPrice;
                   const prediction = predictOptimalClearanceDiscount(item, totalDeadCapital);
@@ -261,6 +261,18 @@ export function DeadStockSection() {
                     </div>
                   );
                 })}
+                {pendingItems.length > 6 && (
+                  <div className="p-3 text-center bg-secondary/30 border-t border-border/40">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => router.push('/dashboard/inventory?q=find+dead+stock')}
+                      className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold gap-1"
+                    >
+                      View all {pendingItems.length.toLocaleString()} stagnant products in Catalog Table →
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           )}

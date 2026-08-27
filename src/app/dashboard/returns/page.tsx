@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { PlusCircle, MoreHorizontal, AlertCircle, Search, RotateCcw, Calendar, DollarSign, ClipboardList, Activity, ShieldAlert } from 'lucide-react';
+import { PlusCircle, MoreHorizontal, AlertCircle, Search, RotateCcw, Calendar, DollarSign, ClipboardList, Activity, ShieldAlert, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -62,6 +62,8 @@ export default function ReturnsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [reasonFilter, setReasonFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [returnsPage, setReturnsPage] = useState(1);
+  const returnsPageSize = 25;
 
   // Log Form State
   const [selectedProductId, setSelectedProductId] = useState('');
@@ -72,6 +74,11 @@ export default function ReturnsPage() {
   const [refundStatus, setRefundStatus] = useState<'Refunded' | 'Store Credit' | 'Pending' | 'Rejected'>('Refunded');
   const [refundAmount, setRefundAmount] = useState(0);
   const [notes, setNotes] = useState('');
+
+  // Reset page when filter or search changes
+  useEffect(() => {
+    setReturnsPage(1);
+  }, [searchQuery, reasonFilter, statusFilter]);
 
   // Auto-calculate suggested refund amount when product or quantity changes
   useEffect(() => {
@@ -204,6 +211,13 @@ export default function ReturnsPage() {
 
     return matchesSearch && matchesReason && matchesStatus;
   });
+
+  const totalReturnPages = Math.max(1, Math.ceil(filteredReturns.length / returnsPageSize));
+  const safeReturnPage = Math.min(returnsPage, totalReturnPages);
+  const paginatedReturns = React.useMemo(() => {
+    const start = (safeReturnPage - 1) * returnsPageSize;
+    return filteredReturns.slice(start, start + returnsPageSize);
+  }, [filteredReturns, safeReturnPage, returnsPageSize]);
 
   const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -439,14 +453,14 @@ export default function ReturnsPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredReturns.length === 0 ? (
+                      {paginatedReturns.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={7} className="h-36 text-center text-muted-foreground select-none">
                             No returns matching filters found.
                           </TableCell>
                         </TableRow>
                       ) : (
-                        filteredReturns.map((item) => (
+                        paginatedReturns.map((item) => (
                           <TableRow key={item.id} className="hover:bg-secondary/30 transition-colors">
                             <TableCell className="font-medium">
                               <div>
@@ -547,6 +561,61 @@ export default function ReturnsPage() {
                     </TableBody>
                   </Table>
                 </div>
+
+                {/* Pagination Controls Bar */}
+                {filteredReturns.length > returnsPageSize && (
+                  <div className="pt-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground">
+                    <span>
+                      Showing <span className="font-semibold text-foreground">{(safeReturnPage - 1) * returnsPageSize + 1}</span> to{' '}
+                      <span className="font-semibold text-foreground">{Math.min(safeReturnPage * returnsPageSize, filteredReturns.length)}</span> of{' '}
+                      <span className="font-semibold text-foreground">{filteredReturns.length.toLocaleString()}</span> return records
+                    </span>
+
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        disabled={safeReturnPage <= 1}
+                        onClick={() => setReturnsPage(1)}
+                        className="h-8 w-8 rounded-lg"
+                      >
+                        <ChevronsLeft className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        disabled={safeReturnPage <= 1}
+                        onClick={() => setReturnsPage(p => Math.max(1, p - 1))}
+                        className="h-8 w-8 rounded-lg"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+
+                      <span className="px-2 font-bold text-foreground">
+                        Page {safeReturnPage} of {totalReturnPages}
+                      </span>
+
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        disabled={safeReturnPage >= totalReturnPages}
+                        onClick={() => setReturnsPage(p => Math.min(totalReturnPages, p + 1))}
+                        className="h-8 w-8 rounded-lg"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        disabled={safeReturnPage >= totalReturnPages}
+                        onClick={() => setReturnsPage(totalReturnPages)}
+                        className="h-8 w-8 rounded-lg"
+                      >
+                        <ChevronsRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </div>
           </Card>

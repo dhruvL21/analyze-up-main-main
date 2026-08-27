@@ -274,13 +274,15 @@ function getFuzzyMatchForFileType(header: string, targetFields: TargetFieldDef[]
     if (h === keyLower || h === labelLower) return field.key;
 
     // 1. Order Identification & Dates
+    if (field.key === 'orderId' && (h === 'order id' || h.includes('order id') || h.includes('order ref') || h.includes('order identifier'))) return 'orderId';
     if (field.key === 'orderNumber' && (h.includes('invoice') || h.includes('order no') || h.includes('order id') || h.includes('order number') || h.includes('bill no') || h.includes('bill') || h.includes('receipt') || h.includes('inv no') || h.includes('transaction id'))) return 'orderNumber';
     if (field.key === 'orderDate' && (h.includes('order date') || h.includes('invoice date') || h.includes('sale date') || h.includes('bill date') || h.includes('date') || h.includes('timestamp') || h.includes('created at'))) return 'orderDate';
     if (field.key === 'expectedDate' && (h.includes('expected') || h.includes('delivery date') || h.includes('arrival'))) return 'expectedDate';
 
     // 2. Customers & Locations
+    if (field.key === 'customerId' && (h === 'customer id' || h.includes('customer id') || h.includes('client id') || h.includes('cust id') || h.includes('buyer id'))) return 'customerId';
     if (field.key === 'customerName' && (h.includes('customer name') || h.includes('customer') || h.includes('buyer') || h.includes('client') || h.includes('bill to') || h.includes('sold to') || h.includes('account name'))) return 'customerName';
-    if (field.key === 'city' && (h === 'city' || h.includes('city') || h.includes('location') || h.includes('region') || h.includes('destination') || h.includes('town') || h.includes('place') || h.includes('state'))) return 'city';
+    if (field.key === 'city' && (h === 'city' || h.includes('warehouse') || h.includes('city') || h.includes('location') || h.includes('region') || h.includes('destination') || h.includes('town') || h.includes('place') || h.includes('facility') || h.includes('hub') || h.includes('state'))) return 'city';
     if (field.key === 'address' && (h.includes('address') || h.includes('street') || h.includes('shipping address'))) return 'address';
 
     // 3. Products & Items
@@ -292,8 +294,10 @@ function getFuzzyMatchForFileType(header: string, targetFields: TargetFieldDef[]
 
     // 4. Quantities & Inventory
     if (field.key === 'quantity' && (h.includes('qty') || h.includes('quantity') || h.includes('units sold') || h.includes('units') || h.includes('qty sold') || h.includes('volume') || h.includes('pieces') || h.includes('count'))) return 'quantity';
-    if (field.key === 'stock' && (h.includes('stock') || h.includes('inventory') || h.includes('available') || h.includes('on hand') || h.includes('quantity') || h.includes('qty') || h.includes('units'))) return 'stock';
-    if (field.key === 'minStock' && (h.includes('min stock') || h.includes('reorder') || h.includes('safety stock') || h.includes('threshold') || h.includes('minimum'))) return 'minStock';
+    if (field.key === 'stock' && (h === 'current stock' || h.includes('current stock') || h.includes('stock') || h.includes('inventory') || h.includes('available') || h.includes('on hand') || h.includes('units on hand'))) return 'stock';
+    if (field.key === 'safetyStock' && (h === 'safety stock' || h.includes('safety stock') || h.includes('buffer stock'))) return 'safetyStock';
+    if (field.key === 'minStock' && (h.includes('reorder level') || h.includes('reorder point') || h.includes('min stock') || h.includes('safety stock') || h.includes('threshold') || h.includes('minimum'))) return 'minStock';
+    if (field.key === 'leadTimeDays' && (h.includes('lead time') || h.includes('lead days') || h.includes('delivery days') || h.includes('procurement days'))) return 'leadTimeDays';
     if (field.key === 'unit' && (h.includes('unit') || h.includes('uom') || h.includes('measure') || h.includes('pack'))) return 'unit';
 
     // 5. Pricing & Financials
@@ -306,10 +310,11 @@ function getFuzzyMatchForFileType(header: string, targetFields: TargetFieldDef[]
     if (field.key === 'paymentMode' && (h.includes('payment') || h.includes('pay mode') || h.includes('payment method') || h.includes('mode of payment') || h.includes('tender') || h.includes('gateway'))) return 'paymentMode';
 
     // 6. Status, Suppliers & Remarks
-    if (field.key === 'status' && (h.includes('order status') || h.includes('status') || h.includes('state') || h.includes('delivery status') || h.includes('fulfillment') || h.includes('condition'))) return 'status';
-    if (field.key === 'remarks' && (h.includes('remark') || h.includes('remarks') || h.includes('note') || h.includes('notes') || h.includes('comment') || h.includes('comments') || h.includes('feedback') || h.includes('memo') || h.includes('instruction'))) return 'remarks';
+    if (field.key === 'supplierId' && (h === 'supplier id' || h.includes('supplier id') || h.includes('vendor id') || h.includes('supplier code') || h.includes('sup id'))) return 'supplierId';
     if (field.key === 'supplier' && (h.includes('supplier') || h.includes('vendor') || h.includes('wholesaler') || h.includes('distributor') || h.includes('manufacturer') || h.includes('source'))) return 'supplier';
     if (field.key === 'supplierName' && (h.includes('supplier') || h.includes('vendor') || h.includes('distributor') || h.includes('manufacturer'))) return 'supplierName';
+    if (field.key === 'status' && (h.includes('order status') || h.includes('item status') || h.includes('status') || h.includes('state') || h.includes('delivery status') || h.includes('fulfillment') || h.includes('condition'))) return 'status';
+    if (field.key === 'remarks' && (h.includes('remark') || h.includes('remarks') || h.includes('note') || h.includes('notes') || h.includes('comment') || h.includes('comments') || h.includes('feedback') || h.includes('memo') || h.includes('instruction'))) return 'remarks';
     if (field.key === 'email' && (h.includes('email') || h.includes('mail'))) return 'email';
     if (field.key === 'phone' && (h.includes('phone') || h.includes('mobile') || h.includes('contact no') || h.includes('tel'))) return 'phone';
   }

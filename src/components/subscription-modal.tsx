@@ -85,13 +85,13 @@ export default function SubscriptionModal() {
                   </div>
                   <ul className="space-y-3 mb-8 text-sm text-muted-foreground">
                     <li className="flex items-center gap-2.5">
-                      <Check className="h-4 w-4 text-primary shrink-0" /> Up to 50 products
+                      <Check className="h-4 w-4 text-primary shrink-0" /> Up to 10,000 records
                     </li>
                     <li className="flex items-center gap-2.5">
                       <Check className="h-4 w-4 text-primary shrink-0" /> Inventory, Orders & Suppliers
                     </li>
                     <li className="flex items-center gap-2.5">
-                      <Check className="h-4 w-4 text-primary shrink-0" /> Core CSV import/export
+                      <Check className="h-4 w-4 text-primary shrink-0" /> Universal CSV & Excel Ingestion
                     </li>
                     <li className="flex items-center gap-2.5 text-muted-foreground/50">
                       <X className="h-4 w-4 shrink-0 text-muted-foreground/40" /> Today's AI Brief & Chat locked
@@ -128,7 +128,7 @@ export default function SubscriptionModal() {
                   </div>
                   <ul className="space-y-3 mb-8 text-sm text-muted-foreground">
                     <li className="flex items-center gap-2.5">
-                      <Check className="h-4 w-4 text-primary shrink-0" /> Up to 500 products
+                      <Check className="h-4 w-4 text-primary shrink-0" /> Up to 25,000 records
                     </li>
                     <li className="flex items-center gap-2.5">
                       <Check className="h-4 w-4 text-primary shrink-0" /> Today's AI Brief unlocked
@@ -191,7 +191,7 @@ export default function SubscriptionModal() {
                   </div>
                   <ul className="space-y-3 mb-8 text-sm text-muted-foreground">
                     <li className="flex items-center gap-2.5">
-                      <Check className="h-4 w-4 text-primary shrink-0" /> Unlimited products
+                      <Check className="h-4 w-4 text-primary shrink-0" /> Unlimited records (250k+)
                     </li>
                     <li className="flex items-center gap-2.5">
                       <Check className="h-4 w-4 text-primary shrink-0" /> Everything in Starter

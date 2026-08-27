@@ -69,4 +69,42 @@ describe('Copilot Engine Query Processing', () => {
     expect(res).toBeDefined();
     expect(res.answerMarkdown).toBeTruthy();
   });
+
+  it('should provide clear onboarding guide for fresh user with 0 products asking what to focus on', () => {
+    const res = processCopilotQuery(
+      'What should I focus on today?',
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      sampleProfile
+    );
+
+    expect(res).toBeDefined();
+    expect(res.intent).toBe('ONBOARDING_GUIDE');
+    expect(res.what).toContain('workspace is initialized and awaiting your business data');
+    expect(res.actionText).toContain('22-column CSV database template');
+    expect(res.recommendedAction?.targetRoute).toBe('/dashboard/inventory');
+  });
+
+  it('should explain the 22-column CSV template schema when asked about template columns', () => {
+    const res = processCopilotQuery(
+      'What 22 columns are in the CSV template?',
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      sampleProfile
+    );
+
+    expect(res).toBeDefined();
+    expect(res.intent).toBe('ONBOARDING_GUIDE');
+    expect(res.answerMarkdown).toContain('22 standardized columns');
+    expect(res.answerMarkdown).toContain('Invoice No');
+    expect(res.answerMarkdown).toContain('Current Stock');
+  });
 });

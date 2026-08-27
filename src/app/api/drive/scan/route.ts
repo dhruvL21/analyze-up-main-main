@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
     // 1. Fetch files in selected folder
     const qStr = `'${selectedFolderId}' in parents and trashed = false`;
     const driveRes = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(qStr)}&fields=files(id,name,mimeType,size,modifiedTime)&orderBy=name&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(qStr)}&fields=files(id,name,mimeType,size,modifiedTime)&orderBy=name&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true`,
       {
         headers: {
           Authorization: `Bearer ${token}`,

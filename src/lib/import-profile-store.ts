@@ -78,3 +78,13 @@ export function findMatchingImportProfile(headers: string[]): ImportProfile | nu
 
   return null;
 }
+
+export function clearAllImportProfiles(): void {
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (e) {
+      console.error('Error clearing import profiles:', e);
+    }
+  }
+}

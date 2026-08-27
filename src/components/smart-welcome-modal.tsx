@@ -123,12 +123,12 @@ export function SmartWelcomeModal() {
           <Button
             onClick={() => {
               setShowWelcomeModal(false);
-              router.push('/dashboard/ai-advisor');
+              window.dispatchEvent(new CustomEvent('analyzeup_open_copilot', { detail: { query: 'What should I focus on today?' } }));
             }}
             className="rounded-xl text-xs flex-1 gap-1.5 bg-primary text-primary-foreground shadow-lg hover:brightness-110"
           >
             <Sparkles className="w-3.5 h-3.5" />
-            Launch AI Insights
+            Launch AI Copilot
             <ArrowRight className="w-3.5 h-3.5" />
           </Button>
         </div>
