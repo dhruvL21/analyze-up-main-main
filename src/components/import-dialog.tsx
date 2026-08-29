@@ -11,6 +11,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { useUser } from '@/firebase';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useData } from '@/context/data-context';
@@ -65,6 +67,7 @@ interface ImportDialogProps {
 }
 
 export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete }: ImportDialogProps) {
+  const { user } = useUser();
   const {
     bulkAddProducts,
     bulkAddTransactions,
@@ -75,6 +78,7 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
     products,
     addReturn,
     addOrder,
+    refreshAnalytics,
   } = useData();
   const { toast } = useToast();
 
@@ -82,6 +86,14 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
   const [fileName, setFileName] = useState<string>('');
   const [rawHeaders, setRawHeaders] = useState<string[]>([]);
   const [rawRows, setRawRows] = useState<Record<string, any>[]>([]);
+
+  // Import Job Progress States
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [jobProgress, setJobProgress] = useState<number>(0);
+  const [jobProcessedCount, setJobProcessedCount] = useState<number>(0);
+  const [jobCurrentBatch, setJobCurrentBatch] = useState<number>(0);
+  const [jobTotalBatches, setJobTotalBatches] = useState<number>(1);
+  const [jobFailedCount, setJobFailedCount] = useState<number>(0);
 
   // Stage 1: AI File Type Detection
   const [detectedFileType, setDetectedFileType] = useState<BusinessFileType>('INVENTORY_MASTER');
@@ -660,19 +672,24 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
 
   // Stage 5: Relationship Builder & Multi-Entity Ingestion Execution
   const handleExecuteBusinessImport = async () => {
-    const validRows = normalizedItems.filter(r => r.isValid);
-    if (validRows.length === 0) {
-      toast({ variant: 'destructive', title: 'No Valid Records', description: 'Please resolve validation errors before importing.' });
+    if (!rawRows || rawRows.length === 0) {
+      toast({ variant: 'destructive', title: 'No Data', description: 'No records found in spreadsheet.' });
       return;
     }
 
-    setStage(4); // Stage 4: Processing
+    if (!user) {
+      toast({ variant: 'destructive', title: 'Not Authenticated', description: 'Please sign in to import data.' });
+      return;
+    }
+
+    setStage(4); // Stage 4: Real-time Processing
     setIsProcessing(true);
     const startTime = performance.now();
 
     try {
-      // 1. Auto-create Categories (in parallel for high speed)
-      const fileCategories = Array.from(new Set(validRows.map(r => r.parsed.category || 'General').filter(Boolean)));
+      // 1. Auto-create Categories in parallel
+      const validRows = normalizedItems.filter(r => r.isValid);
+      const fileCategories = Array.from(new Set(validRows.map(r => r.parsed?.category || 'General').filter(Boolean)));
       const existingCatMap = new Map(categories.map(c => [c.name.toLowerCase(), c.id]));
       let newCatCount = 0;
 
@@ -686,8 +703,8 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
         newCatCount = missingCats.length;
       }
 
-      // 2. Auto-create Suppliers (in parallel for high speed)
-      const fileSuppliers = Array.from(new Set(validRows.map(r => r.parsed.supplier || 'Import Vendor').filter(Boolean)));
+      // 2. Auto-create Suppliers in parallel
+      const fileSuppliers = Array.from(new Set(validRows.map(r => r.parsed?.supplier || 'Import Vendor').filter(Boolean)));
       const existingSupMap = new Map(suppliers.map(s => [s.name.toLowerCase(), s.id]));
       let newSupCount = 0;
 
@@ -707,92 +724,90 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
         newSupCount = missingSups.length;
       }
 
-      // 3. Format Products Catalog Items
-      const productsToImport = validRows.map(r => {
-        const name = r.parsed.name;
-        const price = r.parsed.price || 499;
-        const costPrice = r.parsed.costPrice && r.parsed.costPrice > 0 ? r.parsed.costPrice : Math.round(price * 0.6);
-        const stock = r.parsed.stock !== undefined && r.parsed.stock > 0 ? r.parsed.stock : Math.max(10, (r.parsed.qty || 1) * 5);
-        const sku = r.parsed.sku || `SKU-${name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+      // 3. Initialize Persistent Import Job
+      const BATCH_SIZE = 100;
+      const totalBatches = Math.max(1, Math.ceil(rawRows.length / BATCH_SIZE));
+      setJobTotalBatches(totalBatches);
 
-        return {
-          name,
-          sku,
-          description: r.parsed.description || `Imported ${name}`,
-          categoryId: existingCatMap.get((r.parsed.category || '').toLowerCase()) || 'cat-general',
-          category: r.parsed.category || 'General',
-          supplier: r.parsed.supplier || '',
-          supplierId: existingSupMap.get((r.parsed.supplier || '').toLowerCase()) || r.parsed.supplierId || '',
-          price,
-          costPrice,
-          stock,
-          minStock: r.parsed.minStock || 5,
-          maxStock: Math.max(100, stock * 2),
-          unit: r.parsed.unit || 'Piece',
-          status: 'Active' as const,
-          averageDailySales: Math.max(0.5, Number(((r.parsed.qty || 1) * 0.8).toFixed(1))),
-          leadTimeDays: r.parsed.leadTimeDays || 7,
-        };
+      const jobRes = await fetch('/api/import/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-user-uid': user.uid },
+        body: JSON.stringify({
+          fileName,
+          fileType: detectedFileType,
+          totalRecords: rawRows.length,
+          batchSize: BATCH_SIZE,
+          driveFileId: presetFile?.driveFileId,
+          userId: user.uid,
+        }),
       });
 
-      const isInventorySnapshot = detectedFileType === 'INVENTORY_MASTER' || detectedFileType === 'WAREHOUSE_STOCK';
-      await bulkAddProducts(productsToImport, isInventorySnapshot);
+      const jobData = await jobRes.json();
+      if (!jobRes.ok || !jobData.job) {
+        throw new Error(jobData.error || 'Failed to initialize import job');
+      }
 
-      // 4. Format Sales Transactions to drive Revenue, Profit, Charts & AI Copilot
-      const transactionsToImport: any[] = [];
-      validRows.forEach((r, idx) => {
-        const name = r.parsed.name;
-        const price = r.parsed.price || 499;
-        const costPrice = r.parsed.costPrice && r.parsed.costPrice > 0 ? r.parsed.costPrice : Math.round(price * 0.6);
-        const qty = r.parsed.qty || Math.max(1, Math.floor(Math.random() * 4) + 1);
+      const currentJobId = jobData.job.id;
+      setJobId(currentJobId);
 
-        const d = new Date();
-        d.setDate(d.getDate() - (idx % 28));
+      let totalSuccess = 0;
+      let totalFail = 0;
 
-        transactionsToImport.push({
-          type: 'Sale' as const,
-          productId: `prod-${name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
-          productName: name,
-          quantity: qty,
-          price: price,
-          totalRevenue: price * qty,
-          costPerUnit: costPrice,
-          totalCost: costPrice * qty,
-          customerName: r.parsed.customer || `Customer #${(idx % 12) + 1}`,
-          customerCity: r.parsed.city || r.parsed.warehouse || '',
-          transactionDate: r.parsed.date || d.toISOString().split('T')[0],
-          status: r.parsed.status || 'Completed',
-          paymentMethod: r.parsed.paymentMode || (idx % 2 === 0 ? 'UPI' : 'Credit Card'),
-          notes: r.parsed.remarks || '',
-          discount: r.parsed.discount || 0,
-          tax: r.parsed.tax || 0,
-          orderNumber: r.parsed.orderNo || undefined,
+      // 4. Process Bounded Batches (100 rows per request)
+      for (let i = 0; i < rawRows.length; i += BATCH_SIZE) {
+        const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+        const chunk = rawRows.slice(i, i + BATCH_SIZE);
+        setJobCurrentBatch(batchNum);
+
+        const processRes = await fetch('/api/import/process', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-user-uid': user.uid },
+          body: JSON.stringify({
+            jobId: currentJobId,
+            userId: user.uid,
+            batchNumber: batchNum,
+            rawRows: chunk,
+            fieldMapping,
+            fileType: detectedFileType,
+            startRowIndex: i,
+          }),
         });
-      });
 
-      if (transactionsToImport.length > 0) {
-        await bulkAddTransactions(transactionsToImport);
+        const processData = await processRes.json().catch(() => ({}));
+        if (processRes.ok) {
+          totalSuccess += processData.successful || 0;
+          totalFail += processData.failed || 0;
+          setJobProcessedCount(prev => prev + chunk.length);
+          setJobFailedCount(totalFail);
+          setJobProgress(Math.min(100, Math.round(((i + chunk.length) / rawRows.length) * 100)));
+        } else {
+          console.warn(`Batch ${batchNum} processing warning:`, processData.error);
+        }
       }
 
       // Save Import Profile Memory
       saveImportProfile(detectedFileType, rawHeaders, fieldMapping);
+
+      // Refresh Analytics Summary
+      await refreshAnalytics();
 
       const endTime = performance.now();
       const executionTime = Math.round(endTime - startTime);
 
       const summary = {
         fileTypeName: FILE_TYPE_DEFINITIONS[detectedFileType].name,
-        importedCount: validRows.length,
+        importedCount: totalSuccess,
+        failedCount: totalFail,
         revenueImpact: impactMetrics.estimatedRevenue,
         newCategories: newCatCount,
         newSuppliers: newSupCount,
-        newCustomers: impactMetrics.customersFoundCount || validRows.length,
+        newCustomers: impactMetrics.customersFoundCount || totalSuccess,
         executionTimeMs: executionTime,
         fileType: detectedFileType,
-        driveFileId: presetFile?.driveFileId
+        driveFileId: presetFile?.driveFileId,
       };
 
-      setImportSummary(summary);
+      setImportSummary(summary as any);
 
       if (onImportComplete) {
         onImportComplete(summary);
@@ -800,24 +815,24 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
 
       logBusinessAction({
         title: `Database Import: ${FILE_TYPE_DEFINITIONS[detectedFileType].name}`,
-        productName: `${validRows.length} Records Ingested`,
+        productName: `${totalSuccess} Records Ingested`,
         actionType: 'import',
-        changeDetails: `Successfully mapped and imported ${validRows.length} business records into live inventory, suppliers, and sales logs.`,
-        impactValue: `${validRows.length} rows`,
+        changeDetails: `Successfully linked ${totalSuccess} business records into live inventory, suppliers, and sales logs (${totalFail} format warnings).`,
+        impactValue: `${totalSuccess} rows`,
         previousValue: `Type: ${detectedFileType}`,
         newValue: `Linked in ${executionTime}ms`,
       });
 
       toast({
         title: 'Business Engine Synchronized ✨',
-        description: `Imported ${validRows.length} records. Revenue, profit, charts & AI features updated!`,
+        description: `Imported ${totalSuccess.toLocaleString()} records safely. Dashboard aggregates refreshed!`,
       });
 
       setIsProcessing(false);
       setStage(5); // Stage 5: Summary Screen
-    } catch (err) {
+    } catch (err: any) {
       console.error('Import Execution Error:', err);
-      toast({ variant: 'destructive', title: 'Import Failed', description: 'An error occurred while linking business records.' });
+      toast({ variant: 'destructive', title: 'Import Failed', description: err?.message || 'An error occurred during import.' });
       setIsProcessing(false);
       setStage(3);
     }
@@ -1161,12 +1176,40 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
 
         {/* Stage 4: Processing */}
         {stage === 4 && (
-          <div className="py-12 text-center space-y-4">
-            <Loader2 className="w-10 h-10 text-emerald-400 animate-spin mx-auto" />
-            <h4 className="text-base font-bold">Connecting Business Records & Updating Intelligence...</h4>
-            <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-              Connecting products, revenue, suppliers, orders, and recalculating dashboard metrics.
-            </p>
+          <div className="py-10 text-center space-y-6 max-w-md mx-auto">
+            <div className="relative flex items-center justify-center">
+              <Loader2 className="w-12 h-12 text-emerald-400 animate-spin" />
+            </div>
+            
+            <div className="space-y-2">
+              <h4 className="text-base font-bold text-foreground">
+                Importing & Ingesting Dataset...
+              </h4>
+              <p className="text-xs text-muted-foreground">
+                Batch {jobCurrentBatch} of {jobTotalBatches} • {jobProcessedCount.toLocaleString()} / {rawRows.length.toLocaleString()} records processed
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Progress value={jobProgress} className="h-2.5 bg-secondary" />
+              <div className="flex items-center justify-between text-xs text-muted-foreground font-mono">
+                <span>{jobProgress}% Complete</span>
+                {jobFailedCount > 0 && (
+                  <span className="text-amber-400 font-semibold">{jobFailedCount} skipped rows</span>
+                )}
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onOpenChange(false)}
+                className="rounded-xl text-xs border-border/60 text-muted-foreground hover:text-foreground"
+              >
+                Run in Background (Safe to Navigate)
+              </Button>
+            </div>
           </div>
         )}
 
@@ -1187,17 +1230,29 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
             <div className="grid grid-cols-3 gap-3 text-left max-w-md mx-auto">
               <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 space-y-1">
                 <span className="text-[11px] text-emerald-400 font-medium block">Records Connected</span>
-                <span className="text-xl font-bold text-emerald-400">{importSummary.importedCount}</span>
+                <span className="text-xl font-bold text-emerald-400">{importSummary.importedCount.toLocaleString()}</span>
               </div>
               <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 space-y-1">
                 <span className="text-[11px] text-emerald-300 font-medium block">Est. Revenue</span>
-                <span className="text-xl font-bold text-emerald-300">₹{(importSummary.revenueImpact / 1000).toFixed(1)}k</span>
+                <span className="text-xl font-bold text-emerald-300">₹{((importSummary.revenueImpact || 0) / 1000).toFixed(1)}k</span>
               </div>
               <div className="p-3.5 rounded-2xl bg-secondary/50 border border-border/40 space-y-1">
                 <span className="text-[11px] text-muted-foreground font-medium block">Execution Speed</span>
                 <span className="text-xl font-bold font-mono">{importSummary.executionTimeMs}ms</span>
               </div>
             </div>
+
+            {(importSummary as any).failedCount > 0 && (
+              <div className="p-3 rounded-xl bg-amber-500/10 text-xs text-amber-300 max-w-md mx-auto flex items-center justify-between border border-amber-500/20">
+                <span className="flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 text-amber-400" />
+                  {(importSummary as any).failedCount} invalid records skipped safely without halting import.
+                </span>
+                <Badge variant="outline" className="bg-amber-500/20 text-amber-200 text-[10px]">
+                  Logged to Audit
+                </Badge>
+              </div>
+            )}
 
             <div className="p-3 rounded-xl bg-emerald-500/10 text-xs text-emerald-300 max-w-md mx-auto flex items-center justify-between border border-emerald-500/20">
               <span className="flex items-center gap-1.5">

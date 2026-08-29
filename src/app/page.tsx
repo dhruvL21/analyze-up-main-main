@@ -48,7 +48,7 @@ export default function LandingPage() {
                     An AI Copilot for <br /> <RotatingText />
                   </h1>
                   <p className="max-w-[600px] text-muted-foreground text-sm min-[400px]:text-base md:text-xl">
-                    Know what to reorder, what is being returned, and where you’re losing money.
+                    Predict demand, automate purchase orders, and uncover hidden margin drains with real-time inventory intelligence.
                   </p>
                 </div>
                 <div className="flex flex-row gap-3 justify-start">

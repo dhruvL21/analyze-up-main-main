@@ -8,6 +8,7 @@ export { FirebaseProvider, useFirebase, useFirebaseApp, useFirestore, useAuth } 
 export { FirebaseClientProvider } from './client-provider';
 export { useUser } from './auth/use-user';
 export { useCollection } from './firestore/use-collection';
+export { usePaginatedCollection } from './firestore/use-paginated-collection';
 export { useDoc } from './firestore/use-doc';
 
 // Initialize Firebase

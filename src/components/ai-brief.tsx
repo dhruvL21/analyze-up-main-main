@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useEffect, useTransition, useCallback } from 'react';
+import { useState, useEffect, useTransition, useCallback, useMemo } from 'react';
 import { useData } from '@/context/data-context';
+import { useUser, useFirestore, useDoc } from '@/firebase';
+import { doc, setDoc } from 'firebase/firestore';
 import { Sparkles, AlertTriangle, Coins, Loader2, RefreshCw, Lock, ArrowRight } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { generateAIBrief, AIBriefOutput } from '@/ai/flows/ai-brief-generator';
@@ -12,10 +14,23 @@ import type { Product, Transaction } from '@/lib/types';
 
 export function AIBrief() {
   const { products, transactions, activePlan, setShowSubscriptionModal, returns = [], isLoading } = useData();
+  const { user } = useUser();
+  const firestore = useFirestore();
+
+  const briefRef = useMemo(() => user && firestore ? doc(firestore, 'users', user.uid, 'analytics', 'ai_brief') : null, [user, firestore]);
+  const { data: persistedBrief, loading: briefLoading } = useDoc<AIBriefOutput>(briefRef);
+
   const [brief, setBrief] = useState<AIBriefOutput | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const isPaid = activePlan !== 'Free Trial';
+
+  // Sync persisted brief when available
+  useEffect(() => {
+    if (persistedBrief && !brief) {
+      setBrief(persistedBrief);
+    }
+  }, [persistedBrief, brief]);
 
   // Calculate return stats in real-time
   const returnedQty = returns.reduce((sum, r) => sum + r.quantity, 0);
@@ -36,23 +51,28 @@ export function AIBrief() {
     if (!isPaid) return;
     startTransition(async () => {
       try {
-        const cleanProducts = serializePlainData<Product[]>(products);
-        const cleanTransactions = serializePlainData<Transaction[]>(transactions);
+        const cleanProducts = serializePlainData<Product[]>(products.slice(0, 300));
+        const cleanTransactions = serializePlainData<Transaction[]>(transactions.slice(0, 500));
         const result = await generateAIBrief(cleanProducts, cleanTransactions);
         setBrief(result);
+
+        if (firestore && user && briefRef) {
+          await setDoc(briefRef, serializePlainData({ ...result, updatedAt: new Date().toISOString() }), { merge: true });
+        }
       } catch (err) {
         console.error('Failed to generate AI Brief:', err);
       }
     });
-  }, [products, transactions, isPaid]);
+  }, [products, transactions, isPaid, firestore, user, briefRef]);
 
+  // Only auto-generate if no persisted brief exists yet and paid
   useEffect(() => {
-    if (isPaid) {
+    if (isPaid && !persistedBrief && !briefLoading && products.length > 0 && !brief) {
       fetchBrief();
-    } else {
+    } else if (!isPaid) {
       setBrief(null);
     }
-  }, [isPaid, fetchBrief]);
+  }, [isPaid, persistedBrief, briefLoading, products.length, brief, fetchBrief]);
 
   const getHealthColor = (score: number) => {
     if (score >= 80) return 'bg-emerald-500';

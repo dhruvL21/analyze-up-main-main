@@ -80,6 +80,7 @@ function InventoryPageContent() {
 
   // Search & Pagination States
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
@@ -87,17 +88,26 @@ function InventoryPageContent() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isComparisonOpen, setIsComparisonOpen] = useState(false);
 
+  // Debounce search query changes by 150ms to keep UI 100% smooth
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   useEffect(() => {
     const qParam = searchParams?.get('q') || searchParams?.get('query');
     if (qParam) {
       setSearchQuery(qParam);
+      setDebouncedSearchQuery(qParam);
     }
   }, [searchParams]);
 
   // Reset pagination on search query change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, pageSize]);
+  }, [debouncedSearchQuery, pageSize]);
 
   const { toast } = useToast();
 
@@ -126,10 +136,10 @@ function InventoryPageContent() {
 
   const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
 
-  // 1. High-Performance Memoized Filter
+  // 1. High-Performance Memoized Filter (runs only on debounced changes)
   const filteredProducts = useMemo(() => {
-    return filterProductsByNaturalLanguage(products, transactions, searchQuery);
-  }, [products, transactions, searchQuery]);
+    return filterProductsByNaturalLanguage(products, transactions, debouncedSearchQuery);
+  }, [products, transactions, debouncedSearchQuery]);
 
   // 2. Pagination Calculations
   const totalItems = filteredProducts.length;

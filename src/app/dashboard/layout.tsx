@@ -15,6 +15,7 @@ import { FeatureTour } from '@/components/feature-tour';
 import { SmartOnboardingWizard } from '@/components/smart-onboarding-wizard';
 import { SmartWelcomeModal } from '@/components/smart-welcome-modal';
 import { ShopifyConnectModal } from '@/components/shopify-connect-modal';
+import { ActiveImportBanner } from '@/components/active-import-banner';
 
 function DashboardLoading() {
     return (
@@ -156,6 +157,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         )}
       >
         <Header />
+        <ActiveImportBanner />
         <main className="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto relative">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div

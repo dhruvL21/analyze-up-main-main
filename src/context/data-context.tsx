@@ -3,7 +3,7 @@
 import { createContext, useContext, useState, ReactNode, useMemo, useCallback, useEffect } from 'react';
 import type { Product, PurchaseOrder, Supplier, Transaction, Category, ProductReturn, CustomAttribute, BusinessProfile, BusinessType } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { useUser, useFirestore } from '@/firebase';
+import { useUser, useFirestore, useDoc } from '@/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, writeBatch, setDoc, onSnapshot, getDocs } from 'firebase/firestore';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { errorEmitter } from '@/firebase/error-emitter';
@@ -13,6 +13,12 @@ import Papa from 'papaparse';
 import { getClientDriveToken, isAutoSyncDue, autoDetectMapping, formatLastSyncTime } from '@/lib/drive-helper';
 import { findMatchingImportProfile } from '@/lib/import-profile-store';
 import { logBusinessAction } from '@/lib/audit-store';
+import {
+  type AnalyticsSummary,
+  DEFAULT_ANALYTICS_SUMMARY,
+  recalculateAndSaveAnalyticsSummary,
+} from '@/lib/analytics-aggregator';
+import { generateProductDocId, generateTransactionDocId } from '@/lib/import-job-service';
 
 interface DataContextProps {
   products: Product[];
@@ -77,6 +83,8 @@ interface DataContextProps {
   aiQueryCount: number;
   incrementAiQueryCount: (amount?: number) => void;
   handleUpgrade: (planId: string, amount: number, planName: string) => Promise<void>;
+  analyticsSummary: AnalyticsSummary;
+  refreshAnalytics: () => Promise<void>;
 }
 
 const DataContext = createContext<DataContextProps | undefined>(undefined);
@@ -112,6 +120,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const categoriesRef = useMemo(() => user && firestore ? collection(firestore, 'users', user.uid, 'categories') : null, [user, firestore]);
   const returnsRef = useMemo(() => user && firestore ? collection(firestore, 'users', user.uid, 'returns') : null, [user, firestore]);
   const customAttributesRef = useMemo(() => user && firestore ? collection(firestore, 'users', user.uid, 'custom_attributes') : null, [user, firestore]);
+  const summaryRef = useMemo(() => user && firestore ? doc(firestore, 'users', user.uid, 'analytics', 'summary') : null, [user, firestore]);
 
   const { data: productsData, loading: productsLoading } = useCollection<Product>(productsRef);
   const { data: ordersData, loading: ordersLoading } = useCollection<PurchaseOrder>(ordersRef);
@@ -120,6 +129,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const { data: categoriesData, loading: categoriesLoading } = useCollection<Category>(categoriesRef);
   const { data: returnsData, loading: returnsLoading } = useCollection<ProductReturn>(returnsRef);
   const { data: customAttributesData } = useCollection<CustomAttribute>(customAttributesRef);
+  const { data: summaryData } = useDoc<AnalyticsSummary>(summaryRef);
 
   const products = useMemo(() => uniqueBy(productsData, 'id'), [productsData]);
   const orders = useMemo(() => uniqueBy(ordersData, 'id'), [ordersData]);
@@ -128,6 +138,22 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const categories = useMemo(() => uniqueBy(categoriesData, 'name'), [categoriesData]);
   const returns = useMemo(() => uniqueBy(returnsData, 'id'), [returnsData]);
   const customAttributes = useMemo(() => uniqueBy(customAttributesData, 'value'), [customAttributesData]);
+  const analyticsSummary = useMemo(() => summaryData || DEFAULT_ANALYTICS_SUMMARY, [summaryData]);
+
+  const refreshAnalytics = useCallback(async () => {
+    if (!firestore || !user) return;
+    try {
+      await recalculateAndSaveAnalyticsSummary(firestore, user.uid, {
+        products,
+        transactions,
+        suppliers,
+        orders,
+        returns,
+      });
+    } catch (err) {
+      console.error('Failed to refresh analytics summary:', err);
+    }
+  }, [firestore, user, products, transactions, suppliers, orders, returns]);
 
   const [activePlan, setActivePlan] = useState<string>(() => {
     if (typeof window === 'undefined') return "Free Trial";
@@ -1767,6 +1793,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     aiQueryCount,
     incrementAiQueryCount,
     handleUpgrade,
+    analyticsSummary,
+    refreshAnalytics,
   }), [
     products,
     orders,
@@ -1829,6 +1857,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     aiQueryCount,
     incrementAiQueryCount,
     handleUpgrade,
+    analyticsSummary,
+    refreshAnalytics,
   ]);
 
   return (
