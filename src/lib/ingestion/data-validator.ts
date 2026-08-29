@@ -75,7 +75,7 @@ export function normalizeToProducts(
       }
     });
 
-    const name = String(mapped.name || mapped.product_name || mapped.title || '').trim();
+    const name = String(mapped.name || mapped.productName || mapped.product_name || mapped.title || mapped.itemName || mapped.item_name || '').trim();
     if (!name) {
       errorRecords.push({
         rowNumber: rowNum,
@@ -85,7 +85,7 @@ export function normalizeToProducts(
       return;
     }
 
-    const rawSku = String(mapped.sku || mapped.item_code || mapped.barcode || `SKU-${idx + 1}`).trim().toUpperCase();
+    const rawSku = String(mapped.sku || mapped.item_code || mapped.itemCode || mapped.barcode || `SKU-${idx + 1}`).trim().toUpperCase();
     const sku = rawSku.length > 0 ? rawSku : `SKU-${idx + 1}`;
 
     if (seenSkus.has(sku)) {
@@ -95,15 +95,15 @@ export function normalizeToProducts(
       seenSkus.add(sku);
     }
 
-    const price = cleanNumber(mapped.price || mapped.selling_price, 0);
-    const costPrice = cleanNumber(mapped.cost_price || mapped.costPrice || mapped.cost, Math.round(price * 0.6));
-    const stock = cleanInteger(mapped.stock || mapped.inventory_quantity || mapped.quantity, 0);
-    const minStock = cleanInteger(mapped.min_stock || mapped.minStock, 5);
-    const maxStock = cleanInteger(mapped.max_stock || mapped.maxStock, Math.max(100, stock * 2));
-    const leadTime = cleanInteger(mapped.lead_time_days || mapped.leadTimeDays, 7);
+    const price = cleanNumber(mapped.price || mapped.sellingPrice || mapped.selling_price || mapped.salePrice || mapped.retailPrice, 0);
+    const costPrice = cleanNumber(mapped.costPrice || mapped.cost_price || mapped.cost || mapped.unitCost || mapped.purchasePrice, Math.round(price * 0.6));
+    const stock = cleanInteger(mapped.stock || mapped.inventory_quantity || mapped.inventoryQuantity || mapped.quantity || mapped.qty || mapped.currentStock, 0);
+    const minStock = cleanInteger(mapped.minStock || mapped.min_stock || mapped.safetyStock || mapped.safety_stock, 5);
+    const maxStock = cleanInteger(mapped.maxStock || mapped.max_stock, Math.max(100, stock * 2));
+    const leadTime = cleanInteger(mapped.leadTimeDays || mapped.lead_time_days || mapped.leadTime, 7);
 
     const productCandidate: CanonicalProduct = {
-      product_id: mapped.product_id ? String(mapped.product_id) : `prod-${sku.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+      product_id: mapped.product_id || mapped.productId ? String(mapped.product_id || mapped.productId) : `prod-${sku.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
       product_name: name,
       sku,
       category: String(mapped.category || mapped.department || 'General').trim() || 'General',
@@ -112,13 +112,13 @@ export function normalizeToProducts(
       max_stock: maxStock,
       price,
       cost_price: costPrice,
-      supplier_name: String(mapped.supplier_name || mapped.supplier || mapped.vendor || '').trim(),
-      supplier_id: String(mapped.supplier_id || '').trim(),
+      supplier_name: String(mapped.supplier || mapped.supplierName || mapped.supplier_name || mapped.vendor || '').trim(),
+      supplier_id: String(mapped.supplierId || mapped.supplier_id || '').trim(),
       lead_time_days: leadTime > 0 ? leadTime : 7,
       unit: String(mapped.unit || 'Piece').trim() || 'Piece',
       brand: String(mapped.brand || '').trim(),
       barcode: String(mapped.barcode || '').trim(),
-      description: String(mapped.description || '').trim(),
+      description: String(mapped.description || mapped.remarks || '').trim(),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -163,7 +163,7 @@ export function normalizeToSales(
       }
     });
 
-    const productName = String(mapped.product_name || mapped.name || mapped.item_name || '').trim();
+    const productName = String(mapped.productName || mapped.product_name || mapped.name || mapped.itemName || mapped.item_name || '').trim();
     if (!productName) {
       errorRecords.push({
         rowNumber: rowNum,
@@ -173,16 +173,16 @@ export function normalizeToSales(
       return;
     }
 
-    const unitsSold = cleanInteger(mapped.units_sold || mapped.quantity || mapped.qty, 1);
-    const sellingPrice = cleanNumber(mapped.selling_price || mapped.price || mapped.unit_price, 0);
-    const costPerUnit = cleanNumber(mapped.cost_per_unit || mapped.cost_price || mapped.cost, Math.round(sellingPrice * 0.6));
-    const revenue = cleanNumber(mapped.revenue || mapped.total_revenue, sellingPrice * unitsSold);
-    const totalCost = cleanNumber(mapped.total_cost, costPerUnit * unitsSold);
+    const unitsSold = cleanInteger(mapped.quantity || mapped.units_sold || mapped.unitsSold || mapped.qty, 1);
+    const sellingPrice = cleanNumber(mapped.sellingPrice || mapped.selling_price || mapped.price || mapped.unitPrice || mapped.unit_price, 0);
+    const costPerUnit = cleanNumber(mapped.costPrice || mapped.cost_per_unit || mapped.costPerUnit || mapped.cost_price || mapped.cost, Math.round(sellingPrice * 0.6));
+    const revenue = cleanNumber(mapped.revenue || mapped.total_revenue || mapped.totalRevenue || mapped.amount, sellingPrice * unitsSold);
+    const totalCost = cleanNumber(mapped.totalCost || mapped.total_cost, costPerUnit * unitsSold);
 
     const saleCandidate: CanonicalSale = {
-      sale_id: mapped.sale_id ? String(mapped.sale_id) : `sale-${Date.now()}-${idx}`,
-      order_number: String(mapped.order_number || mapped.order_id || mapped.invoice_number || `INV-${1000 + idx}`).trim(),
-      product_id: mapped.product_id ? String(mapped.product_id) : `prod-${productName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+      sale_id: mapped.saleId || mapped.sale_id ? String(mapped.saleId || mapped.sale_id) : `sale-${Date.now()}-${idx}`,
+      order_number: String(mapped.orderNumber || mapped.order_number || mapped.orderId || mapped.order_id || mapped.invoiceNumber || mapped.invoice_number || `INV-${1000 + idx}`).trim(),
+      product_id: mapped.productId || mapped.product_id ? String(mapped.productId || mapped.product_id) : `prod-${productName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
       product_name: productName,
       sku: String(mapped.sku || `SKU-${idx + 1}`).trim().toUpperCase(),
       category: String(mapped.category || 'General').trim() || 'General',
@@ -191,10 +191,10 @@ export function normalizeToSales(
       cost_per_unit: costPerUnit,
       revenue,
       total_cost: totalCost,
-      customer_name: String(mapped.customer_name || mapped.customer || 'Retail Customer').trim(),
-      supplier_name: String(mapped.supplier_name || mapped.supplier || '').trim(),
-      sale_date: cleanDate(mapped.sale_date || mapped.date || mapped.order_date),
-      payment_method: String(mapped.payment_method || mapped.payment || 'UPI').trim(),
+      customer_name: String(mapped.customerName || mapped.customer_name || mapped.customer || 'Retail Customer').trim(),
+      supplier_name: String(mapped.supplierName || mapped.supplier_name || mapped.supplier || '').trim(),
+      sale_date: cleanDate(mapped.orderDate || mapped.saleDate || mapped.sale_date || mapped.date || mapped.order_date),
+      payment_method: String(mapped.paymentMode || mapped.payment_method || mapped.paymentMethod || mapped.payment || 'UPI').trim(),
       status: 'Completed',
       created_at: new Date().toISOString(),
     };

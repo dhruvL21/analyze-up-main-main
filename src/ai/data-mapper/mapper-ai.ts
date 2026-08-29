@@ -5,7 +5,7 @@
  * canonical AnalyzeUp schema (analyzeup_v1), scores confidence per field,
  * flags low-confidence mappings, and determines if user confirmation is required.
  */
-import { openai } from '@/ai/openai';
+import { openai, isOpenAIConfigured } from '@/ai/openai';
 import { Model1MappingResult, Model1MappingResultSchema } from '@/schemas/mapping-contract';
 
 // Target canonical schema field definitions
@@ -154,45 +154,53 @@ EXAMPLE JSON OUTPUT FORMAT:
   const finalConfidence: Record<string, number> = {};
   let warnings: string[] = [];
 
-  try {
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: 'You are an intelligent data schema mapping agent. Respond strictly with valid JSON.' },
-        { role: 'user', content: prompt },
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.0,
-    });
-
-    const content = response.choices[0]?.message?.content;
-    if (!content) throw new Error('Empty AI response');
-
-    const parsed = JSON.parse(content);
-    const aiMapping = parsed.mapping || {};
-    const aiConf = parsed.confidence || {};
-    warnings = Array.isArray(parsed.warnings) ? parsed.warnings : [];
-
-    const allowedKeys = new Set([...targetFields.map(f => f.key), 'skip']);
-
-    headers.forEach(h => {
-      const mappedKey = aiMapping[h];
-      if (mappedKey && allowedKeys.has(mappedKey)) {
-        finalMapping[h] = mappedKey;
-        finalConfidence[h] = Math.round((Number(aiConf[h]) || 0.9) * 100);
-      } else {
-        const fallback = fuzzyMatchField(h, isSales);
-        finalMapping[h] = fallback.key;
-        finalConfidence[h] = fallback.confidence;
-      }
-    });
-  } catch (error) {
-    console.warn('Model 1 LLM mapping failed, falling back to deterministic heuristics:', error);
+  if (!isOpenAIConfigured()) {
     headers.forEach(h => {
       const fallback = fuzzyMatchField(h, isSales);
       finalMapping[h] = fallback.key;
       finalConfidence[h] = fallback.confidence;
     });
+  } else {
+    try {
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are an intelligent data schema mapping agent. Respond strictly with valid JSON.' },
+          { role: 'user', content: prompt },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.0,
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) throw new Error('Empty AI response');
+
+      const parsed = JSON.parse(content);
+      const aiMapping = parsed.mapping || {};
+      const aiConf = parsed.confidence || {};
+      warnings = Array.isArray(parsed.warnings) ? parsed.warnings : [];
+
+      const allowedKeys = new Set([...targetFields.map(f => f.key), 'skip']);
+
+      headers.forEach(h => {
+        const mappedKey = aiMapping[h];
+        if (mappedKey && allowedKeys.has(mappedKey)) {
+          finalMapping[h] = mappedKey;
+          finalConfidence[h] = Math.round((Number(aiConf[h]) || 0.9) * 100);
+        } else {
+          const fallback = fuzzyMatchField(h, isSales);
+          finalMapping[h] = fallback.key;
+          finalConfidence[h] = fallback.confidence;
+        }
+      });
+    } catch (error) {
+      console.warn('Model 1 LLM mapping failed, falling back to deterministic heuristics:', error);
+      headers.forEach(h => {
+        const fallback = fuzzyMatchField(h, isSales);
+        finalMapping[h] = fallback.key;
+        finalConfidence[h] = fallback.confidence;
+      });
+    }
   }
 
   // Calculate missing required fields

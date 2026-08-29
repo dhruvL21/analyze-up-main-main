@@ -5,7 +5,7 @@
  * Turns Model 2 predictive outputs and standardized business data into
  * structured 5-part actionable recommendations and insights.
  */
-import { openai } from '@/ai/openai';
+import { openai, isOpenAIConfigured } from '@/ai/openai';
 import { CanonicalProduct, CanonicalSale } from '@/schemas/canonical';
 import { Model2PredictionResult } from '@/schemas/prediction-contract';
 import { Model3AnalystResult, Model3AnalystResultSchema } from '@/schemas/analyst-contract';
@@ -127,91 +127,93 @@ Respond ONLY in valid JSON matching this exact structure:
 }
 `;
 
-  try {
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: 'You are an expert executive business intelligence analyst. Respond strictly in valid JSON.' },
-        { role: 'user', content: prompt },
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.1,
-    });
+  if (isOpenAIConfigured()) {
+    try {
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are an expert executive business intelligence analyst. Respond strictly in valid JSON.' },
+          { role: 'user', content: prompt },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.1,
+      });
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) throw new Error('Empty AI response');
-
-    const parsed = JSON.parse(content);
-    return Model3AnalystResultSchema.parse({
-      ...parsed,
-      generated_at: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.warn('Model 3 LLM analysis failed, generating rule-based business synthesis:', error);
-
-    // Fallback deterministic synthesis
-    const stockoutCount = predictions.product_predictions.filter(p => p.stockout.risk === 'HIGH').length;
-    const deadStockCount = predictions.product_predictions.filter(p => p.demand_forecast.daily_velocity === 0 && p.current_stock > 0).length;
-
-    const fallbackRecommendations = predictions.product_predictions
-      .filter(p => p.stockout.risk === 'HIGH' || p.stockout.risk === 'MEDIUM')
-      .slice(0, 5)
-      .map((p, idx) => ({
-        id: `rec-fallback-${idx + 1}`,
-        type: 'reorder' as const,
-        priority: p.stockout.risk === 'HIGH' ? ('CRITICAL' as const) : ('HIGH' as const),
-        title: `Restock Alert: ${p.product_name}`,
-        explanation: {
-          what_happened: `Current stock for ${p.product_name} is ${p.current_stock} units.`,
-          why_it_matters: `Depletion of inventory will halt sales and impact customer fulfillment.`,
-          prediction_indicated: `Forecast indicates demand of ${p.demand_forecast['30_days']} units over 30 days with a ${Math.round(p.stockout.probability * 100)}% stockout probability in ${p.stockout.days_until_stockout || 0} days.`,
-          recommended_action: `Issue purchase order for ${p.stockout.recommended_reorder_qty} units with ${p.supplier_name || 'supplier'} immediately.`,
-          supporting_data: `Current Stock: ${p.current_stock} | 30-Day Demand: ${p.demand_forecast['30_days']} | Lead Time: ${p.supplier_lead_time_days} days.`,
-        },
-        recommendation_summary: `Reorder ${p.stockout.recommended_reorder_qty} units of ${p.product_name} before lead time expires.`,
-        estimated_benefit: `Protect ${currencySymbol}${(p.demand_forecast['30_days'] * p.price).toLocaleString('en-IN')} in projected revenue`,
-        supporting_metrics: {
-          actual_data: { current_stock: p.current_stock, price: p.price },
-          model_prediction: { forecast_30_days: p.demand_forecast['30_days'], stockout_probability: p.stockout.probability },
-        },
-        target_entity: {
-          type: 'product' as const,
-          id: p.product_id,
-          name: p.product_name,
-        },
-      }));
-
-    return {
-      executive_scorecard: {
-        health_comment: `Workspace operations monitored across ${products.length} catalog items with ${currencySymbol}${predictions.aggregate_forecast.projected_30_day_revenue.toLocaleString('en-IN')} in 30-day projected revenue.`,
-        biggest_immediate_decision: stockoutCount > 0
-          ? `Expedite purchase orders for ${stockoutCount} high-risk items to prevent stockout losses.`
-          : `Clear ${deadStockCount} slow-moving inventory SKUs to free up working capital.`,
-        confidence_level: predictions.overall_system_confidence >= 80 ? 'HIGH' : 'MEDIUM',
-        analysis_timestamp: new Date().toISOString(),
-      },
-      business_insights: [
-        {
-          id: 'insight-1',
-          category: 'inventory',
-          type: 'risk',
-          title: 'Stockout Exposure Assessment',
-          insight: `${stockoutCount} SKUs are approaching stockout thresholds before supplier replenishment.`,
-          observed_fact: `Historical inventory levels show ${stockoutCount} items with stock <= reorder points.`,
-          severity: stockoutCount > 0 ? 'high' : 'low',
-        },
-        {
-          id: 'insight-2',
-          category: 'sales',
-          type: 'trend',
-          title: '30-Day Revenue Trajectory',
-          insight: `Projected gross revenue of ${currencySymbol}${predictions.aggregate_forecast.projected_30_day_revenue.toLocaleString('en-IN')} with ${predictions.aggregate_forecast.projected_margin_percent}% gross margins.`,
-          observed_fact: `Aggregated sales transactions across product categories.`,
-          severity: 'positive',
-        },
-      ],
-      recommendations: fallbackRecommendations,
-      generated_at: new Date().toISOString(),
-    };
+      const content = response.choices[0]?.message?.content;
+      if (content) {
+        const parsed = JSON.parse(content);
+        return Model3AnalystResultSchema.parse({
+          ...parsed,
+          generated_at: new Date().toISOString(),
+        });
+      }
+    } catch (error) {
+      console.warn('Model 3 LLM analysis failed, generating rule-based business synthesis:', error);
+    }
   }
+
+  // Deterministic rule-based business synthesis fallback
+  const stockoutCount = predictions.product_predictions.filter(p => p.stockout.risk === 'HIGH').length;
+  const deadStockCount = predictions.product_predictions.filter(p => p.demand_forecast.daily_velocity === 0 && p.current_stock > 0).length;
+
+  const fallbackRecommendations = predictions.product_predictions
+    .filter(p => p.stockout.risk === 'HIGH' || p.stockout.risk === 'MEDIUM')
+    .slice(0, 5)
+    .map((p, idx) => ({
+      id: `rec-fallback-${idx + 1}`,
+      type: 'reorder' as const,
+      priority: p.stockout.risk === 'HIGH' ? ('CRITICAL' as const) : ('HIGH' as const),
+      title: `Restock Alert: ${p.product_name}`,
+      explanation: {
+        what_happened: `Current stock for ${p.product_name} is ${p.current_stock} units.`,
+        why_it_matters: `Depletion of inventory will halt sales and impact customer fulfillment.`,
+        prediction_indicated: `Forecast indicates demand of ${p.demand_forecast['30_days']} units over 30 days with a ${Math.round(p.stockout.probability * 100)}% stockout probability in ${p.stockout.days_until_stockout || 0} days.`,
+        recommended_action: `Issue purchase order for ${p.stockout.recommended_reorder_qty} units with ${p.supplier_name || 'supplier'} immediately.`,
+        supporting_data: `Current Stock: ${p.current_stock} | 30-Day Demand: ${p.demand_forecast['30_days']} | Lead Time: ${p.supplier_lead_time_days} days.`,
+      },
+      recommendation_summary: `Reorder ${p.stockout.recommended_reorder_qty} units of ${p.product_name} before lead time expires.`,
+      estimated_benefit: `Protect ${currencySymbol}${(p.demand_forecast['30_days'] * p.price).toLocaleString('en-IN')} in projected revenue`,
+      supporting_metrics: {
+        actual_data: { current_stock: p.current_stock, price: p.price },
+        model_prediction: { forecast_30_days: p.demand_forecast['30_days'], stockout_probability: p.stockout.probability },
+      },
+      target_entity: {
+        type: 'product' as const,
+        id: p.product_id,
+        name: p.product_name,
+      },
+    }));
+
+  return {
+    executive_scorecard: {
+      health_comment: `Workspace operations monitored across ${products.length} catalog items with ${currencySymbol}${predictions.aggregate_forecast.projected_30_day_revenue.toLocaleString('en-IN')} in 30-day projected revenue.`,
+      biggest_immediate_decision: stockoutCount > 0
+        ? `Expedite purchase orders for ${stockoutCount} high-risk items to prevent stockout losses.`
+        : `Clear ${deadStockCount} slow-moving inventory SKUs to free up working capital.`,
+      confidence_level: predictions.overall_system_confidence >= 80 ? 'HIGH' : 'MEDIUM',
+      analysis_timestamp: new Date().toISOString(),
+    },
+    business_insights: [
+      {
+        id: 'insight-1',
+        category: 'inventory',
+        type: 'risk',
+        title: 'Stockout Exposure Assessment',
+        insight: `${stockoutCount} SKUs are approaching stockout thresholds before supplier replenishment.`,
+        observed_fact: `Historical inventory levels show ${stockoutCount} items with stock <= reorder points.`,
+        severity: stockoutCount > 0 ? 'high' : 'low',
+      },
+      {
+        id: 'insight-2',
+        category: 'sales',
+        type: 'trend',
+        title: '30-Day Revenue Trajectory',
+        insight: `Projected gross revenue of ${currencySymbol}${predictions.aggregate_forecast.projected_30_day_revenue.toLocaleString('en-IN')} with ${predictions.aggregate_forecast.projected_margin_percent}% gross margins.`,
+        observed_fact: `Aggregated sales transactions across product categories.`,
+        severity: 'positive',
+      },
+    ],
+    recommendations: fallbackRecommendations,
+    generated_at: new Date().toISOString(),
+  };
 }

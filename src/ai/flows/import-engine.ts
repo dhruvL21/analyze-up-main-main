@@ -1,6 +1,4 @@
-'use server';
-
-import { openai } from '@/ai/openai';
+import { openai, isOpenAIConfigured } from '@/ai/openai';
 import {
   BusinessFileType,
   FILE_TYPE_DEFINITIONS,
@@ -23,6 +21,9 @@ export async function detectBusinessFileType(
   externalHeaders: string[],
   sampleRows: Record<string, any>[] = []
 ): Promise<DetectionResult> {
+  if (!isOpenAIConfigured()) {
+    return heuristicDetectFileType(externalHeaders);
+  }
   const sampleSnippet = sampleRows.slice(0, 3).map(row => {
     const cleaned: Record<string, any> = {};
     externalHeaders.forEach(h => {
@@ -181,6 +182,17 @@ export async function getSmartMappingForFileType(
 ): Promise<{ mapping: FieldMapping; confidence: Record<string, number>; isAiPowered: boolean }> {
   const targetFields = FILE_TYPE_DEFINITIONS[fileType]?.fields || FILE_TYPE_DEFINITIONS.INVENTORY_MASTER.fields;
   const targetFieldKeys = targetFields.map(f => f.key);
+
+  if (!isOpenAIConfigured()) {
+    const mapping: FieldMapping = {};
+    const confidence: Record<string, number> = {};
+    externalHeaders.forEach(h => {
+      const fuzzy = getFuzzyMatchForFileType(h, targetFields);
+      mapping[h] = fuzzy;
+      confidence[h] = fuzzy !== 'skip' ? 92 : 60;
+    });
+    return { mapping, confidence, isAiPowered: false };
+  }
 
   const sampleSnippet = sampleRows.slice(0, 3).map(row => {
     const cleaned: Record<string, any> = {};
