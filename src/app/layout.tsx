@@ -29,14 +29,12 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <ClientOnly>
-            <FirebaseClientProvider>
-                <DataProvider>
-                  {children}
-                  <FirebaseErrorListener />
-                </DataProvider>
-            </FirebaseClientProvider>
-          </ClientOnly>
+          <FirebaseClientProvider>
+            <DataProvider>
+              {children}
+              <FirebaseErrorListener />
+            </DataProvider>
+          </FirebaseClientProvider>
           <Toaster />
         </ThemeProvider>
       </body>

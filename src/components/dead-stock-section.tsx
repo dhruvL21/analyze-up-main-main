@@ -49,31 +49,41 @@ export function DeadStockSection() {
 
   const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
 
-  // Products with stock > 0 but zero sales in transaction history
-  const saleProductIds = new Set(transactions.filter((t) => t.type === 'Sale').map((t) => t.productId));
-  const deadStockItems = products.filter((p) => p.stock > 0 && !saleProductIds.has(p.id));
+  // Memoized Products with stock > 0 but zero sales in transaction history
+  const deadStockItems = React.useMemo(() => {
+    const saleProductIds = new Set(transactions.filter((t) => t.type === 'Sale').map((t) => t.productId));
+    return products.filter((p) => p.stock > 0 && !saleProductIds.has(p.id));
+  }, [products, transactions]);
 
   // Track products that have already had a clearance discount executed
-  const discountedProductNames = new Set(
-    recentLogs
-      .filter((log) => log.actionType === 'discount')
-      .map((log) => log.productName.toLowerCase())
-  );
+  const discountedProductNames = React.useMemo(() => {
+    return new Set(
+      recentLogs
+        .filter((log) => log.actionType === 'discount')
+        .map((log) => log.productName.toLowerCase())
+    );
+  }, [recentLogs]);
 
   // Active items that still need clearance action
-  const pendingItems = deadStockItems.filter(
-    (item) => !discountedProductNames.has(item.name.toLowerCase())
-  );
+  const pendingItems = React.useMemo(() => {
+    return deadStockItems.filter(
+      (item) => !discountedProductNames.has(item.name.toLowerCase())
+    );
+  }, [deadStockItems, discountedProductNames]);
 
   // Resolved items that already have clearance active
-  const resolvedItems = deadStockItems.filter((item) =>
-    discountedProductNames.has(item.name.toLowerCase())
-  );
+  const resolvedItems = React.useMemo(() => {
+    return deadStockItems.filter((item) =>
+      discountedProductNames.has(item.name.toLowerCase())
+    );
+  }, [deadStockItems, discountedProductNames]);
 
-  const totalDeadCapital = deadStockItems.reduce(
-    (acc, p) => acc + (p.stock || 0) * (p.costPrice || (p.price || 500) * 0.6),
-    0
-  );
+  const totalDeadCapital = React.useMemo(() => {
+    return deadStockItems.reduce(
+      (acc, p) => acc + (p.stock || 0) * (p.costPrice || (p.price || 500) * 0.6),
+      0
+    );
+  }, [deadStockItems]);
 
   const handleApplyDiscount = async () => {
     if (!confirmItem) return;

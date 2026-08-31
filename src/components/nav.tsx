@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useSearchParams } from "next/navigation";
-import React, { useState, useRef, useMemo } from "react";
+import React, { useState, useRef, useMemo, Suspense } from "react";
 import {
   Boxes,
   LayoutDashboard,
@@ -166,7 +166,7 @@ const navItems: NavItem[] = [
   },
 ];
 
-export default function Nav({ isMobile = false }: { isMobile?: boolean }) {
+function NavContent({ isMobile = false }: { isMobile?: boolean }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { products, transactions, suppliers, returns, isLimitExceeded, activePlan, setShowSubscriptionModal } = useData();
@@ -444,5 +444,13 @@ export default function Nav({ isMobile = false }: { isMobile?: boolean }) {
         );
       })}
     </nav>
+  );
+}
+
+export default function Nav({ isMobile = false }: { isMobile?: boolean }) {
+  return (
+    <Suspense fallback={<nav className="h-9 w-64 bg-secondary/20 rounded-xl animate-pulse" />}>
+      <NavContent isMobile={isMobile} />
+    </Suspense>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   PlusCircle,
@@ -87,7 +87,7 @@ import {
 import { Supplier, Product } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 
-export default function SuppliersPage() {
+function SuppliersPageContent() {
   const { suppliers, products, orders, transactions, deleteSupplier, isLoading, businessProfile } = useData();
   const { toast } = useToast();
   const searchParams = useSearchParams();
@@ -912,5 +912,13 @@ export default function SuppliersPage() {
         defaultProductId={selectedProductForPo}
       />
     </>
+  );
+}
+
+export default function SuppliersPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-xs text-muted-foreground animate-pulse">Loading Supplier Intelligence...</div>}>
+      <SuppliersPageContent />
+    </Suspense>
   );
 }

@@ -1,13 +1,12 @@
 'use client';
 
-import { useState, useEffect, useTransition, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useData } from '@/context/data-context';
 import { useUser, useFirestore, useDoc } from '@/firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { Sparkles, AlertTriangle, Coins, Loader2, RefreshCw, Lock, ArrowRight } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
-import { generateAIBrief, AIBriefOutput } from '@/ai/flows/ai-brief-generator';
-import { Skeleton } from '@/components/ui/skeleton';
+import { calculateDynamicBrief, type AIBriefOutput } from '@/ai/flows/ai-brief-generator';
 import { ThreeTierBadge } from '@/components/three-tier-badge';
 import { serializePlainData } from '@/lib/utils';
 import type { Product, Transaction } from '@/lib/types';
@@ -21,58 +20,82 @@ export function AIBrief() {
   const { data: persistedBrief, loading: briefLoading } = useDoc<AIBriefOutput>(briefRef);
 
   const [brief, setBrief] = useState<AIBriefOutput | null>(null);
-  const [isPending, startTransition] = useTransition();
-
   const isPaid = activePlan !== 'Free Trial';
 
-  // Sync persisted brief when available
+  // Real-time dynamic brief calculated strictly from current live products & transactions
+  const dynamicBrief = useMemo(() => {
+    return calculateDynamicBrief(products, transactions);
+  }, [products, transactions]);
+
+  // Check if persisted brief from Firestore matches the current live product catalog
+  const isPersistedBriefValid = useMemo(() => {
+    if (!persistedBrief || products.length === 0) return false;
+    const currentNames = new Set(
+      products.map((p) => String(p.name || (p as any).productName || '').trim().toLowerCase()).filter(Boolean)
+    );
+    const stockoutName = String(persistedBrief.stockoutItem?.name || '').trim().toLowerCase();
+    const slowMovingName = String(persistedBrief.slowMovingItem?.name || '').trim().toLowerCase();
+    return (currentNames.has(stockoutName) || currentNames.has(slowMovingName));
+  }, [persistedBrief, products]);
+
+  // Priority: newly calculated brief -> valid persisted brief -> dynamic brief
+  const activeBrief = useMemo(() => {
+    if (brief) return brief;
+    if (isPersistedBriefValid && persistedBrief) return persistedBrief;
+    return dynamicBrief;
+  }, [brief, isPersistedBriefValid, persistedBrief, dynamicBrief]);
+
+  // AUTOMATIC ANALYSIS: Re-run and sync AI Brief immediately whenever data is imported / products change
   useEffect(() => {
-    if (persistedBrief && !brief) {
-      setBrief(persistedBrief);
+    if (!products || products.length === 0) return;
+    const freshBrief = calculateDynamicBrief(products, transactions);
+    setBrief(freshBrief);
+
+    if (firestore && user && briefRef) {
+      setDoc(briefRef, serializePlainData({ ...freshBrief, updatedAt: new Date().toISOString() }), { merge: true }).catch(() => {});
     }
-  }, [persistedBrief, brief]);
+  }, [products, transactions, firestore, user, briefRef]);
 
   // Calculate return stats in real-time
-  const returnedQty = returns.reduce((sum, r) => sum + r.quantity, 0);
+  const returnedQty = returns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0);
   const totalItemsSold = transactions
-    .filter(t => t.type === 'Sale' && t.quantity > 0)
-    .reduce((sum, t) => sum + t.quantity, 0) || 1;
+    .filter(t => (t.type === 'Sale' || (t as any).type === 'sale') && Number(t.quantity || (t as any).units_sold) > 0)
+    .reduce((sum, t) => sum + (Number(t.quantity || (t as any).units_sold) || 0), 0) || 1;
   const returnRate = (returnedQty / totalItemsSold) * 100;
 
   const returnedProductMap: Record<string, number> = {};
   returns.forEach(r => {
-    returnedProductMap[r.productName] = (returnedProductMap[r.productName] || 0) + r.quantity;
+    const pName = r.productName || 'General Item';
+    returnedProductMap[pName] = (returnedProductMap[pName] || 0) + (Number(r.quantity) || 0);
   });
   const topReturned = Object.entries(returnedProductMap).sort((a, b) => b[1] - a[1])[0];
   const topReturnedProduct = topReturned ? topReturned[0] : 'None';
   const topReturnedQty = topReturned ? topReturned[1] : 0;
 
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   const fetchBrief = useCallback(() => {
-    if (!isPaid) return;
-    startTransition(async () => {
-      try {
-        const cleanProducts = serializePlainData<Product[]>(products.slice(0, 300));
-        const cleanTransactions = serializePlainData<Transaction[]>(transactions.slice(0, 500));
-        const result = await generateAIBrief(cleanProducts, cleanTransactions);
-        setBrief(result);
-
-        if (firestore && user && briefRef) {
-          await setDoc(briefRef, serializePlainData({ ...result, updatedAt: new Date().toISOString() }), { merge: true });
-        }
-      } catch (err) {
-        console.error('Failed to generate AI Brief:', err);
-      }
-    });
-  }, [products, transactions, isPaid, firestore, user, briefRef]);
-
-  // Only auto-generate if no persisted brief exists yet and paid
-  useEffect(() => {
-    if (isPaid && !persistedBrief && !briefLoading && products.length > 0 && !brief) {
-      fetchBrief();
-    } else if (!isPaid) {
-      setBrief(null);
+    if (!isPaid) {
+      setShowSubscriptionModal(true);
+      return;
     }
-  }, [isPaid, persistedBrief, briefLoading, products.length, brief, fetchBrief]);
+    
+    setIsRefreshing(true);
+    // Instant synchronous calculation directly in memory (0ms)
+    const result = calculateDynamicBrief(products, transactions);
+    setBrief(result);
+
+    // Background asynchronous persistence without blocking UI
+    if (firestore && user && briefRef) {
+      setDoc(briefRef, serializePlainData({ ...result, updatedAt: new Date().toISOString() }), { merge: true })
+        .catch((err) => console.warn('AI Brief background save:', err))
+        .finally(() => {
+          setTimeout(() => setIsRefreshing(false), 200);
+        });
+    } else {
+      setTimeout(() => setIsRefreshing(false), 200);
+    }
+  }, [products, transactions, isPaid, firestore, user, briefRef, setShowSubscriptionModal]);
 
   const getHealthColor = (score: number) => {
     if (score >= 80) return 'bg-emerald-500';
@@ -85,35 +108,6 @@ export function AIBrief() {
     if (score >= 50) return 'text-amber-400';
     return 'text-rose-400';
   };
-
-  if (!brief && isPending && isPaid) {
-    return (
-      <div className="relative overflow-hidden rounded-2xl border border-border/80 bg-card/60 p-5 shadow-xl backdrop-blur-md h-full flex flex-col justify-between">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between border-b border-border/40 pb-4 mb-4">
-          <div className="flex items-center gap-2.5">
-            <Skeleton className="h-9 w-9 rounded-xl animate-pulse bg-muted" />
-            <div className="space-y-2">
-              <Skeleton className="h-5 w-32 animate-pulse bg-muted" />
-              <Skeleton className="h-3 w-48 animate-pulse bg-muted" />
-            </div>
-          </div>
-          <div className="flex flex-col gap-2 w-full md:w-auto md:min-w-[160px]">
-            <div className="flex justify-between md:justify-end md:gap-3">
-              <Skeleton className="h-4 w-20 animate-pulse bg-muted" />
-              <Skeleton className="h-4 w-10 animate-pulse bg-muted" />
-            </div>
-            <Skeleton className="h-1.5 w-full md:w-[180px] animate-pulse bg-muted" />
-          </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Skeleton className="h-32 rounded-xl animate-pulse bg-muted" />
-          <Skeleton className="h-32 rounded-xl animate-pulse bg-muted" />
-          <Skeleton className="h-32 rounded-xl animate-pulse bg-muted" />
-        </div>
-        <Skeleton className="h-10 w-full mt-4 rounded-xl animate-pulse bg-muted" />
-      </div>
-    );
-  }
 
   if (products.length === 0 && !isLoading) {
     return (
@@ -135,15 +129,13 @@ export function AIBrief() {
     );
   }
 
-  const activeBrief = brief || calculateDynamicBrief(products, transactions);
-
   return (
     <div data-tour="ai-brief" className="relative overflow-hidden rounded-2xl border border-emerald-500/20 bg-card/60 p-5 shadow-xl backdrop-blur-md transition-all duration-300 hover:border-emerald-500/40 h-full flex flex-col justify-between">
       {/* Header section */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between border-b border-border/40 pb-3 mb-4">
         <div className="flex items-center gap-2.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-400 shadow-inner border border-emerald-500/20">
-            {isPending && isPaid ? (
+            {isRefreshing && isPaid ? (
               <Loader2 className="h-5 w-5 animate-spin" />
             ) : (
               <Sparkles className="h-5 w-5 text-emerald-400 animate-pulse" />
@@ -162,12 +154,12 @@ export function AIBrief() {
           <div className="flex flex-wrap items-center justify-between md:justify-end gap-3 w-full">
             <button
               onClick={isPaid ? fetchBrief : () => setShowSubscriptionModal(true)}
-              disabled={isPending && isPaid}
+              disabled={isRefreshing && isPaid}
               className="text-xs text-muted-foreground hover:text-emerald-400 flex items-center gap-1.5 px-3 py-1 rounded-xl border border-border/40 bg-secondary/30 transition-all active:scale-95 disabled:opacity-50 font-semibold"
               title={isPaid ? "Refresh Brief" : "Upgrade to Unlock"}
             >
               {isPaid ? (
-                <RefreshCw className={`h-3.5 w-3.5 ${isPending ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
               ) : (
                 <Lock className="h-3.5 w-3.5 text-emerald-400" />
               )}
@@ -187,7 +179,7 @@ export function AIBrief() {
       {/* Main Content Area with conditional blur */}
       <div className="relative flex-1 flex flex-col justify-between gap-4">
         {/* Content grid */}
-        <div className={`grid grid-cols-1 sm:grid-cols-3 gap-3.5 flex-1 transition-all duration-300 ${!isPaid ? 'blur-[5px] select-none pointer-events-none opacity-40' : (isPending ? 'opacity-60' : 'opacity-100')}`}>
+        <div className={`grid grid-cols-1 sm:grid-cols-3 gap-3.5 flex-1 transition-all duration-300 ${!isPaid ? 'blur-[5px] select-none pointer-events-none opacity-40' : (isRefreshing ? 'opacity-75 transition-opacity' : 'opacity-100')}`}>
           {/* Left Column: Stockout Risk */}
           <div className="relative group flex p-4 rounded-2xl border border-rose-500/20 bg-zinc-900/60 hover:bg-zinc-900/90 hover:border-rose-500/40 transition-all duration-200 flex-1 flex-col justify-between shadow-sm">
             <div className="space-y-2">
@@ -280,7 +272,7 @@ export function AIBrief() {
         </div>
 
         {/* Footer Banner */}
-        <div data-tour="ai-suggestions" className={`flex items-center justify-between px-4 py-3 rounded-2xl border border-blue-500/25 bg-gradient-to-r from-blue-950/50 via-indigo-950/30 to-zinc-900/70 shadow-sm transition-all duration-300 ${!isPaid ? 'blur-[5px] select-none pointer-events-none opacity-40' : (isPending ? 'opacity-60' : 'opacity-100')}`}>
+        <div data-tour="ai-suggestions" className={`flex items-center justify-between px-4 py-3 rounded-2xl border border-blue-500/25 bg-gradient-to-r from-blue-950/50 via-indigo-950/30 to-zinc-900/70 shadow-sm transition-all duration-300 ${!isPaid ? 'blur-[5px] select-none pointer-events-none opacity-40' : (isRefreshing ? 'opacity-75 transition-opacity' : 'opacity-100')}`}>
           <div className="flex items-center gap-2.5 font-bold text-foreground">
             <Coins className="h-4 w-4 text-blue-400 shrink-0" />
             <div className="flex items-center gap-1.5 text-xs sm:text-sm">
@@ -296,167 +288,23 @@ export function AIBrief() {
         {!isPaid && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 z-10 bg-card/20 rounded-xl backdrop-blur-[2px]">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shadow-lg mb-3">
-              <Lock className="h-6 w-6 animate-pulse" />
+              <Lock className="h-6 w-6 text-emerald-400 animate-pulse" />
             </div>
-            <h4 className="font-bold text-lg text-foreground mb-1.5 flex items-center gap-2">
+            <h3 className="font-bold text-base text-foreground mb-1">
               Unlock Today's AI Brief
-            </h4>
-            <p className="text-sm text-muted-foreground max-w-md mb-4">
-              Get detailed product health diagnostics, automated low-stock warnings, and actionable cost-saving recommendations.
+            </h3>
+            <p className="text-xs text-muted-foreground max-w-xs mb-4">
+              Get predictive inventory warnings, stockout predictions, and cash savings diagnostics.
             </p>
             <button
               onClick={() => setShowSubscriptionModal(true)}
-              className="inline-flex h-10 items-center justify-center rounded-xl bg-emerald-600 px-6 font-semibold text-white shadow-md transition-all hover:bg-emerald-500 hover:scale-[1.02] active:scale-[0.98]"
+              className="inline-flex h-9 items-center justify-center rounded-xl bg-emerald-600 px-5 font-bold text-xs text-white shadow-lg shadow-emerald-600/30 hover:bg-emerald-500 transition-all cursor-pointer active:scale-95"
             >
-              Upgrade Plan
+              Upgrade to Pro (₹4,999/mo)
             </button>
           </div>
         )}
       </div>
     </div>
   );
-}
-
-function calculateDynamicBrief(products: any[], transactions: any[]): any {
-  if (!products || products.length === 0) {
-    return {
-      healthScore: 100,
-      stockoutItem: {
-        name: 'No Products Found',
-        riskText: 'No products in inventory.',
-        reorderText: 'Add products to start monitoring.',
-        costText: 'Estimated cost: ₹0'
-      },
-      slowMovingItem: {
-        name: 'No Products Found',
-        riskText: 'No products in inventory.',
-        costText: '₹0 blocked.',
-        actionText: 'Add products to start monitoring.'
-      },
-      savingsText: 'Potential monthly savings: ₹0'
-    };
-  }
-
-  let score = 100;
-  let stockoutCount = 0;
-  let lowStockCount = 0;
-
-  products.forEach(p => {
-    const stock = Number(p.stock) || 0;
-    if (stock === 0) {
-      stockoutCount++;
-    } else if (stock < 10) {
-      lowStockCount++;
-    }
-  });
-
-  const stockoutPercentage = stockoutCount / products.length;
-  const lowStockPercentage = lowStockCount / products.length;
-
-  score -= Math.round(stockoutPercentage * 45);
-  score -= Math.round(lowStockPercentage * 20);
-  score = Math.max(30, Math.min(100, score));
-
-  let highestRiskItem: any = null;
-  let lowestRunway = Infinity;
-
-  products.forEach(p => {
-    const stock = Number(p.stock) || 0;
-    const ads = Number(p.averageDailySales) || 0.1;
-    const runway = stock / ads;
-    if (runway < lowestRunway) {
-      lowestRunway = runway;
-      highestRiskItem = p;
-    }
-  });
-
-  if (!highestRiskItem && products.length > 0) {
-    highestRiskItem = products[0];
-  }
-
-  let stockoutItem = {
-    name: 'None',
-    riskText: 'All items are fully stocked.',
-    reorderText: 'No reorder needed.',
-    costText: 'Estimated cost: ₹0'
-  };
-
-  if (highestRiskItem) {
-    const stock = Number(highestRiskItem.stock) || 0;
-    const ads = Number(highestRiskItem.averageDailySales) || 0.5;
-    const runwayDays = Math.ceil(stock / ads);
-    const reorderQty = Math.max(10, Math.ceil(ads * 15 - stock));
-    const costPrice = Number(highestRiskItem.costPrice) || Number(highestRiskItem.price) * 0.6 || 0;
-    const estimatedCost = Math.round(reorderQty * costPrice);
-
-    stockoutItem = {
-      name: highestRiskItem.name || 'Unnamed Product',
-      riskText: stock === 0 ? 'Out of stock.' : `Stockout risk in ${runwayDays} days.`,
-      reorderText: `Suggested reorder: ${reorderQty} units.`,
-      costText: `Estimated cost: ₹${estimatedCost.toLocaleString('en-IN')}`
-    };
-  }
-
-  let worstSlowMovingItem: any = null;
-  let highestBlockedCapital = -1;
-
-  products.forEach(p => {
-    const stock = Number(p.stock) || 0;
-    const ads = Number(p.averageDailySales) || 0;
-    const price = Number(p.price) || 0;
-    const costPrice = Number(p.costPrice) || price * 0.6 || 0;
-    const blockedCapital = stock * costPrice;
-
-    if (ads < 2 && blockedCapital > highestBlockedCapital) {
-      highestBlockedCapital = blockedCapital;
-      worstSlowMovingItem = p;
-    }
-  });
-
-  if (!worstSlowMovingItem && products.length > 0) {
-    products.forEach(p => {
-      const stock = Number(p.stock) || 0;
-      const price = Number(p.price) || 0;
-      const costPrice = Number(p.costPrice) || price * 0.6 || 0;
-      const blockedCapital = stock * costPrice;
-      if (blockedCapital > highestBlockedCapital) {
-        highestBlockedCapital = blockedCapital;
-        worstSlowMovingItem = p;
-      }
-    });
-  }
-
-  let slowMovingItem = {
-    name: 'None',
-    riskText: 'No slow-moving inventory detected.',
-    costText: '₹0 blocked.',
-    actionText: 'No action suggested.'
-  };
-
-  if (worstSlowMovingItem) {
-    const stock = Number(worstSlowMovingItem.stock) || 0;
-    const price = Number(worstSlowMovingItem.price) || 0;
-    const costPrice = Number(worstSlowMovingItem.costPrice) || price * 0.6 || 0;
-    const blockedCapital = Math.round(stock * costPrice);
-
-    const salesTx = transactions.filter(t => t.type === 'Sale' && t.productName === worstSlowMovingItem.name);
-    const daysSinceLastSale = salesTx.length > 0 ? 5 : 30;
-
-    slowMovingItem = {
-      name: worstSlowMovingItem.name || 'Unnamed Product',
-      riskText: `No sales in ${daysSinceLastSale} days.`,
-      costText: `₹${blockedCapital.toLocaleString('en-IN')} blocked.`,
-      actionText: 'Suggested action: 20% discount.'
-    };
-  }
-
-  const totalLockedCapital = products.reduce((sum, p) => sum + (Number(p.stock) * (Number(p.costPrice) || Number(p.price) * 0.6 || 0)), 0);
-  const savingsText = `Cash Locked in Inventory: ₹${Math.round(totalLockedCapital).toLocaleString('en-IN')}`;
-
-  return {
-    healthScore: score,
-    stockoutItem,
-    slowMovingItem,
-    savingsText
-  };
 }

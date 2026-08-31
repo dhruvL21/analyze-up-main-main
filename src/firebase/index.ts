@@ -1,7 +1,14 @@
 import { getApps, initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, setLogLevel } from 'firebase/firestore';
 import { firebaseConfig } from './config';
+
+// Suppress internal gRPC idle stream disconnect logs from Firebase Client SDK
+try {
+  setLogLevel('silent');
+} catch {
+  // ignore in non-browser/unsupported environments
+}
 
 // Hooks and providers
 export { FirebaseProvider, useFirebase, useFirebaseApp, useFirestore, useAuth } from './provider';

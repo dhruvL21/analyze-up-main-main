@@ -66,21 +66,27 @@ export function InventoryRecommendationsPanel() {
     });
   };
 
-  // Candidate 1: Low Stock Reorder
-  const lowStockProd = products.find(
-    p => p && p.stock <= (p.minStock || 5) && !appliedIds.has(`${p.id}:reorder`)
-  );
+  // Memoized Candidate 1: Low Stock Reorder
+  const lowStockProd = React.useMemo(() => {
+    return products.find(
+      p => p && p.stock <= (p.minStock || 5) && !appliedIds.has(`${p.id}:reorder`)
+    );
+  }, [products, appliedIds]);
 
-  // Candidate 2: Dead Stock Clearance
-  const saleProductIds = new Set(transactions.filter(t => t.type === 'Sale').map(t => t.productId));
-  const deadStockProd = products.find(
-    p => p && p.stock > 0 && !saleProductIds.has(p.id) && !appliedIds.has(`${p.id}:clearance`)
-  );
+  // Memoized Candidate 2: Dead Stock Clearance
+  const deadStockProd = React.useMemo(() => {
+    const saleProductIds = new Set(transactions.filter(t => t.type === 'Sale').map(t => t.productId));
+    return products.find(
+      p => p && p.stock > 0 && !saleProductIds.has(p.id) && !appliedIds.has(`${p.id}:clearance`)
+    );
+  }, [products, transactions, appliedIds]);
 
-  // Candidate 3: Price Increase Optimization
-  const priceUpProd = products.find(
-    p => p && (p.averageDailySales || 0) >= 0.8 && (p.price || 0) > 0 && !appliedIds.has(`${p.id}:price_up`)
-  );
+  // Memoized Candidate 3: Price Increase Optimization
+  const priceUpProd = React.useMemo(() => {
+    return products.find(
+      p => p && (p.averageDailySales || 0) >= 0.8 && (p.price || 0) > 0 && !appliedIds.has(`${p.id}:price_up`)
+    );
+  }, [products, appliedIds]);
 
   const handleReorder = (prod: any) => {
     const key = `${prod.id}:reorder`;

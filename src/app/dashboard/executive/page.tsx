@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -132,7 +132,7 @@ import {
 } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 
-export default function ExecutiveIntelligencePage() {
+function ExecutiveIntelligencePageContent() {
   const { products, transactions, suppliers, orders, returns, businessProfile, activePlan, handleUpgrade, isProcessingPayment, aiQueryCount } = useData();
   const { user } = useUser();
   const { toast } = useToast();
@@ -181,14 +181,20 @@ export default function ExecutiveIntelligencePage() {
     };
   }, []);
 
-  // Growth Intelligence Engine
+  // Growth Intelligence Engine (computed when growth or overview tab is active)
   const growthReport = useMemo(() => {
+    if (activeTab !== 'growth' && activeTab !== 'overview') {
+      return { totalCustomers: 0, repeatPurchaseRatePercent: 0, atRiskCustomers: [], opportunities: [], rfmSegments: {} } as any;
+    }
     void growthTick;
     return computeCustomerGrowthIntelligence(products, transactions, suppliers, orders, returns, businessProfile);
-  }, [products, transactions, suppliers, orders, returns, businessProfile, growthTick]);
+  }, [products, transactions, suppliers, orders, returns, businessProfile, growthTick, activeTab]);
 
-  // Simulation Engine
+  // Simulation Engine (computed only when simulation tab is active)
   const activeSimulation = useMemo(() => {
+    if (activeTab !== 'simulation') {
+      return null as any;
+    }
     const pId = simTargetProductId || products[0]?.id || '';
     const params: Record<string, any> = {};
     if (simType === 'PRICE_CHANGE') params.priceChangePercent = simValue;
@@ -197,12 +203,13 @@ export default function ExecutiveIntelligencePage() {
     else if (simType === 'DEMAND_CHANGE') params.demandShiftPercent = simValue;
 
     return runBusinessSimulation(simType, pId, params, products, transactions, suppliers, orders, businessProfile);
-  }, [simType, simTargetProductId, simValue, products, transactions, suppliers, orders, businessProfile]);
+  }, [simType, simTargetProductId, simValue, products, transactions, suppliers, orders, businessProfile, activeTab]);
 
   const savedScenarios = useMemo(() => {
+    if (activeTab !== 'simulation') return [];
     void savedSimTick;
     return getSavedScenarios();
-  }, [savedSimTick]);
+  }, [savedSimTick, activeTab]);
 
   // Forecasting State
   const [activeScenario, setActiveScenario] = useState<ScenarioType>('BASE');
@@ -283,19 +290,26 @@ export default function ExecutiveIntelligencePage() {
   }, [comparison, scorecard, risks, opportunities, businessProfile]);
 
   const forecastingReport = useMemo(() => {
+    if (activeTab !== 'forecasting' && activeTab !== 'overview') {
+      return { totalProjected30DayRevenue: 0, projectedExcessCapital: 0, criticalStockoutsCount: 0, stockoutProjections: [], velocities: [] } as any;
+    }
     return generateBusinessForecastingReport(products, transactions, suppliers, orders);
-  }, [products, transactions, suppliers, orders]);
+  }, [products, transactions, suppliers, orders, activeTab]);
 
   const scenarioTotals = useMemo(() => {
+    if (activeTab !== 'forecasting') {
+      return { projected30DayRevenue: 0, projected30DayProfit: 0, criticalStockouts: 0, demandMultiplier: 1 } as any;
+    }
     return evaluateScenario(forecastingReport, activeScenario);
-  }, [forecastingReport, activeScenario]);
+  }, [forecastingReport, activeScenario, activeTab]);
 
   const filteredProjections = useMemo(() => {
+    if (activeTab !== 'forecasting') return [];
     const query = (searchQuery || '').toLowerCase().trim();
     return (forecastingReport.stockoutProjections || []).filter(
-      p => !query || (p.productName || '').toLowerCase().includes(query) || (p.sku || '').toLowerCase().includes(query)
+      (p: any) => !query || (p.productName || '').toLowerCase().includes(query) || (p.sku || '').toLowerCase().includes(query)
     );
-  }, [forecastingReport.stockoutProjections, searchQuery]);
+  }, [forecastingReport.stockoutProjections, searchQuery, activeTab]);
 
   const reportHistory = useMemo(() => {
     void historyDrawerOpen;
@@ -847,7 +861,7 @@ export default function ExecutiveIntelligencePage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredProjections.map(item => (
+                  {filteredProjections.map((item: any) => (
                     <TableRow key={item.productId} className="border-border/30">
                       <TableCell>
                         <span className="font-bold text-foreground block">{item.productName}</span>
@@ -1101,7 +1115,7 @@ export default function ExecutiveIntelligencePage() {
                     No sales transactions recorded. Upload sales history to identify expansion drivers.
                   </p>
                 ) : (
-                  growthReport.positiveDrivers.map((d, i) => (
+                  growthReport.positiveDrivers.map((d: any, i: number) => (
                     <div key={i} className="flex items-start gap-2 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
                       <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
                       <span className="text-emerald-200 leading-snug">{d}</span>
@@ -1118,7 +1132,7 @@ export default function ExecutiveIntelligencePage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-xs">
-                {growthReport.growthBottlenecks.map((b, i) => (
+                {growthReport.growthBottlenecks.map((b: any, i: number) => (
                   <div key={i} className="flex items-start gap-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20">
                     <ShieldAlert className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
                     <span className="text-amber-200 leading-snug">{b}</span>
@@ -1161,7 +1175,7 @@ export default function ExecutiveIntelligencePage() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    growthReport.opportunities.map(opp => (
+                    growthReport.opportunities.map((opp: any) => (
                       <TableRow key={opp.id} className="hover:bg-secondary/30 transition-colors">
                         <TableCell>
                           <span className="w-8 h-8 rounded-full bg-primary/20 text-primary font-black text-xs inline-flex items-center justify-center border border-primary/30">
@@ -1256,7 +1270,7 @@ export default function ExecutiveIntelligencePage() {
                     No co-occurrence patterns detected yet. Record more multi-item orders.
                   </p>
                 ) : (
-                  growthReport.crossSellOpportunities.map((cs, i) => (
+                  growthReport.crossSellOpportunities.map((cs: any, i: number) => (
                     <div key={i} className="p-3 rounded-xl bg-secondary/30 border border-border/30 space-y-1">
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-foreground text-xs">{cs.primaryProductName} + {cs.suggestedProductName}</span>
@@ -1281,7 +1295,7 @@ export default function ExecutiveIntelligencePage() {
                     Zero customer churn alerts. All repeat buyers are purchasing within normal intervals.
                   </p>
                 ) : (
-                  growthReport.atRiskCustomers.map((cust, i) => (
+                  growthReport.atRiskCustomers.map((cust: any, i: number) => (
                     <div key={i} className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 space-y-1">
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-foreground text-xs">{cust.name} ({cust.segmentLabel})</span>
@@ -1590,7 +1604,7 @@ export default function ExecutiveIntelligencePage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                 <div className="space-y-2 p-3 rounded-xl bg-secondary/30 border border-border/30">
                   <span className="font-bold text-foreground block">Simulation Model Assumptions:</span>
-                  {activeSimulation.assumptions.map((a, i) => (
+                  {activeSimulation.assumptions.map((a: any, i: number) => (
                     <div key={i} className="flex items-start gap-1.5 text-muted-foreground">
                       <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
                       <span>{a}</span>
@@ -1600,7 +1614,7 @@ export default function ExecutiveIntelligencePage() {
 
                 <div className="space-y-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-200">
                   <span className="font-bold text-amber-300 block">Identified Operational Risks:</span>
-                  {activeSimulation.risks.map((r, i) => (
+                  {activeSimulation.risks.map((r: any, i: number) => (
                     <div key={i} className="flex items-start gap-1.5">
                       <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
                       <span>{r}</span>
@@ -2026,5 +2040,13 @@ export default function ExecutiveIntelligencePage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+export default function ExecutiveIntelligencePage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-xs text-muted-foreground animate-pulse">Loading Executive Command Center...</div>}>
+      <ExecutiveIntelligencePageContent />
+    </Suspense>
   );
 }

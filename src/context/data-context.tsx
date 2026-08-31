@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, ReactNode, useMemo, useCallback, useEffect } from 'react';
+import { createContext, useContext, useState, ReactNode, useMemo, useCallback, useEffect, useRef } from 'react';
 import type { Product, PurchaseOrder, Supplier, Transaction, Category, ProductReturn, CustomAttribute, BusinessProfile, BusinessType } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { useUser, useFirestore, useDoc } from '@/firebase';
@@ -1404,13 +1404,21 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user, firestore]);
 
+  // In-flight guard to prevent duplicate concurrent background sync cycles
+  const isSyncingRef = useRef(false);
+
   // Unified background auto-sync runner for entire workspace
   const autoSyncGoogleDriveNow = useCallback(async (showToast: boolean = true) => {
     if (!user || !firestore || !driveConnection || !driveConnection.selectedFolderId) return;
+    if (isSyncingRef.current) return;
+    isSyncingRef.current = true;
 
     try {
       const token = await getClientDriveToken(driveConnection, user, firestore);
-      if (!token) return;
+      if (!token) {
+        isSyncingRef.current = false;
+        return;
+      }
 
       const folderId = driveConnection.selectedFolderId;
       const folderName = driveConnection.selectedFolderName || '';
@@ -1424,7 +1432,10 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         },
       });
       const data = await res.json();
-      if (!res.ok || !data.success) return;
+      if (!res.ok || !data.success) {
+        isSyncingRef.current = false;
+        return;
+      }
 
       const files = data.files || [];
       // Match any file that is not 'Synced' (handles 'New', 'New File', 'Modified')
@@ -1709,27 +1720,30 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       }
     } catch (err) {
       console.error('Error during autoSyncGoogleDriveNow:', err);
+    } finally {
+      isSyncingRef.current = false;
     }
   }, [user, firestore, driveConnection, getMappingProfiles, bulkAddProducts, bulkAddTransactions, recordSyncSuccess, saveMappingProfile, toast]);
 
-  // Global background auto-sync runner (checks every 20s across any dashboard route)
+  // Global background auto-sync runner (checks every 2m across any dashboard route without duplicate executions)
   useEffect(() => {
     if (!user || !firestore || !driveConnection || !driveConnection.selectedFolderId) return;
     if (driveConnection.autoSyncEnabled === false) return;
 
     const checkAutoSync = () => {
-      if (isAutoSyncDue(driveConnection)) {
+      if (isAutoSyncDue(driveConnection) && !isSyncingRef.current) {
         console.log('[Global AutoSync] Schedule is due. Triggering automatic background ingestion for:', driveConnection.selectedFolderName);
         autoSyncGoogleDriveNow(false);
       }
     };
 
-    // Immediate check on connection load
+    // Initial check on connection load
     checkAutoSync();
 
-    const intervalId = setInterval(checkAutoSync, 20 * 1000);
+    const intervalId = setInterval(checkAutoSync, 120 * 1000);
     return () => clearInterval(intervalId);
   }, [user, firestore, driveConnection, autoSyncGoogleDriveNow]);
+
 
   const value = useMemo(() => ({
     products,

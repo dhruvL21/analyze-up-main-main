@@ -54,7 +54,9 @@ function parseDateValue(raw: any): Date {
   return isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
-export default function InsightsPage() {
+import { Suspense } from 'react';
+
+function InsightsPageContent() {
   const { products, transactions, isLoading } = useData();
   const searchParams = useSearchParams();
   const [reportType, setReportType] = useState<ReportType>('inventory_summary');
@@ -650,5 +652,13 @@ export default function InsightsPage() {
         </>
       )}
      </div>
+  );
+}
+
+export default function InsightsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-xs text-muted-foreground animate-pulse">Loading Analytics & Insights...</div>}>
+      <InsightsPageContent />
+    </Suspense>
   );
 }

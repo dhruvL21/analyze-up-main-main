@@ -15,11 +15,10 @@ export default function SubscriptionModal() {
     handleUpgrade,
   } = useData();
 
-  if (!showSubscriptionModal) return null;
-
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {showSubscriptionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         {/* Backdrop blur */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -232,6 +231,7 @@ export default function SubscriptionModal() {
           </div>
         </motion.div>
       </div>
+      )}
     </AnimatePresence>
   );
 }

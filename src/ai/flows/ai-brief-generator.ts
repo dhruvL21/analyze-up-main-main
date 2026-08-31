@@ -1,5 +1,3 @@
-'use server';
-
 import { z } from 'zod';
 import type { Product, Transaction } from '@/lib/types';
 
@@ -26,17 +24,10 @@ export type AIBriefOutput = z.infer<typeof AIBriefOutputSchema>;
 
 /* ------------------ EXPORT ------------------ */
 
-export async function generateAIBrief(
+export function calculateDynamicBrief(
   products: Product[],
   transactions: Transaction[] = []
-): Promise<AIBriefOutput> {
-  return calculateDynamicBrief(products, transactions);
-}
-
-export async function calculateDynamicBrief(
-  products: Product[],
-  transactions: Transaction[] = []
-): Promise<AIBriefOutput> {
+): AIBriefOutput {
   if (!products || products.length === 0) {
     return {
       healthScore: 0,

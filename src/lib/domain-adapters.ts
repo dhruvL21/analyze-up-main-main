@@ -183,17 +183,17 @@ export function toDomainProducts(products: any[] = []): DomainProduct[] {
 }
 
 export function toDomainTransaction(t: any): DomainTransaction {
-  const quantity = normalizeNumber(t.quantity, 1);
-  const price = normalizeNumber(t.price, 0);
-  const totalRevenue = normalizeNumber(t.totalRevenue, price * quantity);
-  const costPerUnit = normalizeNumber(t.costPerUnit || t.costPrice, Math.round(price * 0.6));
-  const totalCost = normalizeNumber(t.totalCost, costPerUnit * quantity);
+  const quantity = normalizeNumber(t.quantity ?? t.units_sold ?? t.qty ?? t.unitsSold ?? t.quantitySold, 1);
+  const price = normalizeNumber(t.price ?? t.selling_price ?? t.sellingPrice ?? t.unitPrice ?? t.rate, 0);
+  const costPerUnit = normalizeNumber(t.costPerUnit ?? t.costPrice ?? t.cost_per_unit ?? t.cost_price ?? t.cost ?? t.unitCost, Math.round(price * 0.6));
+  const totalRevenue = normalizeNumber(t.totalRevenue ?? t.revenue ?? t.amount ?? t.total_revenue, price * quantity);
+  const totalCost = normalizeNumber(t.totalCost ?? t.total_cost, costPerUnit * quantity);
 
   return {
-    id: t.id || t.transactionId || '',
-    type: t.type === 'Purchase' ? 'Purchase' : 'Sale',
-    productId: t.productId || '',
-    productName: t.productName || t.name || 'Unnamed Item',
+    id: t.id || t.transactionId || t.sale_id || '',
+    type: (t.type === 'Purchase' || t.type === 'purchase') ? 'Purchase' : 'Sale',
+    productId: t.productId || t.product_id || '',
+    productName: t.productName || t.product_name || t.name || 'Unnamed Item',
     sku: (t.sku || '').toUpperCase(),
     category: t.category || 'General',
     quantity,
@@ -201,12 +201,12 @@ export function toDomainTransaction(t: any): DomainTransaction {
     totalRevenue,
     costPerUnit,
     totalCost,
-    customerName: t.customerName || 'Retail Customer',
-    supplier: t.supplier || '',
-    transactionDate: normalizeDate(t.transactionDate || t.date),
-    paymentMethod: t.paymentMethod || t.paymentMode || 'UPI',
+    customerName: t.customerName || t.customer_name || t.customer || 'Retail Customer',
+    supplier: t.supplier || t.supplierName || t.supplier_name || '',
+    transactionDate: normalizeDate(t.transactionDate || t.sale_date || t.orderDate || t.date || t.created_at),
+    paymentMethod: t.paymentMethod || t.payment_method || t.paymentMode || 'UPI',
     status: t.status || 'Completed',
-    createdAt: normalizeDate(t.createdAt),
+    createdAt: normalizeDate(t.createdAt || t.created_at),
   };
 }
 

@@ -148,19 +148,21 @@ export async function recalculateAndSaveAnalyticsSummary(
   const soldProductIds = new Set<string>();
   const soldProductNames = new Set<string>();
 
-  transactions.forEach(t => {
-    if (t.type === 'Sale') {
-      const qty = Number(t.quantity) || 1;
-      const rev = Number(t.totalRevenue) || (Number(t.price) || 0) * qty;
-      const cost = Number(t.totalCost) || (Number(t.costPerUnit) || Number(t.costPrice) || 0) * qty;
+  transactions.forEach((t: any) => {
+    if (t.type === 'Sale' || t.type === 'sale') {
+      const qty = Number(t.quantity ?? t.units_sold ?? t.qty ?? t.unitsSold ?? 1) || 1;
+      const price = Number(t.price ?? t.selling_price ?? t.sellingPrice ?? 0);
+      const rev = Number(t.totalRevenue ?? t.revenue ?? t.amount) || (price * qty);
+      const costPerUnit = Number(t.costPerUnit ?? t.costPrice ?? t.cost_per_unit ?? t.cost_price) || Math.round(price * 0.6);
+      const cost = Number(t.totalCost ?? t.total_cost) || (costPerUnit * qty);
 
       totalRevenue += rev;
       totalCost += cost;
       totalUnitsSold += qty;
 
-      if (t.productId) soldProductIds.add(t.productId);
-      if (t.productName) soldProductNames.add(t.productName.toLowerCase());
-      if (t.sku) soldProductNames.add(t.sku.toLowerCase());
+      if (t.productId || t.product_id) soldProductIds.add(String(t.productId || t.product_id));
+      if (t.productName || t.product_name || t.name) soldProductNames.add(String(t.productName || t.product_name || t.name).toLowerCase());
+      if (t.sku) soldProductNames.add(String(t.sku).toLowerCase());
     }
   });
 

@@ -22,12 +22,39 @@ export function RevenueProfitIntelligence() {
 
   const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
 
-  // Calculate Product Financial Metrics strictly from context
+  // Calculate Product Financial Metrics with fast O(N + M) pre-indexed lookup
   const productMetrics = React.useMemo(() => {
-    return products.map((p) => {
-      const pSales = transactions.filter((t) => t.type === 'Sale' && (t.productId === p.id || t.sku === p.sku));
-      const qtySold = pSales.reduce((sum, t) => sum + (t.quantity || 0), 0);
-      const revenue = pSales.reduce((sum, t) => sum + (t.totalRevenue || (t.quantity * (t.price || 0))), 0);
+    const salesByProduct = new Map<string, { qty: number; revenue: number }>();
+    transactions.forEach((t: any) => {
+      if (t.type === 'Sale' || t.type === 'sale') {
+        const qty = Number(t.quantity ?? t.units_sold ?? t.qty ?? t.unitsSold ?? 0);
+        const price = Number(t.price ?? t.selling_price ?? t.sellingPrice ?? t.unitPrice ?? 0);
+        const rev = Number(t.totalRevenue ?? t.revenue ?? t.amount ?? (qty * price));
+        const keys = [t.productId, t.product_id, t.sku, t.productName, t.product_name, t.name]
+          .filter(Boolean)
+          .map((k) => String(k).trim().toUpperCase()) as string[];
+        keys.forEach((k) => {
+          const existing = salesByProduct.get(k) || { qty: 0, revenue: 0 };
+          existing.qty += qty;
+          existing.revenue += rev;
+          salesByProduct.set(k, existing);
+        });
+      }
+    });
+
+    return products.map((p: any) => {
+      const lookupKeys = [p.id, p.sku, p.name, p.productName, p.title]
+        .filter(Boolean)
+        .map((k) => String(k).trim().toUpperCase());
+      let saleInfo = { qty: 0, revenue: 0 };
+      for (const k of lookupKeys) {
+        if (salesByProduct.has(k)) {
+          saleInfo = salesByProduct.get(k)!;
+          break;
+        }
+      }
+      const qtySold = saleInfo.qty;
+      const revenue = saleInfo.revenue;
 
       const unitCost = p.costPrice || p.price * 0.6;
       const totalCost = qtySold * unitCost;

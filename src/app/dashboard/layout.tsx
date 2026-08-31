@@ -69,8 +69,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // Check if user needs smart onboarding setup
   useEffect(() => {
     if (loading || !user) return;
-    const hasPrompted = sessionStorage.getItem(`analyzeup_onboarding_prompted_${user.uid}`);
-    if (!hasPrompted && (!businessProfile || !businessProfile.isOnboardingCompleted)) {
+    const isCompleted = localStorage.getItem(`analyzeup_onboarding_completed_${user.uid}`) === 'true';
+    const hasPrompted = sessionStorage.getItem(`analyzeup_onboarding_prompted_${user.uid}`) === 'true';
+    if (!isCompleted && !hasPrompted && businessProfile && !businessProfile.isOnboardingCompleted) {
       setShowOnboardingWizard(true);
       sessionStorage.setItem(`analyzeup_onboarding_prompted_${user.uid}`, 'true');
     }
@@ -86,7 +87,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     }
   }, [setShowSubscriptionModal, loading, user, isTourOpen]);
 
-  // Show popup once per login session if user is on the Free Trial, or on explicit login redirect
+  // Show popup only on explicit first-time login redirect (not on regular page reload)
   useEffect(() => {
     if (loading || !user || isTourOpen) return;
     const savedPlan = localStorage.getItem("analyzeup_subscription_plan") || "Free Trial";
@@ -98,26 +99,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       }
       localStorage.removeItem("analyzeup_just_logged_in");
       sessionStorage.setItem("analyzeup_free_trial_session_prompted", "true");
-      return;
-    }
-
-    if (savedPlan === "Free Trial") {
-      const sessionPrompted = sessionStorage.getItem("analyzeup_free_trial_session_prompted");
-      if (!sessionPrompted) {
-        setShowSubscriptionModal(true);
-        sessionStorage.setItem("analyzeup_free_trial_session_prompted", "true");
-      }
     }
   }, [setShowSubscriptionModal, loading, user, isTourOpen]);
 
-  // Auto-trigger feature tour for the first 3 user logins per account
+  // Auto-trigger feature tour ONLY once on the user's very first login
   useEffect(() => {
     if (loading || !user) return;
-    const tourStorageKey = `analyzeup_feature_tour_login_count_${user.uid}`;
-    const currentTourCount = parseInt(localStorage.getItem(tourStorageKey) || '0', 10);
+    const tourCompletedKey = `analyzeup_feature_tour_completed_${user.uid}`;
+    const tourSeenKey = `analyzeup_feature_tour_seen_${user.uid}`;
+    const hasSeenTour = localStorage.getItem(tourCompletedKey) === 'true' || localStorage.getItem(tourSeenKey) === 'true';
 
-    if (currentTourCount < 3) {
-      localStorage.setItem(tourStorageKey, (currentTourCount + 1).toString());
+    if (!hasSeenTour) {
+      // Mark as seen immediately so it never auto-triggers again
+      localStorage.setItem(tourSeenKey, 'true');
       const timer = setTimeout(() => {
         setShowSubscriptionModal(false);
         setIsTourOpen(true);

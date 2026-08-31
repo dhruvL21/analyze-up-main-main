@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useData } from '@/context/data-context';
+import { useUser } from '@/firebase';
 import {
   LayoutDashboard,
   Boxes,
@@ -156,12 +157,20 @@ interface ElementRect {
 }
 
 export function FeatureTour() {
+  const { user } = useUser();
   const { isTourOpen, setIsTourOpen } = useData();
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [targetRect, setTargetRect] = useState<ElementRect | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
 
   const currentStep = TOUR_STEPS[currentStepIndex] || TOUR_STEPS[0];
+
+  const markTourSeen = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const uid = user?.uid || 'guest';
+    localStorage.setItem(`analyzeup_feature_tour_seen_${uid}`, 'true');
+    localStorage.setItem(`analyzeup_feature_tour_completed_${uid}`, 'true');
+  }, [user]);
 
   // Measure element location
   const updateTargetRect = useCallback(() => {
@@ -212,10 +221,11 @@ export function FeatureTour() {
     if (currentStepIndex < TOUR_STEPS.length - 1) {
       setCurrentStepIndex((prev) => prev + 1);
     } else {
+      markTourSeen();
       setIsTourOpen(false);
       setCurrentStepIndex(0);
     }
-  }, [currentStepIndex, setIsTourOpen]);
+  }, [currentStepIndex, setIsTourOpen, markTourSeen]);
 
   const handlePrev = useCallback(() => {
     if (currentStepIndex > 0) {
@@ -223,14 +233,19 @@ export function FeatureTour() {
     }
   }, [currentStepIndex]);
 
+  const handleClose = useCallback(() => {
+    markTourSeen();
+    setIsTourOpen(false);
+    setCurrentStepIndex(0);
+  }, [markTourSeen, setIsTourOpen]);
+
   // Handle keyboard shortcuts
   useEffect(() => {
     if (!isTourOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setIsTourOpen(false);
-        setCurrentStepIndex(0);
+        handleClose();
       } else if (e.key === 'ArrowRight' || e.key === 'Space') {
         e.preventDefault();
         handleNext();
@@ -242,14 +257,9 @@ export function FeatureTour() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isTourOpen, handleNext, handlePrev, setIsTourOpen]);
+  }, [isTourOpen, handleNext, handlePrev, handleClose]);
 
   if (!isTourOpen) return null;
-
-  const handleClose = () => {
-    setIsTourOpen(false);
-    setCurrentStepIndex(0);
-  };
 
   // Safe viewport positioning calculation
   const getCardPlacement = () => {

@@ -9,7 +9,9 @@ import { Boxes, PackageCheck, AlertTriangle, XCircle, Flame, Clock } from 'lucid
 
 export function InventoryQualitySnapshot() {
   const { products, transactions, businessProfile } = useData();
-  const quality = computeInventoryQuality(products, transactions);
+  const quality = React.useMemo(() => {
+    return computeInventoryQuality(products, transactions);
+  }, [products, transactions]);
 
   const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
 

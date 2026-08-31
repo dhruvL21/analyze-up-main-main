@@ -10,7 +10,7 @@ import { Activity, ShieldCheck, Sparkles } from 'lucide-react';
 
 export function BusinessHealthCard() {
   const { products, transactions, suppliers, returns = [] } = useData();
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     const handleUpdate = () => setTick(prev => prev + 1);
@@ -24,7 +24,9 @@ export function BusinessHealthCard() {
     };
   }, []);
 
-  const health = computeBusinessHealth(products, transactions, suppliers, returns);
+  const health = React.useMemo(() => {
+    return computeBusinessHealth(products, transactions, suppliers, returns);
+  }, [products, transactions, suppliers, returns, tick]);
 
   return (
     <Card className="ios-glass rounded-3xl border-emerald-500/20 p-6 shadow-xl relative overflow-hidden flex flex-col justify-between h-full transition-all duration-300">
