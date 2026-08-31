@@ -30,4 +30,5 @@ export const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || 'missing-openai-api-key',
   maxRetries: 0,
   timeout: 3500,
+  dangerouslyAllowBrowser: true,
 });
