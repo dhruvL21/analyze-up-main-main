@@ -13,9 +13,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useUser, useFirestore } from '@/firebase';
-import { doc, collection, writeBatch, serverTimestamp } from 'firebase/firestore';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { doc, collection, writeBatch } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useData } from '@/context/data-context';
 import { logBusinessAction } from '@/lib/audit-store';
 import {
@@ -757,7 +757,7 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
       }
 
       // 3. Initialize Persistent Import Job with dynamic batch sizing for responsive live progress
-      const BATCH_SIZE = Math.min(250, Math.max(100, Math.ceil(rawRows.length / 8)));
+      const BATCH_SIZE = 100;
       const totalBatches = Math.max(1, Math.ceil(rawRows.length / BATCH_SIZE));
       setJobTotalBatches(totalBatches);
       setJobCurrentBatch(1);
@@ -811,6 +811,7 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
       let totalAccProducts = 0;
       let totalAccSales = 0;
       const isSalesReport = detectedFileType === 'SALES_REPORT';
+      const nowIso = new Date().toISOString();
 
       // 4. Process Bounded Batches with on-screen visual progress
       isImportCancelledRef.current = false;
@@ -907,8 +908,8 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
                     status: 'Completed',
                     userId: user.uid,
                     tenantId: user.uid,
-                    createdAt: serverTimestamp(),
-                    updatedAt: serverTimestamp(),
+                    createdAt: nowIso,
+                    updatedAt: nowIso,
                   }),
                   { merge: true }
                 );
@@ -938,8 +939,8 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
                       userId: user.uid,
                       tenantId: user.uid,
                       status: 'Active',
-                      updatedAt: serverTimestamp(),
-                      createdAt: serverTimestamp(),
+                      updatedAt: nowIso,
+                      createdAt: nowIso,
                     }),
                     { merge: true }
                   );
@@ -948,7 +949,10 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
                 batchSuccess++;
               });
 
-              await batch.commit().catch(e => console.error('Sales batch commit error:', e));
+              await Promise.race([
+                batch.commit(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Batch commit timed out')), 6000))
+              ]).catch(e => console.warn('Sales batch commit notice:', e));
             }
           } else {
             // Inventory / Catalog Import
@@ -998,8 +1002,8 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
                     userId: user.uid,
                     tenantId: user.uid,
                     status: 'Active',
-                    createdAt: prod.created_at || serverTimestamp(),
-                    updatedAt: serverTimestamp(),
+                    createdAt: prod.created_at || nowIso,
+                    updatedAt: nowIso,
                   }),
                   { merge: true }
                 );
@@ -1054,8 +1058,8 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
                       status: 'Completed',
                       userId: user.uid,
                       tenantId: user.uid,
-                      createdAt: serverTimestamp(),
-                      updatedAt: serverTimestamp(),
+                      createdAt: nowIso,
+                      updatedAt: nowIso,
                     }),
                     { merge: true }
                   );
@@ -1081,8 +1085,8 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
                       transactionDate: new Date().toISOString().split('T')[0],
                       userId: user.uid,
                       tenantId: user.uid,
-                      createdAt: serverTimestamp(),
-                      updatedAt: serverTimestamp(),
+                      createdAt: nowIso,
+                      updatedAt: nowIso,
                     }),
                     { merge: true }
                   );
@@ -1091,7 +1095,10 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
                 batchSuccess++;
               });
 
-              await batch.commit().catch(e => console.error('Product batch commit error:', e));
+              await Promise.race([
+                batch.commit(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Batch commit timed out')), 6000))
+              ]).catch(e => console.warn('Product batch commit notice:', e));
             }
           }
         } catch (batchErr) {
