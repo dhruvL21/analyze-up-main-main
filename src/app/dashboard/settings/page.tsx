@@ -150,11 +150,11 @@ export default function SettingsPage() {
   const [isResetting, setIsResetting] = useState(false);
 
   const handleResetWorkspace = async () => {
-    if (resetConfirmInput.trim().toUpperCase() !== "RESET DATA") {
+    if (resetConfirmInput.trim() !== "RESET DATA") {
       toast({
         variant: "destructive",
         title: "Confirmation Mismatch",
-        description: 'Please type "RESET DATA" exactly to confirm workspace reset.',
+        description: 'Please type "RESET DATA" in exact capital letters to confirm workspace reset.',
       });
       return;
     }
@@ -621,7 +621,7 @@ export default function SettingsPage() {
                         <span className="font-mono text-sm font-extrabold text-rose-400 bg-rose-500/20 px-3 py-1 rounded-xl border border-rose-500/40 select-all tracking-wider">
                           RESET DATA
                         </span>
-                        <span className="text-[11px] text-muted-foreground">(type in the box below)</span>
+                        <span className="text-[11px] text-muted-foreground">(type in CAPITAL letters only)</span>
                       </div>
                     </div>
 
@@ -629,7 +629,7 @@ export default function SettingsPage() {
                       <Input
                         value={resetConfirmInput}
                         onChange={(e) => setResetConfirmInput(e.target.value)}
-                        placeholder="Type RESET DATA here to confirm"
+                        placeholder="Type RESET DATA in CAPITAL letters"
                         className="rounded-xl text-sm font-medium border-rose-500/40 focus-visible:ring-rose-500/40 bg-secondary/60 h-11 px-3.5"
                         autoFocus
                       />
@@ -651,7 +651,7 @@ export default function SettingsPage() {
                     <Button
                       variant="destructive"
                       onClick={handleResetWorkspace}
-                      disabled={resetConfirmInput.trim().toUpperCase() !== "RESET DATA" || isResetting}
+                      disabled={resetConfirmInput.trim() !== "RESET DATA" || isResetting}
                       className="rounded-xl text-xs bg-rose-600 hover:bg-rose-700 font-bold gap-1.5 disabled:opacity-50"
                     >
                       {isResetting ? (

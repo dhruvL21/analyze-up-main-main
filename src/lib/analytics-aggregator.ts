@@ -221,18 +221,24 @@ export async function recalculateAndSaveAnalyticsSummary(
     lastUpdated: new Date().toISOString(),
   };
 
-  // Persist summary document
+  // Persist summary document with timeout protection
   const summaryRef = doc(firestore, 'users', userId, 'analytics', 'summary');
-  await setDoc(summaryRef, serializePlainData(summary), { merge: true });
+  await Promise.race([
+    setDoc(summaryRef, serializePlainData(summary), { merge: true }),
+    new Promise(resolve => setTimeout(resolve, 4000)),
+  ]).catch(e => console.warn('Summary setDoc timeout notice:', e));
 
   // Pre-generate & Persist AI Brief asynchronously
   try {
     const brief = await calculateDynamicBrief(products, transactions);
     const briefRef = doc(firestore, 'users', userId, 'analytics', 'ai_brief');
-    await setDoc(briefRef, serializePlainData({
-      ...brief,
-      updatedAt: new Date().toISOString(),
-    }), { merge: true });
+    await Promise.race([
+      setDoc(briefRef, serializePlainData({
+        ...brief,
+        updatedAt: new Date().toISOString(),
+      }), { merge: true }),
+      new Promise(resolve => setTimeout(resolve, 4000)),
+    ]).catch(e => console.warn('AI Brief setDoc timeout notice:', e));
   } catch (err) {
     console.warn('AI Brief generation during analytics aggregation:', err);
   }

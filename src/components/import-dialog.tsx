@@ -1153,10 +1153,10 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
       // Save Import Profile Memory
       saveImportProfile(detectedFileType, rawHeaders, fieldMapping);
 
-      setCurrentStepLabel('Recalculating Executive Dashboard Analytics & Metrics...');
-      // Refresh Analytics Summary
-      await refreshAnalytics();
-      await new Promise(resolve => setTimeout(resolve, 400));
+      setCurrentStepLabel('Finalizing Workspace Sync...');
+      // Refresh Analytics Summary in background without blocking the UI summary transition
+      refreshAnalytics().catch(err => console.warn('Background analytics refresh notice:', err));
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       const endTime = performance.now();
       const executionTime = Math.round(endTime - startTime);
