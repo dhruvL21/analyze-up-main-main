@@ -47,43 +47,57 @@ export function calculateDynamicBrief(
     };
   }
 
-  // 1. Calculate Health Score strictly from user products
-  let score = 100;
+  // High-performance single-pass linear scan across products
   let stockoutCount = 0;
   let lowStockCount = 0;
+  let totalLockedCapital = 0;
 
-  products.forEach(p => {
+  let highestRiskItem: Product | null = null;
+  let minRunway = Infinity;
+
+  let worstSlowMovingItem: Product | null = null;
+  let maxBlockedCapital = -1;
+
+  for (let i = 0; i < products.length; i++) {
+    const p = products[i];
     const stock = Number(p.stock) || 0;
+    const minStock = Number(p.minStock) || 5;
+    const price = Number(p.price) || 0;
+    const costPrice = Number(p.costPrice) || price * 0.6 || 0;
+
+    totalLockedCapital += stock * costPrice;
+
     if (stock === 0) {
       stockoutCount++;
-    } else if (stock <= (p.minStock || 5)) {
+    } else if (stock <= minStock) {
       lowStockCount++;
     }
-  });
 
+    // Runway calculation (stock / averageDailySales)
+    const ads = Number(p.averageDailySales) || 0.1;
+    const runway = stock / ads;
+    if (runway < minRunway) {
+      minRunway = runway;
+      highestRiskItem = p;
+    }
+
+    // Blocked capital calculation
+    const blocked = stock * costPrice;
+    if (blocked > maxBlockedCapital) {
+      maxBlockedCapital = blocked;
+      worstSlowMovingItem = p;
+    }
+  }
+
+  // Calculate Health Score
+  let score = 100;
   const stockoutPercentage = stockoutCount / products.length;
   const lowStockPercentage = lowStockCount / products.length;
-
   score -= Math.round(stockoutPercentage * 50);
   score -= Math.round(lowStockPercentage * 25);
   score = Math.max(0, Math.min(100, score));
 
-  // 2. Identify Stockout Risk Item strictly & deterministically (lowest stock runway first, tie-breaker by name)
-  const sortedByRunway = [...products].sort((a, b) => {
-    const stockA = Number(a.stock) || 0;
-    const adsA = Number(a.averageDailySales) || 0.1;
-    const runwayA = stockA / adsA;
-
-    const stockB = Number(b.stock) || 0;
-    const adsB = Number(b.averageDailySales) || 0.1;
-    const runwayB = stockB / adsB;
-
-    if (runwayA !== runwayB) return runwayA - runwayB;
-    return (a.name || '').localeCompare(b.name || '');
-  });
-
-  const highestRiskItem = sortedByRunway[0] || products[0];
-
+  // Build Stockout Risk Item
   let stockoutItem = {
     name: 'None',
     riskText: 'All items are fully stocked.',
@@ -107,24 +121,7 @@ export function calculateDynamicBrief(
     };
   }
 
-  // 3. Identify Slow-Moving Item strictly & deterministically (highest blocked capital first, tie-breaker by name)
-  const sortedByBlockedCapital = [...products].sort((a, b) => {
-    const stockA = Number(a.stock) || 0;
-    const priceA = Number(a.price) || 0;
-    const costA = Number(a.costPrice) || priceA * 0.6 || 0;
-    const blockedA = stockA * costA;
-
-    const stockB = Number(b.stock) || 0;
-    const priceB = Number(b.price) || 0;
-    const costB = Number(b.costPrice) || priceB * 0.6 || 0;
-    const blockedB = stockB * costB;
-
-    if (blockedB !== blockedA) return blockedB - blockedA;
-    return (a.name || '').localeCompare(b.name || '');
-  });
-
-  const worstSlowMovingItem = sortedByBlockedCapital[0] || products[0];
-
+  // Build Slow Moving Item
   let slowMovingItem = {
     name: 'None',
     riskText: 'No slow-moving inventory detected.',
@@ -138,8 +135,18 @@ export function calculateDynamicBrief(
     const costPrice = Number(worstSlowMovingItem.costPrice) || price * 0.6 || 0;
     const blockedCapital = Math.round(stock * costPrice);
 
-    const salesTx = (transactions || []).filter(t => t.type === 'Sale' && (t.productName === worstSlowMovingItem.name || t.productId === worstSlowMovingItem.id));
-    const daysSinceLastSale = salesTx.length > 0 ? 5 : 30;
+    // Fast check in transactions
+    const targetName = worstSlowMovingItem.name;
+    const targetId = worstSlowMovingItem.id;
+    let hasRecentSale = false;
+    for (let t = 0; t < transactions.length; t++) {
+      const tx = transactions[t];
+      if ((tx.type === 'Sale' || (tx as any).type === 'sale') && (tx.productName === targetName || tx.productId === targetId)) {
+        hasRecentSale = true;
+        break;
+      }
+    }
+    const daysSinceLastSale = hasRecentSale ? 5 : 30;
 
     slowMovingItem = {
       name: worstSlowMovingItem.name || 'Unnamed Product',
@@ -149,8 +156,6 @@ export function calculateDynamicBrief(
     };
   }
 
-  // 4. Total Cash Locked in Inventory strictly calculated from actual data
-  const totalLockedCapital = products.reduce((sum, p) => sum + (Number(p.stock) * (Number(p.costPrice) || Number(p.price) * 0.6 || 0)), 0);
   const savingsText = `Cash Locked in Inventory: ₹${Math.round(totalLockedCapital).toLocaleString('en-IN')}`;
 
   return {

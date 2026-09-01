@@ -40,6 +40,11 @@ export async function askAnalyzeUpChat(
     businessProfile
   );
 
+  // If deterministic copilot gave an exact answer for recognized business intents, return it immediately!
+  if (copilotRes.intent !== 'UNKNOWN' && copilotRes.answerMarkdown) {
+    return copilotRes.answerMarkdown;
+  }
+
   const hasData = (products && products.length > 0) || (transactions && transactions.length > 0);
 
   // 2. Comprehensive Computed Analytics (when data is present)
@@ -239,6 +244,7 @@ GUIDELINES FOR YOUR RESPONSES:
       model: 'gpt-4o-mini',
       messages: formattedMessages as any,
       temperature: 0.2,
+      max_tokens: 500,
     });
 
     const reply = response.choices[0].message.content || copilotRes.answerMarkdown;

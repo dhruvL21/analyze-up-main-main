@@ -35,28 +35,28 @@ export function generateDemoBusinessData() {
   // Helper for random choices
   const now = new Date();
 
-  // Create 205 realistic products across categories
+  // Create 205 realistic products across categories with real Unsplash photography
   const productTemplates = [
-    { name: 'Organic Cotton Crewneck T-Shirt', catId: 'cat-fashion-1', basePrice: 1299, cost: 450, unit: 'Piece', brand: 'AnalyzeUp Apparel', sup: 'Apex Apparel Global' },
-    { name: 'Heavyweight Fleece Oversized Hoodie', catId: 'cat-fashion-1', basePrice: 2999, cost: 1100, unit: 'Piece', brand: 'Urban Thread', sup: 'Apex Apparel Global' },
-    { name: 'Slim-Fit Stretch Denim Jeans', catId: 'cat-fashion-1', basePrice: 3499, cost: 1250, unit: 'Piece', brand: 'DenimCo', sup: 'Velvet Thread Textiles' },
-    { name: 'Water-Resistant Windbreaker Jacket', catId: 'cat-fashion-1', basePrice: 4999, cost: 1950, unit: 'Piece', brand: 'Titanium Outdoors', sup: 'Titanium Athletics' },
-    { name: 'Breathable Running Mesh Sneakers', catId: 'cat-fashion-2', basePrice: 4499, cost: 1600, unit: 'Pair', brand: 'Vanguard Kicks', sup: 'Vanguard Footwear Ltd' },
-    { name: 'Handcrafted Italian Leather Loafers', catId: 'cat-fashion-2', basePrice: 7999, cost: 3200, unit: 'Pair', brand: 'Urban Leather', sup: 'Urban Leather Craft' },
-    { name: 'Active Performance Cross-Trainers', catId: 'cat-fashion-2', basePrice: 5299, cost: 2100, unit: 'Pair', brand: 'Vanguard Kicks', sup: 'Vanguard Footwear Ltd' },
-    { name: 'ANC Wireless Noise Cancelling Headphones', catId: 'cat-electronics-1', basePrice: 8999, cost: 3800, unit: 'Piece', brand: 'Zenith Audio', sup: 'Zenith Electronics Corp' },
-    { name: 'True Wireless Stereo Earbuds Pro', catId: 'cat-electronics-1', basePrice: 3999, cost: 1400, unit: 'Piece', brand: 'Zenith Audio', sup: 'Zenith Electronics Corp' },
-    { name: 'Ergonomic Mechanical Keyboard (RGB)', catId: 'cat-electronics-2', basePrice: 5499, cost: 2300, unit: 'Piece', brand: 'SV Tech', sup: 'SiliconValley Tech Components' },
-    { name: 'Ultra-Slim 4K USB-C Hub (7-in-1)', catId: 'cat-electronics-2', basePrice: 2499, cost: 850, unit: 'Piece', brand: 'SV Tech', sup: 'SiliconValley Tech Components' },
-    { name: 'Hyaluronic Acid Hydrating Serum (50ml)', catId: 'cat-beauty-1', basePrice: 1499, cost: 320, unit: 'Bottle', brand: 'PureBotanica', sup: 'PureBotanica Labs' },
-    { name: 'Niacinamide Glow Brightening Cream', catId: 'cat-beauty-1', basePrice: 1299, cost: 280, unit: 'Bottle', brand: 'PureBotanica', sup: 'PureBotanica Labs' },
-    { name: 'Elysium Eau De Parfum (100ml)', catId: 'cat-beauty-1', basePrice: 4999, cost: 1350, unit: 'Bottle', brand: 'Aura Fragrances', sup: 'Aura Fragrances Co' },
-    { name: 'Cast Iron Dutch Oven (4.5L)', catId: 'cat-home-1', basePrice: 6499, cost: 2600, unit: 'Piece', brand: 'MasterCraft', sup: 'MasterCraft Homeware' },
-    { name: 'Hand-Poured Soy Wax Scented Candle', catId: 'cat-home-1', basePrice: 999, cost: 220, unit: 'Piece', brand: 'Nordic Living', sup: 'Nordic Minimalist Living' },
-    { name: 'High-Density Non-Slip Yoga Mat (6mm)', catId: 'cat-sports-1', basePrice: 1899, cost: 550, unit: 'Piece', brand: 'Titanium Athletics', sup: 'Titanium Athletics' },
-    { name: 'Adjustable Quick-Lock Dumbbell Set', catId: 'cat-sports-1', basePrice: 12999, cost: 5200, unit: 'Set', brand: 'ProFit Gym', sup: 'ProFit Gym Equipment' },
-    { name: 'Dark Roast Arabica Whole Bean Coffee (1kg)', catId: 'cat-food-1', basePrice: 1499, cost: 480, unit: 'Kg', brand: 'Himalayan Estate', sup: 'Himalayan Coffee Estate' },
-    { name: 'Organic Matcha Green Tea Powder (250g)', catId: 'cat-food-1', basePrice: 1199, cost: 350, unit: 'Pack', brand: 'Gourmet Route', sup: 'Gourmet Spice Route' },
+    { name: 'Organic Cotton Crewneck T-Shirt', catId: 'cat-fashion-1', basePrice: 1299, cost: 450, unit: 'Piece', brand: 'AnalyzeUp Apparel', sup: 'Apex Apparel Global', imageUrl: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Heavyweight Fleece Oversized Hoodie', catId: 'cat-fashion-1', basePrice: 2999, cost: 1100, unit: 'Piece', brand: 'Urban Thread', sup: 'Apex Apparel Global', imageUrl: 'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Slim-Fit Stretch Denim Jeans', catId: 'cat-fashion-1', basePrice: 3499, cost: 1250, unit: 'Piece', brand: 'DenimCo', sup: 'Velvet Thread Textiles', imageUrl: 'https://images.unsplash.com/photo-1541099649105-f69ad21f3246?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Water-Resistant Windbreaker Jacket', catId: 'cat-fashion-1', basePrice: 4999, cost: 1950, unit: 'Piece', brand: 'Titanium Outdoors', sup: 'Titanium Athletics', imageUrl: 'https://images.unsplash.com/photo-1544022613-e87ca75a784a?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Breathable Running Mesh Sneakers', catId: 'cat-fashion-2', basePrice: 4499, cost: 1600, unit: 'Pair', brand: 'Vanguard Kicks', sup: 'Vanguard Footwear Ltd', imageUrl: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Handcrafted Italian Leather Loafers', catId: 'cat-fashion-2', basePrice: 7999, cost: 3200, unit: 'Pair', brand: 'Urban Leather', sup: 'Urban Leather Craft', imageUrl: 'https://images.unsplash.com/photo-1533867617858-e7b97e060509?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Active Performance Cross-Trainers', catId: 'cat-fashion-2', basePrice: 5299, cost: 2100, unit: 'Pair', brand: 'Vanguard Kicks', sup: 'Vanguard Footwear Ltd', imageUrl: 'https://images.unsplash.com/photo-1608231387042-66d1773070a5?w=400&auto=format&fit=crop&q=80' },
+    { name: 'ANC Wireless Noise Cancelling Headphones', catId: 'cat-electronics-1', basePrice: 8999, cost: 3800, unit: 'Piece', brand: 'Zenith Audio', sup: 'Zenith Electronics Corp', imageUrl: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400&auto=format&fit=crop&q=80' },
+    { name: 'True Wireless Stereo Earbuds Pro', catId: 'cat-electronics-1', basePrice: 3999, cost: 1400, unit: 'Piece', brand: 'Zenith Audio', sup: 'Zenith Electronics Corp', imageUrl: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Ergonomic Mechanical Keyboard (RGB)', catId: 'cat-electronics-2', basePrice: 5499, cost: 2300, unit: 'Piece', brand: 'SV Tech', sup: 'SiliconValley Tech Components', imageUrl: 'https://images.unsplash.com/photo-1587829741301-dc798b83add3?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Ultra-Slim 4K USB-C Hub (7-in-1)', catId: 'cat-electronics-2', basePrice: 2499, cost: 850, unit: 'Piece', brand: 'SV Tech', sup: 'SiliconValley Tech Components', imageUrl: 'https://images.unsplash.com/photo-1616440347437-b1c73416efc2?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Hyaluronic Acid Hydrating Serum (50ml)', catId: 'cat-beauty-1', basePrice: 1499, cost: 320, unit: 'Bottle', brand: 'PureBotanica', sup: 'PureBotanica Labs', imageUrl: 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Niacinamide Glow Brightening Cream', catId: 'cat-beauty-1', basePrice: 1299, cost: 280, unit: 'Bottle', brand: 'PureBotanica', sup: 'PureBotanica Labs', imageUrl: 'https://images.unsplash.com/photo-1571781926291-c477ebfd024b?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Elysium Eau De Parfum (100ml)', catId: 'cat-beauty-1', basePrice: 4999, cost: 1350, unit: 'Bottle', brand: 'Aura Fragrances', sup: 'Aura Fragrances Co', imageUrl: 'https://images.unsplash.com/photo-1523293182086-7651a899d37f?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Cast Iron Dutch Oven (4.5L)', catId: 'cat-home-1', basePrice: 6499, cost: 2600, unit: 'Piece', brand: 'MasterCraft', sup: 'MasterCraft Homeware', imageUrl: 'https://images.unsplash.com/photo-1584990347449-399088656111?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Hand-Poured Soy Wax Scented Candle', catId: 'cat-home-1', basePrice: 999, cost: 220, unit: 'Piece', brand: 'Nordic Living', sup: 'Nordic Minimalist Living', imageUrl: 'https://images.unsplash.com/photo-1603006905003-be475563bc59?w=400&auto=format&fit=crop&q=80' },
+    { name: 'High-Density Non-Slip Yoga Mat (6mm)', catId: 'cat-sports-1', basePrice: 1899, cost: 550, unit: 'Piece', brand: 'Titanium Athletics', sup: 'Titanium Athletics', imageUrl: 'https://images.unsplash.com/photo-1601925260368-ae2f83cf8b7f?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Adjustable Quick-Lock Dumbbell Set', catId: 'cat-sports-1', basePrice: 12999, cost: 5200, unit: 'Set', brand: 'ProFit Gym', sup: 'ProFit Gym Equipment', imageUrl: 'https://images.unsplash.com/photo-1584735935682-2f2b69dff9d2?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Dark Roast Arabica Whole Bean Coffee (1kg)', catId: 'cat-food-1', basePrice: 1499, cost: 480, unit: 'Kg', brand: 'Himalayan Estate', sup: 'Himalayan Coffee Estate', imageUrl: 'https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Organic Matcha Green Tea Powder (250g)', catId: 'cat-food-1', basePrice: 1199, cost: 350, unit: 'Pack', brand: 'Gourmet Route', sup: 'Gourmet Spice Route', imageUrl: 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?w=400&auto=format&fit=crop&q=80' },
   ];
 
   const products: Product[] = [];
@@ -88,6 +88,9 @@ export function generateDemoBusinessData() {
     }
 
     const supObj = suppliers.find(s => s.name === template.sup) || suppliers[0];
+    const catObj = categories.find(c => c.id === template.catId);
+    const unitPrice = template.basePrice + ((i % 5) * 100);
+    const unitCost = template.cost + ((i % 5) * 30);
 
     products.push({
       id: `prod-${productIndex}`,
@@ -95,6 +98,7 @@ export function generateDemoBusinessData() {
       description: `Premium grade ${template.name.toLowerCase()} designed for modern performance and durability.`,
       sku: sku,
       barcode: barcode,
+      category: catObj ? catObj.name : 'General',
       categoryId: template.catId,
       brand: template.brand,
       supplier: supObj.name,
@@ -102,12 +106,16 @@ export function generateDemoBusinessData() {
       stock: stock,
       minStock: minStock,
       maxStock: minStock * 5,
+      reorderPoint: minStock * 2,
+      reorderQuantity: minStock * 4,
       unit: template.unit,
-      price: template.basePrice + ((i % 5) * 100),
-      costPrice: template.cost + ((i % 5) * 30),
+      price: unitPrice,
+      costPrice: unitCost,
+      profitMarginPercent: Math.round(((unitPrice - unitCost) / unitPrice) * 100),
       status: 'Active',
-      imageUrl: '',
+      imageUrl: template.imageUrl,
       averageDailySales: parseFloat(((Math.random() * 3) + 0.2).toFixed(1)),
+      salesVelocity: parseFloat(((Math.random() * 2.5) + 0.3).toFixed(2)),
       leadTimeDays: Math.floor(Math.random() * 10) + 5,
       createdAt: new Date(now.getTime() - (90 * 24 * 60 * 60 * 1000)).toISOString(),
       updatedAt: new Date().toISOString(),

@@ -56,21 +56,40 @@ export function AIBrief() {
     }
   }, [products, transactions, firestore, user, briefRef]);
 
-  // Calculate return stats in real-time
-  const returnedQty = returns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0);
-  const totalItemsSold = transactions
-    .filter(t => (t.type === 'Sale' || (t as any).type === 'sale') && Number(t.quantity || (t as any).units_sold) > 0)
-    .reduce((sum, t) => sum + (Number(t.quantity || (t as any).units_sold) || 0), 0) || 1;
-  const returnRate = (returnedQty / totalItemsSold) * 100;
+  // Calculate return stats in real-time with useMemo to eliminate render thrashing
+  const { returnedQty, returnRate, topReturnedProduct, topReturnedQty } = useMemo(() => {
+    const qty = returns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0);
+    let totalItemsSold = 0;
+    for (let i = 0; i < transactions.length; i++) {
+      const t = transactions[i] as any;
+      if (t.type === 'Sale' || t.type === 'sale') {
+        totalItemsSold += Number(t.quantity || t.units_sold || 0);
+      }
+    }
+    if (totalItemsSold <= 0) totalItemsSold = 1;
+    const rate = (qty / totalItemsSold) * 100;
 
-  const returnedProductMap: Record<string, number> = {};
-  returns.forEach(r => {
-    const pName = r.productName || 'General Item';
-    returnedProductMap[pName] = (returnedProductMap[pName] || 0) + (Number(r.quantity) || 0);
-  });
-  const topReturned = Object.entries(returnedProductMap).sort((a, b) => b[1] - a[1])[0];
-  const topReturnedProduct = topReturned ? topReturned[0] : 'None';
-  const topReturnedQty = topReturned ? topReturned[1] : 0;
+    const returnedProductMap: Record<string, number> = {};
+    for (let i = 0; i < returns.length; i++) {
+      const pName = returns[i].productName || 'General Item';
+      returnedProductMap[pName] = (returnedProductMap[pName] || 0) + (Number(returns[i].quantity) || 0);
+    }
+    const entries = Object.entries(returnedProductMap);
+    let bestProduct = 'None';
+    let bestQty = 0;
+    for (let i = 0; i < entries.length; i++) {
+      if (entries[i][1] > bestQty) {
+        bestProduct = entries[i][0];
+        bestQty = entries[i][1];
+      }
+    }
+    return {
+      returnedQty: qty,
+      returnRate: rate,
+      topReturnedProduct: bestProduct,
+      topReturnedQty: bestQty,
+    };
+  }, [returns, transactions]);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -81,18 +100,20 @@ export function AIBrief() {
     }
     
     setIsRefreshing(true);
+    // Instant local computation (< 1ms)
     const result = calculateDynamicBrief(products, transactions);
     setBrief(result);
 
+    // Save to Firestore asynchronously in background without blocking UI
     if (firestore && user && briefRef) {
       setDoc(briefRef, serializePlainData({ ...result, updatedAt: new Date().toISOString() }), { merge: true })
-        .catch((err) => console.warn('AI Brief background save:', err))
-        .finally(() => {
-          setTimeout(() => setIsRefreshing(false), 200);
-        });
-    } else {
-      setTimeout(() => setIsRefreshing(false), 200);
+        .catch((err) => console.warn('AI Brief background save:', err));
     }
+
+    // Quick micro-pulse (150ms) for snappy visual confirmation then stop spinner immediately!
+    setTimeout(() => {
+      setIsRefreshing(false);
+    }, 150);
   }, [products, transactions, isPaid, firestore, user, briefRef, setShowSubscriptionModal]);
 
   const getHealthColor = (score: number) => {

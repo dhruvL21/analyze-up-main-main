@@ -105,32 +105,44 @@ export function ChatWidget() {
     setMessages(prev => [...prev, userMsg]);
     setInputMessage('');
 
+    // Increment workspace AI Copilot query counter
+    incrementAiQueryCount(1);
+
+    // 1. Calculate deterministic copilot response immediately on the client in milliseconds
+    const copilotRes = processCopilotQuery(
+      messageText,
+      messages,
+      products,
+      transactions,
+      suppliers,
+      orders,
+      returns,
+      businessProfile
+    );
+
+    // If recognized business intent, provide the computed response INSTANTLY with zero wait time!
+    if (copilotRes.intent !== 'UNKNOWN') {
+      setMessages(prev => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: copilotRes.answerMarkdown,
+        },
+      ]);
+      return;
+    }
+
+    // 2. For open-ended or unknown questions, call server with a compact slice for fast LLM synthesis
     startTransition(async () => {
       try {
-        // Increment workspace AI Copilot query counter
-        incrementAiQueryCount(1);
-
-        // Calculate deterministic copilot response immediately
-        const copilotRes = processCopilotQuery(
-          messageText,
-          messages,
-          products,
-          transactions,
-          suppliers,
-          orders,
-          returns,
-          businessProfile
-        );
-
-        // Call server action for AI natural language synthesis
         const responseText = await askAnalyzeUpChat(
           messageText,
-          messages.slice(-8),
-          sanitizePlainData(products),
-          sanitizePlainData(transactions),
-          sanitizePlainData(suppliers),
-          sanitizePlainData(orders),
-          sanitizePlainData(returns),
+          messages.slice(-6),
+          sanitizePlainData(products.slice(0, 30)),
+          sanitizePlainData(transactions.slice(-20)),
+          sanitizePlainData(suppliers.slice(0, 10)),
+          sanitizePlainData(orders.slice(0, 10)),
+          sanitizePlainData(returns.slice(0, 10)),
           sanitizePlainData(businessProfile)
         );
 
@@ -139,27 +151,15 @@ export function ChatWidget() {
           {
             role: 'assistant',
             content: responseText || copilotRes.answerMarkdown,
-            copilotRes,
           },
         ]);
       } catch (err) {
         console.error('Chat error:', err);
-        const fallbackRes = processCopilotQuery(
-          messageText,
-          messages,
-          products,
-          transactions,
-          suppliers,
-          orders,
-          returns,
-          businessProfile
-        );
         setMessages(prev => [
           ...prev,
           {
             role: 'assistant',
-            content: fallbackRes.answerMarkdown,
-            copilotRes: fallbackRes,
+            content: copilotRes.answerMarkdown,
           },
         ]);
       }
@@ -290,32 +290,6 @@ export function ChatWidget() {
                           <FormattedMarkdown content={msg.content} />
                         )}
                       </div>
-
-                      {/* Supporting Data & 1-Click Action */}
-                      {msg.copilotRes && (
-                        <div className="p-3 rounded-2xl bg-secondary/30 border border-border/30 space-y-2 text-xs">
-                          {msg.copilotRes.supportingData.length > 0 && (
-                            <div className="grid grid-cols-2 gap-1.5">
-                              {msg.copilotRes.supportingData.map((d, i) => (
-                                <div key={i} className="p-1.5 rounded-lg bg-background/60 border border-border/30 text-[10px]">
-                                  <span className="text-muted-foreground block font-semibold">{d.label}</span>
-                                  <span className="font-bold text-foreground block">{d.value}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {msg.copilotRes.recommendedAction && (
-                            <Button
-                              size="sm"
-                              className="w-full h-8 text-xs font-bold gap-1.5 bg-primary text-primary-foreground hover:brightness-110 shadow-sm rounded-xl mt-1"
-                              onClick={() => handleExecuteCopilotAction(msg.copilotRes!.recommendedAction!)}
-                            >
-                              <ArrowRight className="w-3.5 h-3.5" /> {msg.copilotRes.recommendedAction.label}
-                            </Button>
-                          )}
-                        </div>
-                      )}
                     </div>
                   </div>
                 ))}

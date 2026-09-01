@@ -293,6 +293,15 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       });
       await poBatch.commit();
 
+      // Recalculate and persist Analytics Summary & AI Brief immediately for complete dashboard fidelity
+      await recalculateAndSaveAnalyticsSummary(firestore, uid, {
+        products: demo.products,
+        transactions: demo.transactions,
+        suppliers: demo.suppliers,
+        orders: demo.orders,
+        returns: demo.returns,
+      }).catch(console.error);
+
       setHasDemoData(true);
 
       const targetType = customType || businessProfile?.businessType || 'Fashion';

@@ -117,27 +117,41 @@ export default function AIAdvisorPage() {
     const userMsg: ChatMessage = { role: 'user', content: text };
     setChatHistory(prev => [...prev, userMsg]);
 
+    // 1. Calculate deterministic copilot response immediately in milliseconds
+    const copilotRes = processCopilotQuery(
+      text,
+      chatHistory,
+      products,
+      transactions,
+      suppliers,
+      orders,
+      returns,
+      businessProfile
+    );
+
+    // If recognized business intent, provide the computed response INSTANTLY with zero wait time!
+    if (copilotRes.intent !== 'UNKNOWN') {
+      setChatHistory(prev => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: copilotRes.answerMarkdown,
+        },
+      ]);
+      return;
+    }
+
+    // 2. For open-ended or unknown questions, call server with a compact slice for fast LLM synthesis
     startChatTransition(async () => {
       try {
-        const copilotRes = processCopilotQuery(
-          text,
-          chatHistory,
-          products,
-          transactions,
-          suppliers,
-          orders,
-          returns,
-          businessProfile
-        );
-
         const reply = await askAnalyzeUpChat(
           text,
-          chatHistory.slice(-8),
-          sanitizePlainData(products),
-          sanitizePlainData(transactions),
-          sanitizePlainData(suppliers),
-          sanitizePlainData(orders),
-          sanitizePlainData(returns),
+          chatHistory.slice(-6),
+          sanitizePlainData(products.slice(0, 30)),
+          sanitizePlainData(transactions.slice(-20)),
+          sanitizePlainData(suppliers.slice(0, 10)),
+          sanitizePlainData(orders.slice(0, 10)),
+          sanitizePlainData(returns.slice(0, 10)),
           sanitizePlainData(businessProfile)
         );
 
@@ -146,13 +160,11 @@ export default function AIAdvisorPage() {
           {
             role: 'assistant',
             content: reply || copilotRes.answerMarkdown,
-            copilotRes,
           },
         ]);
       } catch (err) {
         console.error(err);
-        const fallback = processCopilotQuery(text, chatHistory, products, transactions, suppliers, orders, returns, businessProfile);
-        setChatHistory(prev => [...prev, { role: 'assistant', content: fallback.answerMarkdown, copilotRes: fallback }]);
+        setChatHistory(prev => [...prev, { role: 'assistant', content: copilotRes.answerMarkdown }]);
       }
     });
   }, [chatMessage, isChatPending, chatHistory, products, transactions, suppliers, orders, returns, businessProfile]);
@@ -361,32 +373,6 @@ export default function AIAdvisorPage() {
                           <FormattedMarkdown content={msg.content} />
                         )}
                       </div>
-
-                      {/* Copilot Response Actions & Metrics */}
-                      {msg.copilotRes && (
-                        <div className="p-3 rounded-2xl bg-secondary/30 border border-border/40 space-y-2 text-xs">
-                          {msg.copilotRes.supportingData.length > 0 && (
-                            <div className="grid grid-cols-2 gap-1.5">
-                              {msg.copilotRes.supportingData.map((d, i) => (
-                                <div key={i} className="p-2 rounded-xl bg-background/70 border border-border/30 text-[11px]">
-                                  <span className="text-muted-foreground block font-semibold">{d.label}</span>
-                                  <span className="font-bold text-foreground block">{d.value}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {msg.copilotRes.recommendedAction && (
-                            <Button
-                              size="sm"
-                              className="w-full h-8 text-xs font-bold gap-1.5 bg-primary text-primary-foreground hover:brightness-110 shadow-sm rounded-xl mt-1"
-                              onClick={() => handleExecuteAction(msg.copilotRes!.recommendedAction!)}
-                            >
-                              <ArrowRight className="w-3.5 h-3.5" /> {msg.copilotRes.recommendedAction.label}
-                            </Button>
-                          )}
-                        </div>
-                      )}
                     </div>
                   </div>
                 ))}
