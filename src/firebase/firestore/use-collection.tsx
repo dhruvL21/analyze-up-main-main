@@ -36,6 +36,9 @@ export function useCollection<T>(ref: Query | CollectionReference | null) {
       ref,
       (snapshot) => {
         const changes = snapshot.docChanges();
+        if (changes.length === 0 && receivedInitialSnapshot) {
+          return;
+        }
 
         changes.forEach((change) => {
           if (change.type === 'removed') {
@@ -48,10 +51,8 @@ export function useCollection<T>(ref: Query | CollectionReference | null) {
           }));
         });
 
-        if (!receivedInitialSnapshot || changes.length > 0) {
-          receivedInitialSnapshot = true;
-          setState({ data: Array.from(recordsRef.current.values()), loading: false });
-        }
+        receivedInitialSnapshot = true;
+        setState({ data: Array.from(recordsRef.current.values()), loading: false });
       },
       (serverError) => {
         console.warn('Firestore collection listener notice:', serverError.message);

@@ -38,23 +38,12 @@ export function AIBrief() {
     return (currentNames.has(stockoutName) || currentNames.has(slowMovingName));
   }, [persistedBrief, products]);
 
-  // Priority: newly calculated brief -> valid persisted brief -> dynamic brief
+  // Priority: manual refreshed brief -> valid persisted brief -> dynamic real-time brief
   const activeBrief = useMemo(() => {
     if (brief) return brief;
     if (isPersistedBriefValid && persistedBrief) return persistedBrief;
     return dynamicBrief;
   }, [brief, isPersistedBriefValid, persistedBrief, dynamicBrief]);
-
-  // AUTOMATIC ANALYSIS: Re-run and sync AI Brief immediately whenever data is imported / products change
-  useEffect(() => {
-    if (!products || products.length === 0) return;
-    const freshBrief = calculateDynamicBrief(products, transactions);
-    setBrief(freshBrief);
-
-    if (firestore && user && briefRef) {
-      setDoc(briefRef, serializePlainData({ ...freshBrief, updatedAt: new Date().toISOString() }), { merge: true }).catch(() => {});
-    }
-  }, [products, transactions, firestore, user, briefRef]);
 
   // Calculate return stats in real-time with useMemo to eliminate render thrashing
   const { returnedQty, returnRate, topReturnedProduct, topReturnedQty } = useMemo(() => {

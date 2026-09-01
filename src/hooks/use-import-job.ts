@@ -76,12 +76,16 @@ export function useImportJob(jobId?: string | null) {
           const q = query(
             jobsRef,
             where('status', 'in', ['QUEUED', 'VALIDATING', 'IMPORTING', 'PROCESSING']),
-            orderBy('createdAt', 'desc'),
-            limit(1)
+            limit(5)
           );
           const snap = await getDocs(q);
           if (!snap.empty) {
-            const activeDoc = snap.docs[0];
+            const docs = snap.docs.slice().sort((a, b) => {
+              const aTime = a.data()?.createdAt?.seconds || 0;
+              const bTime = b.data()?.createdAt?.seconds || 0;
+              return bTime - aTime;
+            });
+            const activeDoc = docs[0];
             const activeRef = doc(firestore, 'users', user.uid, 'importJobs', activeDoc.id);
             unsubscribeActive = onSnapshot(activeRef, s => {
               if (s.exists()) {

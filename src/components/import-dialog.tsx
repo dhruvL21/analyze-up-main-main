@@ -757,7 +757,7 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
       }
 
       // 3. Initialize Persistent Import Job with dynamic batch sizing for responsive live progress
-      const BATCH_SIZE = Math.min(60, Math.max(10, Math.ceil(rawRows.length / 25)));
+      const BATCH_SIZE = Math.min(250, Math.max(100, Math.ceil(rawRows.length / 8)));
       const totalBatches = Math.max(1, Math.ceil(rawRows.length / BATCH_SIZE));
       setJobTotalBatches(totalBatches);
       setJobCurrentBatch(1);
@@ -858,6 +858,8 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
 
             if (normResult.validRecords.length > 0 && firestore && user) {
               const batch = writeBatch(firestore);
+              const upsertedProductsInBatch = new Set<string>();
+
               normResult.validRecords.forEach((sale, idx) => {
                 const rawRow = chunk[idx] || {};
                 const rowIdx = i + idx + 1;
@@ -870,7 +872,6 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
                 batchRevenue += saleRev;
                 batchProfit += Math.max(0, saleRev - saleCost);
                 batchSalesCount++;
-                batchProductCount++;
 
                 batch.set(
                   txRef,
@@ -912,33 +913,37 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
                   { merge: true }
                 );
 
-                // Auto-upsert product catalog entry with stock from raw row if present
-                const rawStock = Number(rawRow.stock || rawRow.currentStock || rawRow['Current Stock'] || rawRow.inventory_quantity || rawRow.quantity_on_hand);
-                const prodStock = !isNaN(rawStock) && rawStock >= 0 ? rawStock : 25;
-                const prodRef = doc(firestore, 'users', user.uid, 'products', prodDocId);
-                batch.set(
-                  prodRef,
-                  serializePlainData({
-                    id: prodDocId,
-                    name: sale.product_name,
-                    productName: sale.product_name,
-                    sku: sale.sku,
-                    category: sale.category || 'General',
-                    price: sale.selling_price,
-                    costPrice: sale.cost_per_unit,
-                    stock: prodStock,
-                    minStock: Number(rawRow.minStock || rawRow['Reorder Level'] || 5),
-                    safetyStock: Number(rawRow.safetyStock || rawRow['Safety Stock'] || 4),
-                    supplier: sale.supplier_name || '',
-                    leadTimeDays: Number(rawRow.leadTimeDays || rawRow['Lead Time Days'] || 7),
-                    userId: user.uid,
-                    tenantId: user.uid,
-                    status: 'Active',
-                    updatedAt: serverTimestamp(),
-                    createdAt: serverTimestamp(),
-                  }),
-                  { merge: true }
-                );
+                // Auto-upsert product catalog entry once per unique product in the batch
+                if (!upsertedProductsInBatch.has(prodDocId)) {
+                  upsertedProductsInBatch.add(prodDocId);
+                  batchProductCount++;
+                  const rawStock = Number(rawRow.stock || rawRow.currentStock || rawRow['Current Stock'] || rawRow.inventory_quantity || rawRow.quantity_on_hand);
+                  const prodStock = !isNaN(rawStock) && rawStock >= 0 ? rawStock : 25;
+                  const prodRef = doc(firestore, 'users', user.uid, 'products', prodDocId);
+                  batch.set(
+                    prodRef,
+                    serializePlainData({
+                      id: prodDocId,
+                      name: sale.product_name,
+                      productName: sale.product_name,
+                      sku: sale.sku,
+                      category: sale.category || 'General',
+                      price: sale.selling_price,
+                      costPrice: sale.cost_per_unit,
+                      stock: prodStock,
+                      minStock: Number(rawRow.minStock || rawRow['Reorder Level'] || 5),
+                      safetyStock: Number(rawRow.safetyStock || rawRow['Safety Stock'] || 4),
+                      supplier: sale.supplier_name || '',
+                      leadTimeDays: Number(rawRow.leadTimeDays || rawRow['Lead Time Days'] || 7),
+                      userId: user.uid,
+                      tenantId: user.uid,
+                      status: 'Active',
+                      updatedAt: serverTimestamp(),
+                      createdAt: serverTimestamp(),
+                    }),
+                    { merge: true }
+                  );
+                }
 
                 batchSuccess++;
               });

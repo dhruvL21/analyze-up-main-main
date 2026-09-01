@@ -1218,15 +1218,17 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
           if (!snapshot.empty) console.log(`[ClearAllData] Queued ${snapshot.docs.length} docs from ${colName}`);
         });
 
-        // Commits are independent and do not need to hold the UI in a long
-        // network waterfall. A rejected commit still fails the reset visibly.
-        await Promise.all(deletionBatches.map((batch) => batch.commit()));
+        // Commit deletion batches in controlled sequential order with micro-yields to prevent WebSocket choking
+        for (const batch of deletionBatches) {
+          await batch.commit().catch((err) => console.warn('[ClearAllData] Batch deletion error:', err));
+          await new Promise((r) => setTimeout(r, 10));
+        }
 
         // A reset is a disconnect: remove Drive as well as every other supported integration.
         const integrations = ['google-drive', 'google_drive', 'shopify', 'zoho', 'tally', 'woocommerce'];
         const integrationsBatch = writeBatch(firestore);
         integrations.forEach((name) => integrationsBatch.delete(doc(firestore, 'users', uid, 'integrations', name)));
-        await integrationsBatch.commit();
+        await integrationsBatch.commit().catch((err) => console.warn('[ClearAllData] Integrations batch error:', err));
 
         // Remove generated AI output; retain only an empty analytics summary.
         await deleteDoc(doc(firestore, 'users', uid, 'analytics', 'ai_brief'));
