@@ -2025,16 +2025,22 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
 
       {/* Dialog 3: Silent Sync loading screen */}
       <Dialog open={syncState === 'syncing'} onOpenChange={() => {}}>
-        <DialogContent className="max-w-xs bg-zinc-950/95 border border-blue-500/20 rounded-3xl ios-glass text-white shadow-2xl p-6 flex flex-col items-center justify-center space-y-3">
-          <DialogHeader className="items-center text-center space-y-2">
-            <DialogTitle className="text-sm font-bold flex items-center gap-2 text-zinc-100">
-              <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+        <DialogContent hideCloseButton className="max-w-sm bg-zinc-950/95 border border-blue-500/30 rounded-3xl ios-glass text-white shadow-2xl p-7 flex flex-col items-center justify-center space-y-4">
+          <div className="relative flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400">
+            <Loader2 className="w-7 h-7 text-blue-400 animate-spin" />
+            <div className="absolute inset-0 rounded-2xl bg-blue-500/10 animate-ping opacity-30 pointer-events-none" />
+          </div>
+          <DialogHeader className="items-center text-center space-y-1.5">
+            <DialogTitle className="text-base font-extrabold text-zinc-100">
               Syncing File Data
             </DialogTitle>
-            <DialogDescription className="text-xs text-zinc-400 text-center">
+            <DialogDescription className="text-xs text-zinc-400 text-center max-w-xs leading-relaxed font-medium">
               Processing spreadsheet records and updating business intelligence...
             </DialogDescription>
           </DialogHeader>
+          <div className="w-full bg-zinc-900 h-1.5 rounded-full overflow-hidden border border-zinc-800">
+            <div className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-400 animate-pulse w-3/4 rounded-full" />
+          </div>
         </DialogContent>
       </Dialog>
 
