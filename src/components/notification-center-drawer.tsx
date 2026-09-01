@@ -50,6 +50,7 @@ export function NotificationCenterDrawer({ open, onOpenChange }: NotificationCen
 
   const [selectedSeverity, setSelectedSeverity] = useState<'ALL' | 'CRITICAL' | 'HIGH' | 'MEDIUM'>('ALL');
   const [eventStatuses, setEventStatuses] = useState<Record<string, EventStatus>>({});
+  const [detectedEvents, setDetectedEvents] = useState<BusinessEvent[]>([]);
 
   // Sync stored event statuses on drawer open or window update
   React.useEffect(() => {
@@ -59,10 +60,21 @@ export function NotificationCenterDrawer({ open, onOpenChange }: NotificationCen
     return () => window.removeEventListener('analyzeup_events_updated', sync);
   }, [open]);
 
-  // Detect events
-  const detectedEvents = useMemo(() => {
-    return detectBusinessEvents(products, transactions, suppliers, orders, returns, businessProfile);
-  }, [products, transactions, suppliers, orders, returns, businessProfile]);
+  // This can run several large-data intelligence engines. Defer it until the
+  // drawer is visible so opening the menu never blocks the rest of the page.
+  React.useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    const calculate = () => {
+      const nextEvents = detectBusinessEvents(products, transactions, suppliers, orders, returns, businessProfile);
+      if (!cancelled) setDetectedEvents(nextEvents);
+    };
+    const idleId = window.setTimeout(calculate, 100);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(idleId);
+    };
+  }, [open, products, transactions, suppliers, orders, returns, businessProfile]);
 
   // Apply user status overrides
   const events = useMemo(() => {

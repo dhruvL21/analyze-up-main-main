@@ -89,27 +89,31 @@ export function Header() {
     };
   }, []);
 
-  const businessEvents = useMemo(() => {
-    return detectBusinessEvents(products, transactions, suppliers, orders, returns, businessProfile);
-  }, [products, transactions, suppliers, orders, returns, businessProfile]);
+  const [headerMetrics, setHeaderMetrics] = useState({ activeAlertCount: 0, healthLogoColor: '#10b981' });
 
-  const activeAlertCount = useMemo(() => {
-    void healthTick;
-    const statuses = getStoredEventStatuses();
-    return businessEvents.filter(e => {
-      const status = statuses[e.id] || e.status;
-      return status !== 'RESOLVED';
-    }).length;
-  }, [businessEvents, healthTick]);
+  // Event detection runs forecasting, supplier, and customer intelligence. Running
+  // it synchronously in the fixed header made every snapshot update block clicks
+  // and scrolling on large imports. Schedule it after the current render instead.
+  useEffect(() => {
+    let cancelled = false;
+    const calculate = () => {
+      if (cancelled) return;
+      const businessEvents = detectBusinessEvents(products, transactions, suppliers, orders, returns, businessProfile);
+      const statuses = getStoredEventStatuses();
+      const activeAlertCount = businessEvents.filter((event) => (statuses[event.id] || event.status) !== 'RESOLVED').length;
+      const healthLogoColor = computeBusinessHealth(products, transactions, suppliers, returns).color;
+      if (!cancelled) setHeaderMetrics({ activeAlertCount, healthLogoColor });
+    };
 
-  const healthSummary = useMemo(() => {
-    void healthTick;
-    return computeBusinessHealth(products, transactions, suppliers, returns);
-  }, [products, transactions, suppliers, returns, healthTick]);
+    const idleId = window.setTimeout(calculate, 300);
 
-  const healthLogoColor = useMemo(() => {
-    return healthSummary.color;
-  }, [healthSummary.color]);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(idleId);
+    };
+  }, [products, transactions, suppliers, orders, returns, businessProfile, healthTick]);
+
+  const { activeAlertCount, healthLogoColor } = headerMetrics;
 
   const handleLogout = async () => {
     if (auth) {
@@ -289,7 +293,7 @@ export function Header() {
         )}
       </AnimatePresence>
 
-      <NotificationCenterDrawer open={notifDrawerOpen} onOpenChange={setNotifDrawerOpen} />
+      {notifDrawerOpen && <NotificationCenterDrawer open={notifDrawerOpen} onOpenChange={setNotifDrawerOpen} />}
     </header>
   );
 }

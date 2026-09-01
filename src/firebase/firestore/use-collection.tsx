@@ -5,7 +5,7 @@ import {
   type CollectionReference,
   type Query,
 } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { errorEmitter } from '../error-emitter';
 import { FirestorePermissionError } from '../errors';
 import { serializePlainData } from '@/lib/utils';
@@ -22,25 +22,41 @@ export function useCollection<T>(ref: Query | CollectionReference | null) {
   });
 
   const path = ref && 'path' in ref ? (ref as CollectionReference).path : undefined;
+  const recordsRef = useRef<Map<string, T>>(new Map());
 
   useEffect(() => {
     if (!ref) {
       return;
     }
-    
+
+    recordsRef.current = new Map();
     setState((prev) => (prev.loading ? prev : { ...prev, loading: true }));
+    let receivedInitialSnapshot = false;
 
     const unsubscribe = onSnapshot(
       ref,
       (snapshot) => {
-        const data = snapshot.docs.map((doc) => {
-          const raw = {
-            id: doc.id,
-            ...doc.data(),
-          };
-          return serializePlainData<T>(raw);
+        const changes = snapshot.docChanges();
+
+        // Firestore sends the full collection in every snapshot. Rebuilding and
+        // deeply serializing all records on every import batch blocks the main
+        // thread for large datasets. Apply only changed documents to the local
+        // snapshot cache; the initial snapshot still contains every document.
+        changes.forEach((change) => {
+          if (change.type === 'removed') {
+            recordsRef.current.delete(change.doc.id);
+            return;
+          }
+          recordsRef.current.set(change.doc.id, serializePlainData<T>({
+            id: change.doc.id,
+            ...change.doc.data(),
+          }));
         });
-        setState({ data, loading: false });
+
+        if (!receivedInitialSnapshot || changes.length > 0) {
+          receivedInitialSnapshot = true;
+          setState({ data: Array.from(recordsRef.current.values()), loading: false });
+        }
       },
       (serverError) => {
         console.error('Error listening to collection:', serverError);
