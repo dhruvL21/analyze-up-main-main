@@ -17,7 +17,7 @@ export function AIBrief() {
   const firestore = useFirestore();
 
   const briefRef = useMemo(() => user && firestore ? doc(firestore, 'users', user.uid, 'analytics', 'ai_brief') : null, [user, firestore]);
-  const { data: persistedBrief, loading: briefLoading } = useDoc<AIBriefOutput>(briefRef);
+  const { data: persistedBrief } = useDoc<AIBriefOutput>(briefRef);
 
   const [brief, setBrief] = useState<AIBriefOutput | null>(null);
   const isPaid = activePlan !== 'Free Trial';
@@ -81,11 +81,9 @@ export function AIBrief() {
     }
     
     setIsRefreshing(true);
-    // Instant synchronous calculation directly in memory (0ms)
     const result = calculateDynamicBrief(products, transactions);
     setBrief(result);
 
-    // Background asynchronous persistence without blocking UI
     if (firestore && user && briefRef) {
       setDoc(briefRef, serializePlainData({ ...result, updatedAt: new Date().toISOString() }), { merge: true })
         .catch((err) => console.warn('AI Brief background save:', err))
@@ -228,9 +226,18 @@ export function AIBrief() {
                 </p>
               </div>
             </div>
-            <div className="pt-2.5 mt-2 border-t border-border/30 flex items-center justify-between text-xs">
-              <span className="text-zinc-400">Action</span>
-              <span className="text-amber-300 font-semibold text-right line-clamp-1">{activeBrief.slowMovingItem.actionText.replace('Suggested action: ', '')}</span>
+            <div className="pt-2.5 mt-2 border-t border-border/30 flex items-center justify-between text-xs gap-2">
+              <span className="text-zinc-400 shrink-0">Action</span>
+              <span 
+                className="text-amber-300 font-semibold text-right"
+                title={activeBrief.slowMovingItem.actionText}
+              >
+                {activeBrief.slowMovingItem.actionText
+                  .replace(/^Suggested action:\s*/i, '')
+                  .replace(/\s*clearance discount\.?/i, ' Discount')
+                  .replace(/\s*discount\.?/i, ' Discount')
+                  .trim() || '20% Discount'}
+              </span>
             </div>
           </div>
 

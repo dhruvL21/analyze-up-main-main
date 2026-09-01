@@ -145,7 +145,7 @@ export function calculateDynamicBrief(
       name: worstSlowMovingItem.name || 'Unnamed Product',
       riskText: `Low velocity (${daysSinceLastSale} days).`,
       costText: `₹${blockedCapital.toLocaleString('en-IN')} blocked.`,
-      actionText: 'Suggested action: 20% clearance discount.'
+      actionText: 'Suggested action: 20% Discount'
     };
   }
 

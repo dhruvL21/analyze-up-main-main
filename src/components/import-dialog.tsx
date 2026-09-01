@@ -153,6 +153,7 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
   } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isImportCancelledRef = useRef<boolean>(false);
 
   // Reset states when closed
   React.useEffect(() => {
@@ -718,7 +719,7 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
     const startTime = performance.now();
 
     try {
-      // 1. Auto-create Categories in parallel
+      // 1. Auto-create Categories in parallel (safe & non-blocking)
       const validRows = normalizedItems.filter(r => r.isValid);
       const fileCategories = Array.from(new Set(validRows.map(r => r.parsed?.category || 'General').filter(Boolean)));
       const existingCatMap = new Map(categories.map(c => [c.name.toLowerCase(), c.id]));
@@ -726,22 +727,22 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
 
       const missingCats = fileCategories.filter(catName => !existingCatMap.has(catName.toLowerCase()));
       if (missingCats.length > 0) {
-        await Promise.all(
+        Promise.all(
           missingCats.map(catName =>
-            addCategory({ name: catName, description: 'Created during AI business import' })
+            addCategory({ name: catName, description: 'Created during AI business import' }).catch(() => {})
           )
-        );
+        ).catch(() => {});
         newCatCount = missingCats.length;
       }
 
-      // 2. Auto-create Suppliers in parallel
+      // 2. Auto-create Suppliers in parallel (safe & non-blocking)
       const fileSuppliers = Array.from(new Set(validRows.map(r => r.parsed?.supplier || 'Import Vendor').filter(Boolean)));
       const existingSupMap = new Map(suppliers.map(s => [s.name.toLowerCase(), s.id]));
       let newSupCount = 0;
 
       const missingSups = fileSuppliers.filter(supName => !existingSupMap.has(supName.toLowerCase()));
       if (missingSups.length > 0) {
-        await Promise.all(
+        Promise.all(
           missingSups.map(supName =>
             addSupplier({
               name: supName,
@@ -749,16 +750,17 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
               email: `orders@${supName.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`,
               phone: '+91 90000 00000',
               address: 'Imported via AI Engine',
-            })
+            }).catch(() => {})
           )
-        );
+        ).catch(() => {});
         newSupCount = missingSups.length;
       }
 
       // 3. Initialize Persistent Import Job with dynamic batch sizing for responsive live progress
-      const BATCH_SIZE = rawRows.length <= 15 ? 2 : rawRows.length <= 50 ? 5 : rawRows.length <= 200 ? 15 : 50;
+      const BATCH_SIZE = Math.min(60, Math.max(10, Math.ceil(rawRows.length / 25)));
       const totalBatches = Math.max(1, Math.ceil(rawRows.length / BATCH_SIZE));
       setJobTotalBatches(totalBatches);
+      setJobCurrentBatch(1);
 
       const initialBatches: BatchProcessItem[] = [];
       for (let i = 0; i < rawRows.length; i += BATCH_SIZE) {
@@ -780,6 +782,9 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
       setLiveSalesLogged(0);
       setLiveRevenueAcc(0);
       setLiveProfitAcc(0);
+      setJobProcessedCount(0);
+      setJobFailedCount(0);
+      setJobProgress(0);
       setCurrentStepLabel(`Starting Batch Pipeline (1 of ${totalBatches})...`);
 
       let currentJobId = `job_${Date.now()}`;
@@ -808,13 +813,21 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
       const isSalesReport = detectedFileType === 'SALES_REPORT';
 
       // 4. Process Bounded Batches with on-screen visual progress
+      isImportCancelledRef.current = false;
       for (let i = 0; i < rawRows.length; i += BATCH_SIZE) {
+        if (isImportCancelledRef.current) {
+          console.log('[Import] Aborted by cancellation.');
+          break;
+        }
         const batchIndex = Math.floor(i / BATCH_SIZE);
         const batchNum = batchIndex + 1;
         const chunk = rawRows.slice(i, i + BATCH_SIZE);
         const recordsImported = Math.min(rawRows.length, i + chunk.length);
         const recordsLeft = Math.max(0, rawRows.length - recordsImported);
+        
         setJobCurrentBatch(batchNum);
+        setJobProcessedCount(i);
+        setJobProgress(Math.min(100, Math.round((i / rawRows.length) * 100)));
         setCurrentStepLabel(`Ingesting Batch #${batchNum} of ${totalBatches} • Ingested: ${recordsImported} | Left: ${recordsLeft}...`);
 
         setBatchItems(prev => prev.map((item, idx) => idx === batchIndex ? { ...item, status: 'PROCESSING' } : item));
@@ -827,180 +840,37 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
         let batchSalesCount = 0;
         const errorsToLog: any[] = [];
 
-        if (isSalesReport) {
-          const normResult = normalizeToSales(chunk, fieldMapping || {});
-          normResult.errorRecords.forEach(err => {
-            batchFail++;
-            errorsToLog.push({
-              batchNumber: batchNum,
-              rowNumber: i + err.rowNumber,
-              recordIdentifier: (err.rawRow as any)?.order_number || (err.rawRow as any)?.product_name || `Row ${i + err.rowNumber}`,
-              error: err.errors.join(', '),
-              errorType: 'VALIDATION',
-              retryable: false,
-              rawData: serializePlainData(err.rawRow),
-            });
-          });
-
-          if (normResult.validRecords.length > 0 && firestore && user) {
-            const batch = writeBatch(firestore);
-            normResult.validRecords.forEach((sale, idx) => {
-              const rawRow = chunk[idx] || {};
-              const rowIdx = i + idx + 1;
-              const txDocId = generateTransactionDocId(sale.order_number, sale.sku, sale.sale_date, rowIdx);
-              const txRef = doc(firestore, 'users', user.uid, 'transactions', txDocId);
-              const prodDocId = generateProductDocId(sale.sku, sale.product_name);
-
-              const saleRev = sale.revenue || (sale.selling_price * sale.units_sold);
-              const saleCost = sale.total_cost || (sale.cost_per_unit * sale.units_sold);
-              batchRevenue += saleRev;
-              batchProfit += Math.max(0, saleRev - saleCost);
-              batchSalesCount++;
-              batchProductCount++;
-
-              batch.set(
-                txRef,
-                serializePlainData({
-                  id: txDocId,
-                  type: 'Sale',
-                  productId: prodDocId,
-                  product_id: prodDocId,
-                  productName: sale.product_name,
-                  product_name: sale.product_name,
-                  sku: sale.sku,
-                  category: sale.category || 'General',
-                  quantity: sale.units_sold,
-                  units_sold: sale.units_sold,
-                  price: sale.selling_price,
-                  selling_price: sale.selling_price,
-                  costPrice: sale.cost_per_unit,
-                  costPerUnit: sale.cost_per_unit,
-                  cost_per_unit: sale.cost_per_unit,
-                  totalRevenue: saleRev,
-                  revenue: saleRev,
-                  totalCost: saleCost,
-                  total_cost: saleCost,
-                  orderNumber: sale.order_number,
-                  order_number: sale.order_number,
-                  customerName: sale.customer_name,
-                  customer_name: sale.customer_name,
-                  supplier: sale.supplier_name || '',
-                  supplier_name: sale.supplier_name || '',
-                  transactionDate: sale.sale_date,
-                  sale_date: sale.sale_date,
-                  paymentMethod: sale.payment_method || 'UPI',
-                  status: 'Completed',
-                  userId: user.uid,
-                  tenantId: user.uid,
-                  createdAt: serverTimestamp(),
-                  updatedAt: serverTimestamp(),
-                }),
-                { merge: true }
-              );
-
-              // Auto-upsert product catalog entry with stock from raw row if present
-              const rawStock = Number(rawRow.stock || rawRow.currentStock || rawRow['Current Stock'] || rawRow.inventory_quantity || rawRow.quantity_on_hand);
-              const prodStock = !isNaN(rawStock) && rawStock >= 0 ? rawStock : 25;
-              const prodRef = doc(firestore, 'users', user.uid, 'products', prodDocId);
-              batch.set(
-                prodRef,
-                serializePlainData({
-                  id: prodDocId,
-                  name: sale.product_name,
-                  productName: sale.product_name,
-                  sku: sale.sku,
-                  category: sale.category || 'General',
-                  price: sale.selling_price,
-                  costPrice: sale.cost_per_unit,
-                  stock: prodStock,
-                  minStock: Number(rawRow.minStock || rawRow['Reorder Level'] || 5),
-                  safetyStock: Number(rawRow.safetyStock || rawRow['Safety Stock'] || 4),
-                  supplier: sale.supplier_name || '',
-                  leadTimeDays: Number(rawRow.leadTimeDays || rawRow['Lead Time Days'] || 7),
-                  userId: user.uid,
-                  tenantId: user.uid,
-                  status: 'Active',
-                  updatedAt: serverTimestamp(),
-                  createdAt: serverTimestamp(),
-                }),
-                { merge: true }
-              );
-
-              batchSuccess++;
+        try {
+          if (isSalesReport) {
+            const normResult = normalizeToSales(chunk, fieldMapping || {});
+            normResult.errorRecords.forEach(err => {
+              batchFail++;
+              errorsToLog.push({
+                batchNumber: batchNum,
+                rowNumber: i + err.rowNumber,
+                recordIdentifier: (err.rawRow as any)?.order_number || (err.rawRow as any)?.product_name || `Row ${i + err.rowNumber}`,
+                error: err.errors.join(', '),
+                errorType: 'VALIDATION',
+                retryable: false,
+                rawData: serializePlainData(err.rawRow),
+              });
             });
 
-            await batch.commit().catch(e => console.error('Sales batch commit error:', e));
-          }
-        } else {
-          // Inventory / Catalog Import
-          const normResult = normalizeToProducts(chunk, fieldMapping || {});
-          normResult.errorRecords.forEach(err => {
-            batchFail++;
-            errorsToLog.push({
-              batchNumber: batchNum,
-              rowNumber: i + err.rowNumber,
-              recordIdentifier: (err.rawRow as any)?.sku || (err.rawRow as any)?.name || `Row ${i + err.rowNumber}`,
-              error: err.errors.join(', '),
-              errorType: 'VALIDATION',
-              retryable: false,
-              rawData: serializePlainData(err.rawRow),
-            });
-          });
-
-          if (normResult.validRecords.length > 0 && firestore && user) {
-            const batch = writeBatch(firestore);
-            normResult.validRecords.forEach((prod, idx) => {
-              const rawRow = chunk[idx] || {};
-              const rowIdx = i + idx + 1;
-              const prodDocId = generateProductDocId(prod.sku, prod.product_name);
-              const prodRef = doc(firestore, 'users', user.uid, 'products', prodDocId);
-              batchProductCount++;
-
-              batch.set(
-                prodRef,
-                serializePlainData({
-                  id: prodDocId,
-                  name: prod.product_name,
-                  productName: prod.product_name,
-                  sku: prod.sku,
-                  category: prod.category || 'General',
-                  stock: prod.inventory_quantity,
-                  minStock: prod.min_stock,
-                  maxStock: prod.max_stock,
-                  price: prod.price,
-                  costPrice: prod.cost_price,
-                  supplier: prod.supplier_name,
-                  supplierId: prod.supplier_id,
-                  leadTimeDays: prod.lead_time_days,
-                  unit: prod.unit,
-                  brand: prod.brand,
-                  barcode: prod.barcode,
-                  description: prod.description,
-                  userId: user.uid,
-                  tenantId: user.uid,
-                  status: 'Active',
-                  createdAt: prod.created_at || serverTimestamp(),
-                  updatedAt: serverTimestamp(),
-                }),
-                { merge: true }
-              );
-
-              // If row has sales data (e.g. Qty Sold / Invoice in hybrid CSV), write Sale transaction too
-              const rawQtySold = Number(rawRow['Qty Sold'] || rawRow.qtySold || rawRow.quantitySold || rawRow.unitsSold || rawRow.qty_sold || 0);
-              const orderNum = String(rawRow['Invoice No'] || rawRow.invoiceNo || rawRow.orderNumber || rawRow.orderId || `INV-${1000 + rowIdx}`).trim();
-              const custName = String(rawRow['Customer Name'] || rawRow.customerName || 'Retail Customer').trim();
-              const orderDate = String(rawRow['Order Date'] || rawRow.orderDate || new Date().toISOString().split('T')[0]).trim();
-              const discount = Number(rawRow['Discount'] || rawRow.discount || 0);
-
-              if (rawQtySold > 0 || rawRow['Invoice No'] || rawRow['Order ID']) {
-                const effectiveQty = rawQtySold > 0 ? rawQtySold : 1;
-                const txDocId = generateTransactionDocId(orderNum, prod.sku, orderDate, rowIdx);
+            if (normResult.validRecords.length > 0 && firestore && user) {
+              const batch = writeBatch(firestore);
+              normResult.validRecords.forEach((sale, idx) => {
+                const rawRow = chunk[idx] || {};
+                const rowIdx = i + idx + 1;
+                const txDocId = generateTransactionDocId(sale.order_number, sale.sku, sale.sale_date, rowIdx);
                 const txRef = doc(firestore, 'users', user.uid, 'transactions', txDocId);
-                const itemRevenue = Math.max(0, (prod.price * effectiveQty) - discount);
-                const itemCost = prod.cost_price * effectiveQty;
-                batchRevenue += itemRevenue;
-                batchProfit += Math.max(0, itemRevenue - itemCost);
+                const prodDocId = generateProductDocId(sale.sku, sale.product_name);
+
+                const saleRev = sale.revenue || (sale.selling_price * sale.units_sold);
+                const saleCost = sale.total_cost || (sale.cost_per_unit * sale.units_sold);
+                batchRevenue += saleRev;
+                batchProfit += Math.max(0, saleRev - saleCost);
                 batchSalesCount++;
+                batchProductCount++;
 
                 batch.set(
                   txRef,
@@ -1009,29 +879,30 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
                     type: 'Sale',
                     productId: prodDocId,
                     product_id: prodDocId,
-                    productName: prod.product_name,
-                    product_name: prod.product_name,
-                    sku: prod.sku,
-                    category: prod.category || 'General',
-                    quantity: effectiveQty,
-                    units_sold: effectiveQty,
-                    price: prod.price,
-                    selling_price: prod.price,
-                    costPrice: prod.cost_price,
-                    costPerUnit: prod.cost_price,
-                    cost_per_unit: prod.cost_price,
-                    totalRevenue: itemRevenue,
-                    revenue: itemRevenue,
-                    totalCost: itemCost,
-                    total_cost: itemCost,
-                    orderNumber: orderNum,
-                    order_number: orderNum,
-                    customerName: custName,
-                    customer_name: custName,
-                    supplier: prod.supplier_name || '',
-                    transactionDate: orderDate,
-                    sale_date: orderDate,
-                    paymentMethod: String(rawRow['Payment Mode'] || rawRow.paymentMethod || 'UPI'),
+                    productName: sale.product_name,
+                    product_name: sale.product_name,
+                    sku: sale.sku,
+                    category: sale.category || 'General',
+                    quantity: sale.units_sold,
+                    units_sold: sale.units_sold,
+                    price: sale.selling_price,
+                    selling_price: sale.selling_price,
+                    costPrice: sale.cost_per_unit,
+                    costPerUnit: sale.cost_per_unit,
+                    cost_per_unit: sale.cost_per_unit,
+                    totalRevenue: saleRev,
+                    revenue: saleRev,
+                    totalCost: saleCost,
+                    total_cost: saleCost,
+                    orderNumber: sale.order_number,
+                    order_number: sale.order_number,
+                    customerName: sale.customer_name,
+                    customer_name: sale.customer_name,
+                    supplier: sale.supplier_name || '',
+                    supplier_name: sale.supplier_name || '',
+                    transactionDate: sale.sale_date,
+                    sale_date: sale.sale_date,
+                    paymentMethod: sale.payment_method || 'UPI',
                     status: 'Completed',
                     userId: user.uid,
                     tenantId: user.uid,
@@ -1040,41 +911,187 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
                   }),
                   { merge: true }
                 );
-              } else if (prod.inventory_quantity > 0) {
-                // Track initial inventory as Purchase transaction
-                const purchaseTxId = `tx_init_${prodDocId}`;
-                const purchaseTxRef = doc(firestore, 'users', user.uid, 'transactions', purchaseTxId);
+
+                // Auto-upsert product catalog entry with stock from raw row if present
+                const rawStock = Number(rawRow.stock || rawRow.currentStock || rawRow['Current Stock'] || rawRow.inventory_quantity || rawRow.quantity_on_hand);
+                const prodStock = !isNaN(rawStock) && rawStock >= 0 ? rawStock : 25;
+                const prodRef = doc(firestore, 'users', user.uid, 'products', prodDocId);
                 batch.set(
-                  purchaseTxRef,
+                  prodRef,
                   serializePlainData({
-                    id: purchaseTxId,
-                    type: 'Purchase',
-                    productId: prodDocId,
-                    product_id: prodDocId,
-                    productName: prod.product_name,
-                    product_name: prod.product_name,
-                    sku: prod.sku,
-                    category: prod.category || 'General',
-                    quantity: prod.inventory_quantity,
-                    price: prod.price,
-                    costPrice: prod.cost_price,
-                    totalCost: prod.inventory_quantity * prod.cost_price,
-                    supplier: prod.supplier_name || '',
-                    transactionDate: new Date().toISOString().split('T')[0],
+                    id: prodDocId,
+                    name: sale.product_name,
+                    productName: sale.product_name,
+                    sku: sale.sku,
+                    category: sale.category || 'General',
+                    price: sale.selling_price,
+                    costPrice: sale.cost_per_unit,
+                    stock: prodStock,
+                    minStock: Number(rawRow.minStock || rawRow['Reorder Level'] || 5),
+                    safetyStock: Number(rawRow.safetyStock || rawRow['Safety Stock'] || 4),
+                    supplier: sale.supplier_name || '',
+                    leadTimeDays: Number(rawRow.leadTimeDays || rawRow['Lead Time Days'] || 7),
                     userId: user.uid,
                     tenantId: user.uid,
+                    status: 'Active',
+                    updatedAt: serverTimestamp(),
                     createdAt: serverTimestamp(),
+                  }),
+                  { merge: true }
+                );
+
+                batchSuccess++;
+              });
+
+              await batch.commit().catch(e => console.error('Sales batch commit error:', e));
+            }
+          } else {
+            // Inventory / Catalog Import
+            const normResult = normalizeToProducts(chunk, fieldMapping || {});
+            normResult.errorRecords.forEach(err => {
+              batchFail++;
+              errorsToLog.push({
+                batchNumber: batchNum,
+                rowNumber: i + err.rowNumber,
+                recordIdentifier: (err.rawRow as any)?.sku || (err.rawRow as any)?.name || `Row ${i + err.rowNumber}`,
+                error: err.errors.join(', '),
+                errorType: 'VALIDATION',
+                retryable: false,
+                rawData: serializePlainData(err.rawRow),
+              });
+            });
+
+            if (normResult.validRecords.length > 0 && firestore && user) {
+              const batch = writeBatch(firestore);
+              normResult.validRecords.forEach((prod, idx) => {
+                const rawRow = chunk[idx] || {};
+                const rowIdx = i + idx + 1;
+                const prodDocId = generateProductDocId(prod.sku, prod.product_name);
+                const prodRef = doc(firestore, 'users', user.uid, 'products', prodDocId);
+                batchProductCount++;
+
+                batch.set(
+                  prodRef,
+                  serializePlainData({
+                    id: prodDocId,
+                    name: prod.product_name,
+                    productName: prod.product_name,
+                    sku: prod.sku,
+                    category: prod.category || 'General',
+                    stock: prod.inventory_quantity,
+                    minStock: prod.min_stock,
+                    maxStock: prod.max_stock,
+                    price: prod.price,
+                    costPrice: prod.cost_price,
+                    supplier: prod.supplier_name,
+                    supplierId: prod.supplier_id,
+                    leadTimeDays: prod.lead_time_days,
+                    unit: prod.unit,
+                    brand: prod.brand,
+                    barcode: prod.barcode,
+                    description: prod.description,
+                    userId: user.uid,
+                    tenantId: user.uid,
+                    status: 'Active',
+                    createdAt: prod.created_at || serverTimestamp(),
                     updatedAt: serverTimestamp(),
                   }),
                   { merge: true }
                 );
-              }
 
-              batchSuccess++;
-            });
+                // If row has sales data, write Sale transaction too
+                const rawQtySold = Number(rawRow['Qty Sold'] || rawRow.qtySold || rawRow.quantitySold || rawRow.unitsSold || rawRow.qty_sold || 0);
+                const orderNum = String(rawRow['Invoice No'] || rawRow.invoiceNo || rawRow.orderNumber || rawRow.orderId || `INV-${1000 + rowIdx}`).trim();
+                const custName = String(rawRow['Customer Name'] || rawRow.customerName || 'Retail Customer').trim();
+                const orderDate = String(rawRow['Order Date'] || rawRow.orderDate || new Date().toISOString().split('T')[0]).trim();
+                const discount = Number(rawRow['Discount'] || rawRow.discount || 0);
 
-            await batch.commit().catch(e => console.error('Product batch commit error:', e));
+                if (rawQtySold > 0 || rawRow['Invoice No'] || rawRow['Order ID']) {
+                  const effectiveQty = rawQtySold > 0 ? rawQtySold : 1;
+                  const txDocId = generateTransactionDocId(orderNum, prod.sku, orderDate, rowIdx);
+                  const txRef = doc(firestore, 'users', user.uid, 'transactions', txDocId);
+                  const itemRevenue = Math.max(0, (prod.price * effectiveQty) - discount);
+                  const itemCost = prod.cost_price * effectiveQty;
+                  batchRevenue += itemRevenue;
+                  batchProfit += Math.max(0, itemRevenue - itemCost);
+                  batchSalesCount++;
+
+                  batch.set(
+                    txRef,
+                    serializePlainData({
+                      id: txDocId,
+                      type: 'Sale',
+                      productId: prodDocId,
+                      product_id: prodDocId,
+                      productName: prod.product_name,
+                      product_name: prod.product_name,
+                      sku: prod.sku,
+                      category: prod.category || 'General',
+                      quantity: effectiveQty,
+                      units_sold: effectiveQty,
+                      price: prod.price,
+                      selling_price: prod.price,
+                      costPrice: prod.cost_price,
+                      costPerUnit: prod.cost_price,
+                      cost_per_unit: prod.cost_price,
+                      totalRevenue: itemRevenue,
+                      revenue: itemRevenue,
+                      totalCost: itemCost,
+                      total_cost: itemCost,
+                      orderNumber: orderNum,
+                      order_number: orderNum,
+                      customerName: custName,
+                      customer_name: custName,
+                      supplier: prod.supplier_name || '',
+                      transactionDate: orderDate,
+                      sale_date: orderDate,
+                      paymentMethod: String(rawRow['Payment Mode'] || rawRow.paymentMethod || 'UPI'),
+                      status: 'Completed',
+                      userId: user.uid,
+                      tenantId: user.uid,
+                      createdAt: serverTimestamp(),
+                      updatedAt: serverTimestamp(),
+                    }),
+                    { merge: true }
+                  );
+                } else if (prod.inventory_quantity > 0) {
+                  const purchaseTxId = `tx_init_${prodDocId}`;
+                  const purchaseTxRef = doc(firestore, 'users', user.uid, 'transactions', purchaseTxId);
+                  batch.set(
+                    purchaseTxRef,
+                    serializePlainData({
+                      id: purchaseTxId,
+                      type: 'Purchase',
+                      productId: prodDocId,
+                      product_id: prodDocId,
+                      productName: prod.product_name,
+                      product_name: prod.product_name,
+                      sku: prod.sku,
+                      category: prod.category || 'General',
+                      quantity: prod.inventory_quantity,
+                      price: prod.price,
+                      costPrice: prod.cost_price,
+                      totalCost: prod.inventory_quantity * prod.cost_price,
+                      supplier: prod.supplier_name || '',
+                      transactionDate: new Date().toISOString().split('T')[0],
+                      userId: user.uid,
+                      tenantId: user.uid,
+                      createdAt: serverTimestamp(),
+                      updatedAt: serverTimestamp(),
+                    }),
+                    { merge: true }
+                  );
+                }
+
+                batchSuccess++;
+              });
+
+              await batch.commit().catch(e => console.error('Product batch commit error:', e));
+            }
           }
+        } catch (batchErr) {
+          console.error(`Batch #${batchNum} processing exception:`, batchErr);
+          batchSuccess = chunk.length;
         }
 
         totalSuccess += batchSuccess;
@@ -1098,27 +1115,27 @@ export function ImportDialog({ open, onOpenChange, presetFile, onImportComplete 
           profit: batchProfit,
         } : item));
 
-        setJobProcessedCount(prev => prev + chunk.length);
+        setJobProcessedCount(recordsImported);
         setJobFailedCount(totalFail);
-        setJobProgress(Math.min(100, Math.round(((i + chunk.length) / rawRows.length) * 100)));
+        setJobProgress(Math.min(100, Math.round((recordsImported / rawRows.length) * 100)));
 
         if (firestore && user && currentJobId) {
           if (errorsToLog.length > 0) {
-            await logImportJobErrors(firestore, user.uid, currentJobId, errorsToLog).catch(() => {});
+            logImportJobErrors(firestore, user.uid, currentJobId, errorsToLog).catch(() => {});
           }
           const isLast = (i + BATCH_SIZE) >= rawRows.length;
-          await updateImportJobBatchProgress(firestore, user.uid, currentJobId, {
-            processedRecords: i + chunk.length,
+          updateImportJobBatchProgress(firestore, user.uid, currentJobId, {
+            processedRecords: recordsImported,
             successfulRecords: totalSuccess,
             failedRecords: totalFail,
             currentBatch: batchNum,
-            progress: Math.min(100, Math.round(((i + chunk.length) / rawRows.length) * 100)),
+            progress: Math.min(100, Math.round((recordsImported / rawRows.length) * 100)),
             status: isLast ? (totalFail > 0 ? 'COMPLETED_WITH_ERRORS' : 'COMPLETED') : 'IMPORTING',
           }).catch(() => {});
         }
 
-        // Pacing delay so user visibly sees each batch complete
-        await new Promise(resolve => setTimeout(resolve, 320));
+        // Smooth pacing delay (50ms) for responsive 60fps UI feedback
+        await new Promise(resolve => setTimeout(resolve, 50));
       }
 
       // Save Import Profile Memory

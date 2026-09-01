@@ -11,39 +11,8 @@ import { RevenueProfitIntelligence } from '@/components/revenue-profit-intellige
 import { DeadStockSection } from '@/components/dead-stock-section';
 import { InventoryQualitySnapshot } from '@/components/inventory-quality-snapshot';
 import { BusinessActivityTimeline } from '@/components/business-activity-timeline';
-import { EmptyStateIntelligence } from '@/components/empty-state-intelligence';
-import { Skeleton } from '@/components/ui/skeleton';
-
-function DashboardLoading() {
-  return (
-    <div className="flex flex-col gap-6 p-2">
-      <Skeleton className="h-12 w-full rounded-2xl animate-pulse" />
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Skeleton className="h-64 lg:col-span-2 rounded-3xl animate-pulse" />
-        <Skeleton className="h-64 rounded-3xl animate-pulse" />
-      </div>
-      <Skeleton className="h-48 w-full rounded-3xl animate-pulse" />
-    </div>
-  );
-}
-
 export default function DashboardPage() {
-  const { products, transactions, isLoading, businessProfile } = useData();
-
-  if (isLoading) {
-    return <DashboardLoading />;
-  }
-
-  const hasNoData = products.length === 0 && transactions.length === 0;
-
-  if (hasNoData) {
-    return (
-      <div className="space-y-6">
-        <QuickActionsBar />
-        <EmptyStateIntelligence />
-      </div>
-    );
-  }
+  const { products, transactions, businessProfile } = useData();
 
   return (
     <div className="flex flex-col gap-6 pb-8">

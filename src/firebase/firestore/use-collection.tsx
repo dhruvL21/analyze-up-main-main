@@ -25,10 +25,11 @@ export function useCollection<T>(ref: Query | CollectionReference | null) {
 
   useEffect(() => {
     if (!ref) {
-      setState({ data: [], loading: false });
       return;
     }
     
+    setState((prev) => (prev.loading ? prev : { ...prev, loading: true }));
+
     const unsubscribe = onSnapshot(
       ref,
       (snapshot) => {

@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
       const sizeBytes = parseInt(f.size) || 0;
       const modifiedTime = f.modifiedTime;
 
-      let status = 'New'; // 'New' | 'Synced' | 'Modified' | 'Needs Mapping' | 'Needs Review'
+      let status = 'New'; // 'New' | 'Synced' | 'Modified' | 'Deleted' | 'Needs Mapping' | 'Needs Review'
       let lastSyncAt = null;
       let errorStatus = null;
       let recordCount = 0;
@@ -108,7 +108,16 @@ export async function GET(req: NextRequest) {
         recordCount = tracked.validRows || 0;
         errorStatus = tracked.errorStatus || null;
 
-        if (tracked.status === 'Needs Review') {
+        if (tracked.status === 'Deleted' || tracked.status === 'Tombstoned') {
+          // If the file in Google Drive has not been updated since it was deleted, preserve Deleted tombstone
+          const deletedTime = tracked.deletedAt ? new Date(tracked.deletedAt).getTime() : 0;
+          const modTime = modifiedTime ? new Date(modifiedTime).getTime() : 0;
+          if (modTime > 0 && deletedTime > 0 && modTime > deletedTime) {
+            status = 'Modified';
+          } else {
+            status = 'Deleted';
+          }
+        } else if (tracked.status === 'Needs Review') {
           status = 'Needs Review';
         } else if (tracked.modifiedTime === modifiedTime && tracked.size === sizeBytes && tracked.status === 'Synced') {
           status = 'Synced';

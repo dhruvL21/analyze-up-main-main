@@ -4,7 +4,7 @@ import { createContext, useContext, useState, ReactNode, useMemo, useCallback, u
 import type { Product, PurchaseOrder, Supplier, Transaction, Category, ProductReturn, CustomAttribute, BusinessProfile, BusinessType } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { useUser, useFirestore, useDoc } from '@/firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, writeBatch, setDoc, onSnapshot, getDocs } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, writeBatch, setDoc, onSnapshot, getDocs, deleteField } from 'firebase/firestore';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -424,7 +424,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [toast]);
 
-  const isLoading = productsLoading || ordersLoading || suppliersLoading || transactionsLoading || categoriesLoading || returnsLoading;
+  const isLoading = !user || productsLoading || transactionsLoading;
 
   const addCategory = useCallback(async (categoryData: Omit<Category, 'id' | 'userId'>) => {
     if (!firestore || !user || !categoriesRef) {
@@ -726,7 +726,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const deleteProduct = useCallback(async (productId: string) => {
     if (!firestore || !user) return;
     const productRef = doc(firestore, 'users', user.uid, 'products', productId);
-    deleteDoc(productRef).catch((_serverError) => {
+    await deleteDoc(productRef).catch((_serverError) => {
       errorEmitter.emit('permission-error', new FirestorePermissionError({
         path: productRef.path,
         operation: 'delete',
@@ -801,7 +801,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const deleteOrder = useCallback(async (orderId: string) => {
     if (!firestore || !user) return;
     const orderRef = doc(firestore, 'users', user.uid, 'orders', orderId);
-    deleteDoc(orderRef).catch((_serverError) => {
+    await deleteDoc(orderRef).catch((_serverError) => {
       errorEmitter.emit('permission-error', new FirestorePermissionError({
         path: orderRef.path,
         operation: 'delete',
@@ -1098,7 +1098,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const deleteSupplier = useCallback(async (supplierId: string) => {
     if (!firestore || !user) return;
     const supplierRef = doc(firestore, 'users', user.uid, 'suppliers', supplierId);
-    deleteDoc(supplierRef).catch((_serverError) => {
+    await deleteDoc(supplierRef).catch((_serverError) => {
       errorEmitter.emit('permission-error', new FirestorePermissionError({
         path: supplierRef.path,
         operation: 'delete',
@@ -1108,6 +1108,10 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   }, [firestore, user, toast]);
 
   const clearAllData = useCallback(async () => {
+    if (!firestore || !user) {
+      throw new Error('Your workspace is not ready to reset. Please wait for Firebase to reconnect and try again.');
+    }
+
     // 1. Wipe all local storage caches, history, demographics, insights, completed actions & snapshots instantly
     if (typeof window !== 'undefined') {
       try {
@@ -1115,12 +1119,15 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
           'analyzeup_subscription_plan',
           'analyzeup_just_registered',
           'analyzeup_just_logged_in',
+          'analyzeup_feature_tour_seen_global',
           user ? `analyzeup_profile_${user.uid}` : '',
+          user ? `analyzeup_feature_tour_seen_${user.uid}` : '',
+          user ? `analyzeup_feature_tour_completed_${user.uid}` : '',
         ]);
 
         const allKeys = Object.keys(localStorage);
         allKeys.forEach((key) => {
-          if (keysToKeep.has(key)) return;
+          if (keysToKeep.has(key) || key.includes('feature_tour')) return;
           if (
             key.startsWith('analyzeup_') ||
             key.includes('audit') ||
@@ -1146,96 +1153,112 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       }
     }
 
-    setHasDemoData(false);
-
-    // 2. High-speed parallel wipe across all Firestore collections (including Google Drive & integrations)
-    if (firestore && user) {
+    // 2. Delete the persisted workspace before changing the UI. Previously this
+    //    routine swallowed write errors and retained Drive metadata/connection,
+    //    which allowed a refresh (or auto-sync) to bring data back.
+    {
       const uid = user.uid;
-      const colNames = [
-        'products',
-        'orders',
-        'suppliers',
-        'transactions',
-        'categories',
-        'returns',
-        'custom_attributes',
-        'google_drive_files',
-        'sync_history',
-        'mapping_profiles',
-        'drive_sync_history',
-        'drive_files',
-        'drive_mappings',
-      ];
 
       try {
-        // Fetch all collection snapshots in parallel
-        const snaps = await Promise.all(
-          colNames.map(colName =>
-            getDocs(collection(firestore, 'users', uid, colName)).catch(() => null)
-          )
-        );
+        console.log(`[ClearAllData] Starting full workspace purge for user: ${uid}`);
+        const colNames = [
+          'products',
+          'orders',
+          'suppliers',
+          'transactions',
+          'categories',
+          'returns',
+          'custom_attributes',
+          'importJobs',
+          'import_jobs',
+          'google_drive_files',
+          'sync_history',
+          'mapping_profiles',
+          'drive_sync_history',
+          'drive_files',
+          'drive_mappings',
+          'audit_logs',
+          'forecasts',
+          'insights',
+          'simulations',
+          'events',
+          'tasks',
+        ];
 
-        // Collect all document references across all collections
-        const allDocRefs: any[] = [];
-        snaps.forEach(snap => {
-          if (snap && !snap.empty) {
-            snap.docs.forEach(d => allDocRefs.push(d.ref));
+        let totalDeleted = 0;
+        for (const colName of colNames) {
+          const colRef = collection(firestore, 'users', uid, colName);
+          const snap = await getDocs(colRef);
+          if (!snap.empty) {
+            const CHUNK_SIZE = 400;
+            for (let i = 0; i < snap.docs.length; i += CHUNK_SIZE) {
+              const chunk = snap.docs.slice(i, i + CHUNK_SIZE);
+              const batch = writeBatch(firestore);
+              chunk.forEach(d => batch.delete(d.ref));
+              await batch.commit();
+              totalDeleted += chunk.length;
+            }
+            console.log(`[ClearAllData] Successfully purged ${snap.docs.length} docs from ${colName}`);
           }
-        });
-
-        // Commit all batch deletes in parallel chunks of 450
-        const deletePromises: Promise<void>[] = [];
-        const CHUNK_SIZE = 450;
-        for (let i = 0; i < allDocRefs.length; i += CHUNK_SIZE) {
-          const chunk = allDocRefs.slice(i, i + CHUNK_SIZE);
-          const batch = writeBatch(firestore);
-          chunk.forEach(ref => batch.delete(ref));
-          deletePromises.push(
-            batch.commit().catch(err => {
-              console.error('Batch delete failed:', err);
-            })
-          );
         }
 
-        // Also delete Google Drive and other integration connection documents
-        const integrationDocNames = ['google-drive', 'google_drive', 'shopify', 'zoho', 'tally'];
-        integrationDocNames.forEach(name => {
-          const intRef = doc(firestore, 'users', uid, 'integrations', name);
-          deletePromises.push(
-            deleteDoc(intRef).catch(() => {})
-          );
-        });
+        // A reset is a disconnect: remove Drive as well as every other supported integration.
+        const integrations = ['google-drive', 'google_drive', 'shopify', 'zoho', 'tally', 'woocommerce'];
+        const integrationsBatch = writeBatch(firestore);
+        integrations.forEach((name) => integrationsBatch.delete(doc(firestore, 'users', uid, 'integrations', name)));
+        await integrationsBatch.commit();
 
-        // Wait for all chunk deletions and integration resets in parallel
-        await Promise.all(deletePromises);
+        // Remove generated AI output; retain only an empty analytics summary.
+        await deleteDoc(doc(firestore, 'users', uid, 'analytics', 'ai_brief'));
+
+        // Reset analytics summary to zeroed defaults
+        await setDoc(doc(firestore, 'users', uid, 'analytics', 'summary'), DEFAULT_ANALYTICS_SUMMARY);
+        console.log(`[ClearAllData] Workspace purge complete. Deleted ${totalDeleted} documents.`);
       } catch (err) {
         console.error('Error wiping Firestore workspace collections:', err);
+        throw new Error('Workspace reset could not finish. No success message was shown; please try again.');
       }
 
-      setDriveConnection(null);
+      // Keep business preferences, but remove all setup/import and integration state.
+      const profileReset = {
+        inventorySetupMethod: 'manual',
+        csvImportedAt: deleteField(),
+        shopifyConnected: false,
+        shopifyStoreUrl: '',
+        shopifyStoreName: '',
+        shopifyStatus: 'Disconnected',
+        isOnboardingCompleted: false,
+        updatedAt: new Date().toISOString(),
+      };
+      await setDoc(doc(firestore, 'users', uid, 'settings', 'business_profile'), profileReset, { merge: true });
 
-      // Update business profile to clear setup method and csv imported date while keeping account details
       if (businessProfile) {
         const cleanedProfile: BusinessProfile = {
           ...businessProfile,
-          inventorySetupMethod: 'manual',
+          inventorySetupMethod: profileReset.inventorySetupMethod,
           csvImportedAt: undefined,
-          updatedAt: new Date().toISOString(),
+          shopifyConnected: profileReset.shopifyConnected,
+          shopifyStoreUrl: profileReset.shopifyStoreUrl,
+          shopifyStoreName: profileReset.shopifyStoreName,
+          shopifyStatus: profileReset.shopifyStatus,
+          isOnboardingCompleted: profileReset.isOnboardingCompleted,
+          updatedAt: profileReset.updatedAt,
         };
         setBusinessProfile(cleanedProfile);
         localStorage.setItem(`analyzeup_profile_${uid}`, JSON.stringify(cleanedProfile));
-        const profileRef = doc(firestore, 'users', uid, 'settings', 'business_profile');
-        await setDoc(profileRef, cleanObject(cleanedProfile), { merge: true }).catch(console.error);
       }
     }
+
+    setHasDemoData(false);
+    setDriveConnection(null);
 
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('analyzeup_drive_synced', { detail: { count: 0, reset: true } }));
     }
 
     toast({
-      title: 'Workspace & Drive Reset ✨',
-      description: 'All products, transactions, Google Drive files, sync logs, and history have been cleared.',
+      title: 'Workspace Reset Complete',
+      description: 'All products, sales, Google Drive, Shopify links, and logs have been deleted.',
     });
   }, [firestore, user, businessProfile, toast]);
 
@@ -1409,7 +1432,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
 
   // Unified background auto-sync runner for entire workspace
   const autoSyncGoogleDriveNow = useCallback(async (showToast: boolean = true) => {
-    if (!user || !firestore || !driveConnection || !driveConnection.selectedFolderId) return;
+    if (!user || !firestore || !driveConnection || !driveConnection.selectedFolderId || driveConnection.connectionStatus !== 'Connected' || driveConnection.isConnected === false) return;
     if (isSyncingRef.current) return;
     isSyncingRef.current = true;
 
@@ -1438,8 +1461,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const files = data.files || [];
-      // Match any file that is not 'Synced' (handles 'New', 'New File', 'Modified')
-      const pendingFiles = files.filter((f: any) => f.status !== 'Synced');
+      // Match any file that is pending (exclude 'Synced', 'Deleted', and 'Tombstoned')
+      const pendingFiles = files.filter((f: any) => f.status !== 'Synced' && f.status !== 'Deleted' && f.status !== 'Tombstoned');
 
       let ingestedCount = 0;
       const profiles = await getMappingProfiles();
@@ -1485,65 +1508,46 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
 
           if (matchedProfile && fieldMapping && Object.keys(fieldMapping).length > 0) {
             const safeFieldMapping = fieldMapping || {};
-            // Robust field extraction & normalization for all spreadsheets
-            const normalizedItems = rawRows.map((rawRow, idx) => {
-              const obj: Record<string, any> = { isValid: true, errors: [] };
-              Object.entries(safeFieldMapping).forEach(([csvH, targetKey]) => {
-                const keyStr = targetKey as string;
-                if (keyStr === 'skip') return;
-                const val = rawRow[csvH];
-                if (val !== undefined && val !== null) {
-                  obj[keyStr] = val.toString().trim();
+            const isSalesReport = matchedProfile.fileType === 'SALES_REPORT';
+
+            const normalizedItems = rawRows.map((rawRow: any, idx: number) => {
+              const obj: any = {};
+              Object.entries(safeFieldMapping).forEach(([sourceCol, targetKey]) => {
+                if (targetKey && targetKey !== 'skip') {
+                  obj[targetKey as string] = rawRow[sourceCol];
                 }
               });
 
-              // Universal fallbacks matching any column name pattern
-              const name =
+              const name = (
                 obj.name ||
                 obj.productName ||
-                obj.itemName ||
-                obj.title ||
+                obj.product_name ||
                 rawRow['Product Name'] ||
                 rawRow['Item Name'] ||
-                rawRow['Item'] ||
                 rawRow['Product'] ||
-                rawRow['Title'] ||
-                rawRow['Description'] ||
-                rawRow['Particulars'] ||
-                `Product #${idx + 1}`;
+                `Product ${idx + 1}`
+              ).trim();
 
               const rawPrice =
                 obj.price ||
                 obj.sellingPrice ||
-                obj.retailPrice ||
-                obj.rate ||
-                rawRow['Price'] ||
                 rawRow['Selling Price'] ||
-                rawRow['Rate'] ||
-                rawRow['MRP'] ||
-                rawRow['Amount'] ||
-                '499';
-              const price = parseFloat(String(rawPrice).replace(/[^0-9.]/g, '')) || 499;
-
-              const rawCost =
-                obj.costPrice ||
-                obj.purchasePrice ||
-                obj.unitCost ||
-                rawRow['Cost Price'] ||
-                rawRow['Purchase Price'] ||
-                rawRow['Cost'] ||
-                rawRow['Buy Price'] ||
+                rawRow['Price'] ||
                 '0';
-              const costPrice = parseFloat(String(rawCost).replace(/[^0-9.]/g, '')) || Math.round(price * 0.6);
+              const price = parseFloat(String(rawPrice).replace(/[^0-9.]/g, '')) || 0;
+
+              const rawCostPrice =
+                obj.costPrice ||
+                obj.cost ||
+                rawRow['Cost Price'] ||
+                rawRow['Cost'] ||
+                (price * 0.6).toFixed(2);
+              const costPrice = parseFloat(String(rawCostPrice).replace(/[^0-9.]/g, '')) || Math.round(price * 0.6);
 
               const rawStock =
                 obj.stock ||
-                obj.currentStock ||
-                obj.quantity ||
-                obj.qty ||
+                obj.inventory_quantity ||
                 rawRow['Stock'] ||
-                rawRow['Quantity'] ||
-                rawRow['Qty'] ||
                 rawRow['Current Stock'] ||
                 '25';
               const stock = parseInt(String(rawStock).replace(/[^0-9]/g, ''), 10) || 25;
@@ -1564,24 +1568,25 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
               const city = obj.city || rawRow['City'] || rawRow['Location'] || '';
               const date = obj.orderDate || rawRow['Date'] || rawRow['Order Date'] || new Date().toISOString().split('T')[0];
 
-              obj.parsed = {
-                name,
-                price,
-                costPrice,
-                stock,
-                qty: Math.max(1, Math.min(stock, 4)),
-                sku,
-                category,
-                supplier,
-                orderNo,
-                customer,
-                city,
-                date,
-                unit: obj.unit || rawRow['Unit'] || 'Piece',
-                description: obj.description || rawRow['Description'] || `Imported ${name}`,
+              return {
+                ...obj,
+                parsed: {
+                  name,
+                  price,
+                  costPrice,
+                  stock,
+                  qty: Math.max(1, Math.min(stock, 4)),
+                  sku,
+                  category,
+                  supplier,
+                  orderNo,
+                  customer,
+                  city,
+                  date,
+                  unit: obj.unit || rawRow['Unit'] || 'Piece',
+                  description: obj.description || rawRow['Description'] || `Imported ${name}`,
+                }
               };
-
-              return obj;
             });
 
             const validRows = normalizedItems.filter(r => r.parsed && r.parsed.name);
@@ -1645,38 +1650,38 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
                   productName: r.parsed.name,
                   quantity: r.parsed.qty || 1,
                   price: r.parsed.price,
-                  totalRevenue: r.parsed.price * (r.parsed.qty || 1),
-                  costPerUnit: r.parsed.costPrice,
-                  totalCost: r.parsed.costPrice * (r.parsed.qty || 1),
-                  customerName: r.parsed.customer,
-                  customerCity: r.parsed.city,
-                  transactionDate: r.parsed.date || d.toISOString().split('T')[0],
-                  status: 'Completed' as const,
-                  paymentMethod: 'UPI' as const,
-                  notes: 'Synced from Google Drive',
+                  sellingPrice: r.parsed.price,
+                  costPrice: r.parsed.costPrice,
+                  totalRevenue: (r.parsed.price || 0) * (r.parsed.qty || 1),
+                  totalCost: (r.parsed.costPrice || 0) * (r.parsed.qty || 1),
                   orderNumber: r.parsed.orderNo,
+                  customerName: r.parsed.customer,
+                  supplier: r.parsed.supplier,
+                  transactionDate: r.parsed.date || d.toISOString().split('T')[0],
+                  paymentMethod: 'UPI',
+                  status: 'Completed' as const,
                 };
               });
 
               await bulkAddTransactions(transactionsToImport);
 
+              const nowIso = new Date().toISOString();
               await recordSyncSuccess(
                 file.id,
                 {
                   id: file.id,
-                  fileName: file.name,
+                  name: file.name,
                   status: 'Synced',
-                  lastProcessedAt: new Date().toISOString(),
-                  validRows: validRows.length,
-                  size: syncData.csvContent.length,
-                  modifiedTime: new Date().toISOString(),
+                  rowCount: validRows.length,
+                  lastSyncedAt: nowIso,
+                  fileType: matchedProfile.fileType,
                 },
                 {
-                  syncedAt: new Date().toISOString(),
-                  filesCount: 1,
-                  rowsCount: validRows.length,
-                  status: 'Completed',
-                  files: [file.name],
+                  fileId: file.id,
+                  fileName: file.name,
+                  recordsCount: validRows.length,
+                  syncedAt: nowIso,
+                  status: 'Success',
                 }
               );
 
@@ -1701,7 +1706,11 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       // Update lastSyncAt on the integration doc in Firestore
       const nowIso = new Date().toISOString();
       const connRef = doc(firestore, 'users', user.uid, 'integrations', 'google-drive');
-      await setDoc(connRef, { lastSyncAt: nowIso, lastSyncStatus: 'Success', updatedAt: nowIso }, { merge: true });
+      await updateDoc(connRef, {
+        lastSyncAt: nowIso,
+        lastSyncStatus: 'Success',
+        updatedAt: nowIso,
+      });
 
       setDriveConnection((prev: any) => prev ? { ...prev, lastSyncAt: nowIso, lastSyncStatus: 'Success' } : prev);
 
@@ -1725,10 +1734,19 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user, firestore, driveConnection, getMappingProfiles, bulkAddProducts, bulkAddTransactions, recordSyncSuccess, saveMappingProfile, toast]);
 
-  // Global background auto-sync runner (checks every 2m across any dashboard route without duplicate executions)
+  // Global background auto-sync runner (runs on scheduled interval ONLY if autoSync is explicitly enabled)
   useEffect(() => {
-    if (!user || !firestore || !driveConnection || !driveConnection.selectedFolderId) return;
-    if (driveConnection.autoSyncEnabled === false) return;
+    if (
+      !user ||
+      !firestore ||
+      !driveConnection ||
+      !driveConnection.selectedFolderId ||
+      driveConnection.connectionStatus !== 'Connected' ||
+      driveConnection.isConnected === false ||
+      driveConnection.autoSyncEnabled !== true
+    ) {
+      return;
+    }
 
     const checkAutoSync = () => {
       if (isAutoSyncDue(driveConnection) && !isSyncingRef.current) {
@@ -1736,9 +1754,6 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         autoSyncGoogleDriveNow(false);
       }
     };
-
-    // Initial check on connection load
-    checkAutoSync();
 
     const intervalId = setInterval(checkAutoSync, 120 * 1000);
     return () => clearInterval(intervalId);

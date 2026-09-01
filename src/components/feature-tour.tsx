@@ -170,6 +170,7 @@ export function FeatureTour() {
     const uid = user?.uid || 'guest';
     localStorage.setItem(`analyzeup_feature_tour_seen_${uid}`, 'true');
     localStorage.setItem(`analyzeup_feature_tour_completed_${uid}`, 'true');
+    localStorage.setItem('analyzeup_feature_tour_seen_global', 'true');
   }, [user]);
 
   // Measure element location

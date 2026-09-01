@@ -975,8 +975,8 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
       const files = data.files || [];
       setDriveFiles(files);
 
-      // Identify un-synced / new / modified files
-      const pendingFiles = files.filter((f: any) => f.status !== 'Synced');
+      // Identify un-synced / new / modified files (exclude 'Synced', 'Deleted', 'Tombstoned')
+      const pendingFiles = files.filter((f: any) => f.status !== 'Synced' && f.status !== 'Deleted' && f.status !== 'Tombstoned');
 
       let ingestedCount = 0;
       if (pendingFiles.length > 0) {
@@ -1055,7 +1055,7 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
   // 9.7 Local recurring background auto-sync scheduler (checks every 30 seconds)
   useEffect(() => {
     if (!driveConnection || !driveConnection.selectedFolderId || !user) return;
-    if (driveConnection.autoSyncEnabled === false) return;
+    if (driveConnection.autoSyncEnabled !== true || driveConnection.isConnected === false || driveConnection.connectionStatus !== 'Connected') return;
 
     const intervalId = setInterval(() => {
       if (isAutoSyncDue(driveConnection) && !isLoadingScan && !isSyncingFileId) {

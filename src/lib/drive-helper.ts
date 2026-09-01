@@ -7,6 +7,8 @@ export async function getValidAccessToken(userId: string, firestore: any): Promi
   if (!snap.exists()) return null;
   
   const data = snap.data();
+  if (data.connectionStatus !== 'Connected' || data.isConnected === false) return null;
+  
   const { accessToken, refreshToken, tokenExpiry } = data;
   
   // If token is still valid (with a 2-minute buffer) and present, return it
@@ -62,7 +64,7 @@ export async function getValidAccessToken(userId: string, firestore: any): Promi
  * Refreshes the token via /api/drive/refresh if expired and updates Firestore directly from the authenticated client.
  */
 export async function getClientDriveToken(driveConnection: any, user: any, firestore: any): Promise<string | null> {
-  if (!driveConnection) return null;
+  if (!driveConnection || driveConnection.connectionStatus !== 'Connected' || driveConnection.isConnected === false) return null;
   const { accessToken, refreshToken, tokenExpiry } = driveConnection;
 
   // If token is still valid (with a 2-minute buffer) and present, return it
@@ -225,7 +227,13 @@ export function formatLastSyncTime(lastSyncAt?: string | null): string {
  * Checks if auto-sync is due based on lastSyncAt, schedule configuration, and schedule updates
  */
 export function isAutoSyncDue(connection: any): boolean {
-  if (!connection || connection.autoSyncEnabled === false || !connection.selectedFolderId) {
+  if (
+    !connection ||
+    connection.autoSyncEnabled !== true ||
+    connection.connectionStatus !== 'Connected' ||
+    connection.isConnected === false ||
+    !connection.selectedFolderId
+  ) {
     return false;
   }
 

@@ -22,10 +22,10 @@ export function useDoc<T>(ref: DocumentReference | null) {
   });
 
   useEffect(() => {
-     if (!ref) {
-      setState({ data: null, loading: false });
+    if (!ref) {
       return;
     }
+    setState((prev) => (prev.loading ? prev : { ...prev, loading: true }));
     const unsubscribe = onSnapshot(
       ref,
       (snapshot) => {

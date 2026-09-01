@@ -161,11 +161,16 @@ export default function SettingsPage() {
     setIsResetting(true);
     try {
       await clearAllData();
-      setResetConfirmInput("");
       setResetDialogOpen(false);
-      router.push("/dashboard");
+      setResetConfirmInput("");
+      window.location.href = "/dashboard";
     } catch (error) {
       console.error("Reset failed:", error);
+      toast({
+        variant: "destructive",
+        title: "Workspace Reset Failed",
+        description: "Firebase could not delete every workspace record. Please check your connection and try again.",
+      });
     } finally {
       setIsResetting(false);
     }
