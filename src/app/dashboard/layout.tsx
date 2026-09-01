@@ -6,16 +6,19 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import dynamic from 'next/dynamic';
 import Script from 'next/script';
-import SubscriptionModal from '@/components/subscription-modal';
 import { useData } from '@/context/data-context';
-import { ChatWidget } from '@/components/chat-widget';
-import { FeatureTour } from '@/components/feature-tour';
-
-import { SmartOnboardingWizard } from '@/components/smart-onboarding-wizard';
-import { SmartWelcomeModal } from '@/components/smart-welcome-modal';
-import { ShopifyConnectModal } from '@/components/shopify-connect-modal';
 import { ActiveImportBanner } from '@/components/active-import-banner';
+
+// These overlays are not needed to render the dashboard shell. Loading them only
+// when opened keeps their AI, form, and animation code out of the critical path.
+const ChatWidget = dynamic(() => import('@/components/chat-widget').then((module) => module.ChatWidget), { ssr: false });
+const FeatureTour = dynamic(() => import('@/components/feature-tour').then((module) => module.FeatureTour), { ssr: false });
+const SubscriptionModal = dynamic(() => import('@/components/subscription-modal'), { ssr: false });
+const SmartOnboardingWizard = dynamic(() => import('@/components/smart-onboarding-wizard').then((module) => module.SmartOnboardingWizard), { ssr: false });
+const SmartWelcomeModal = dynamic(() => import('@/components/smart-welcome-modal').then((module) => module.SmartWelcomeModal), { ssr: false });
+const ShopifyConnectModal = dynamic(() => import('@/components/shopify-connect-modal').then((module) => module.ShopifyConnectModal), { ssr: false });
 
 function DashboardLoading() {
   return (
@@ -45,6 +48,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     setIsTourOpen,
     businessProfile,
     setShowOnboardingWizard,
+    showOnboardingWizard,
+    showWelcomeModal,
+    showShopifyModal,
   } = useData();
   const router = useRouter();
   const pathname = usePathname();
@@ -179,15 +185,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </main>
       </div>
       <ChatWidget />
-      <FeatureTour />
-      <SubscriptionModal />
-      <SmartOnboardingWizard />
-      <SmartWelcomeModal />
-      <ShopifyConnectModal />
+      {isTourOpen && <FeatureTour />}
+      {showSubscriptionModal && <SubscriptionModal />}
+      {showOnboardingWizard && <SmartOnboardingWizard />}
+      {showWelcomeModal && <SmartWelcomeModal />}
+      {showShopifyModal && <ShopifyConnectModal />}
       <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="afterInteractive" />
     </div>
   );
 }
-
-
-    

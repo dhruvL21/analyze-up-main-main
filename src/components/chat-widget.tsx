@@ -5,8 +5,8 @@ import { useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { X, Send, Bot, Sparkles, Loader2, Lock, PlusCircle, ArrowRight, CheckCircle2 } from 'lucide-react';
-import { askAnalyzeUpChat, ChatMessage } from '@/ai/flows/chat';
-import { processCopilotQuery, getCopilotSuggestions, CopilotResponse } from '@/lib/copilot-engine';
+import type { ChatMessage } from '@/ai/flows/chat';
+import type { CopilotResponse } from '@/lib/copilot-engine';
 import { logBusinessAction } from '@/lib/audit-store';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -32,6 +32,16 @@ export function ChatWidget() {
   ]);
   const [isPending, startTransition] = useTransition();
   const chatBodyRef = useRef<HTMLDivElement>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let active = true;
+    import('@/lib/copilot-engine').then(({ getCopilotSuggestions }) => {
+      if (active) setSuggestions(getCopilotSuggestions(hasData).slice(0, 4).map((suggestion) => suggestion.question));
+    });
+    return () => { active = false; };
+  }, [isOpen, hasData]);
 
   // Listen for global analyzeup_open_copilot trigger
   useEffect(() => {
@@ -45,6 +55,10 @@ export function ChatWidget() {
 
         startTransition(async () => {
           try {
+            const [{ processCopilotQuery }, { askAnalyzeUpChat }] = await Promise.all([
+              import('@/lib/copilot-engine'),
+              import('@/ai/flows/chat'),
+            ]);
             const copilotRes = processCopilotQuery(
               queryText,
               messages,
@@ -108,33 +122,36 @@ export function ChatWidget() {
     // Increment workspace AI Copilot query counter
     incrementAiQueryCount(1);
 
-    // 1. Calculate deterministic copilot response immediately on the client in milliseconds
-    const copilotRes = processCopilotQuery(
-      messageText,
-      messages,
-      products,
-      transactions,
-      suppliers,
-      orders,
-      returns,
-      businessProfile
-    );
-
-    // If recognized business intent, provide the computed response INSTANTLY with zero wait time!
-    if (copilotRes.intent !== 'UNKNOWN') {
-      setMessages(prev => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: copilotRes.answerMarkdown,
-        },
-      ]);
-      return;
-    }
-
-    // 2. For open-ended or unknown questions, call server with a compact slice for fast LLM synthesis
+    // Load AI engines only when the user opens a Copilot conversation. This keeps
+    // their code out of the initial dashboard bundle while preserving the same flow.
     startTransition(async () => {
+      let fallbackAnswer: string | null = null;
       try {
+        const { processCopilotQuery } = await import('@/lib/copilot-engine');
+        const copilotRes = processCopilotQuery(
+          messageText,
+          messages,
+          products,
+          transactions,
+          suppliers,
+          orders,
+          returns,
+          businessProfile
+        );
+        fallbackAnswer = copilotRes.answerMarkdown;
+
+        if (copilotRes.intent !== 'UNKNOWN') {
+          setMessages(prev => [
+            ...prev,
+            {
+              role: 'assistant',
+              content: copilotRes.answerMarkdown,
+            },
+          ]);
+          return;
+        }
+
+        const { askAnalyzeUpChat } = await import('@/ai/flows/chat');
         const responseText = await askAnalyzeUpChat(
           messageText,
           messages.slice(-6),
@@ -159,7 +176,7 @@ export function ChatWidget() {
           ...prev,
           {
             role: 'assistant',
-            content: copilotRes.answerMarkdown,
+            content: fallbackAnswer || 'I could not complete that analysis. Please try again.',
           },
         ]);
       }
@@ -307,14 +324,14 @@ export function ChatWidget() {
               {/* Suggestions & Input Bar */}
               <div className="p-3 border-t border-border/40 bg-secondary/10 space-y-2 shrink-0">
                 <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                  {getCopilotSuggestions(hasData).slice(0, 4).map((s, idx) => (
+                  {suggestions.map((suggestion, idx) => (
                     <button
                       key={idx}
-                      onClick={() => handleSendMessage(s.question)}
+                      onClick={() => handleSendMessage(suggestion)}
                       disabled={isPending}
                       className="text-[11px] bg-secondary/50 hover:bg-primary/10 border border-border/50 hover:border-primary/30 px-2.5 py-1 rounded-full text-muted-foreground hover:text-foreground transition-all shrink-0 font-medium"
                     >
-                      {s.question}
+                      {suggestion}
                     </button>
                   ))}
                 </div>

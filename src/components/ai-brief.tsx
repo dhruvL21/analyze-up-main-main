@@ -128,9 +128,32 @@ export function AIBrief() {
     return 'text-rose-400';
   };
 
-  if (products.length === 0 && !isLoading) {
+  if (products.length === 0) {
+    if (isLoading) {
+      return (
+        <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-card/40 p-5 shadow-xl backdrop-blur-md h-full min-h-[260px] flex flex-col justify-between animate-pulse">
+          <div className="flex items-center justify-between pb-3 border-b border-border/30">
+            <div className="flex items-center gap-2.5">
+              <div className="h-9 w-9 rounded-xl bg-secondary/70" />
+              <div className="space-y-1.5">
+                <div className="h-4 w-32 bg-secondary/70 rounded-md" />
+                <div className="h-3 w-48 bg-secondary/50 rounded-md" />
+              </div>
+            </div>
+            <div className="h-5 w-24 bg-secondary/70 rounded-lg" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 my-3">
+            <div className="h-28 rounded-2xl bg-secondary/40 border border-border/30" />
+            <div className="h-28 rounded-2xl bg-secondary/40 border border-border/30" />
+            <div className="h-28 rounded-2xl bg-secondary/40 border border-border/30" />
+          </div>
+          <div className="h-8 rounded-xl bg-secondary/30 w-full" />
+        </div>
+      );
+    }
+
     return (
-      <div className="relative overflow-hidden rounded-2xl border border-border/80 bg-card/60 p-6 shadow-xl backdrop-blur-md text-center flex flex-col items-center justify-center h-full min-h-[260px]">
+      <div className="relative overflow-hidden rounded-2xl border border-emerald-500/20 bg-card/60 p-6 shadow-xl backdrop-blur-md text-center flex flex-col items-center justify-center h-full min-h-[260px]">
         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shadow-sm mb-3">
           <Sparkles className="h-6 w-6 text-emerald-400 animate-pulse" />
         </div>

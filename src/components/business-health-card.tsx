@@ -9,7 +9,7 @@ import { useData } from '@/context/data-context';
 import { Activity, ShieldCheck, Sparkles } from 'lucide-react';
 
 export function BusinessHealthCard() {
-  const { products, transactions, suppliers, returns = [] } = useData();
+  const { products, transactions, suppliers, returns = [], isLoading } = useData();
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -27,6 +27,34 @@ export function BusinessHealthCard() {
   const health = React.useMemo(() => {
     return computeBusinessHealth(products, transactions, suppliers, returns);
   }, [products, transactions, suppliers, returns, tick]);
+
+  if (isLoading && products.length === 0) {
+    return (
+      <Card className="ios-glass rounded-3xl border-emerald-500/20 p-6 shadow-xl relative overflow-hidden flex flex-col justify-between h-full min-h-[260px] animate-pulse">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-border/40">
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-xl bg-secondary/70" />
+              <div className="space-y-1.5">
+                <div className="h-4 w-32 bg-secondary/70 rounded-md" />
+                <div className="h-3 w-40 bg-secondary/50 rounded-md" />
+              </div>
+            </div>
+            <div className="h-6 w-20 bg-secondary/70 rounded-full" />
+          </div>
+          <div className="space-y-2 py-2">
+            <div className="h-10 w-24 bg-secondary/70 rounded-lg" />
+            <div className="h-3 w-52 bg-secondary/50 rounded-md" />
+          </div>
+          <div className="space-y-3 pt-2">
+            <div className="h-3 w-full bg-secondary/50 rounded-full" />
+            <div className="h-3 w-full bg-secondary/50 rounded-full" />
+            <div className="h-3 w-full bg-secondary/50 rounded-full" />
+          </div>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card className="ios-glass rounded-3xl border-emerald-500/20 p-6 shadow-xl relative overflow-hidden flex flex-col justify-between h-full transition-all duration-300">
