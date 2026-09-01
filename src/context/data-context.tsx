@@ -1228,10 +1228,18 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         const integrations = ['google-drive', 'google_drive', 'shopify', 'zoho', 'tally', 'woocommerce'];
         const integrationsBatch = writeBatch(firestore);
         integrations.forEach((name) => integrationsBatch.delete(doc(firestore, 'users', uid, 'integrations', name)));
-        await integrationsBatch.commit().catch((err) => console.warn('[ClearAllData] Integrations batch error:', err));
+        await integrationsBatch.commit().catch((err) => console.warn('[ClearAllData] Integrations batch error'));
 
         // Remove generated AI output; retain only an empty analytics summary.
-        await deleteDoc(doc(firestore, 'users', uid, 'analytics', 'ai_brief'));
+        await deleteDoc(doc(firestore, 'users', uid, 'analytics', 'ai_brief')).catch(() => {});
+
+        // Clear isolated vector knowledge store for this workspace
+        try {
+          const { globalVectorStore } = await import('@/ai/rag/vector-store');
+          await globalVectorStore.deleteByBusinessId(uid);
+        } catch (vErr) {
+          console.warn('[ClearAllData] Vector store purge notice:', vErr);
+        }
 
         // Reset analytics summary to zeroed defaults
         await setDoc(doc(firestore, 'users', uid, 'analytics', 'summary'), DEFAULT_ANALYTICS_SUMMARY);

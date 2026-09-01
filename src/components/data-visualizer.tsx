@@ -69,13 +69,15 @@ const COLORS = [
 
 
 export function DataVisualizer() {
-  const { transactions, products, categories, isLoading } = useData();
-  const [chartType, setChartType] = useState<ChartType>('bar');
+  const { transactions, products, categories, isLoading, businessProfile } = useData();
+  const [chartType, setChartType] = useState<ChartType>('area');
   const [metric, setMetric] = useState<'sales' | 'expenses' | 'profit'>('sales');
   const chartRef = useRef<HTMLDivElement>(null);
   const [isExporting, setIsExporting] = useState<'downloading' | 'sharing' | null>(null);
   const [canShare, setCanShare] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+
+  const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -90,16 +92,42 @@ export function DataVisualizer() {
   const data = useMemo(() => {
     if (isLoading) return [];
     
-    // Time-series charts use monthly sales
+    // Time-series charts (area, bar, line)
     if (['bar', 'line', 'area'].includes(chartType)) {
       return getMonthlySalesData(transactions, products);
     }
-    if (metric === 'sales' && chartType === 'pie') {
-        return getStockByCategoryData(products, categories);
+
+    // Categorical charts (pie, radar, radialBar)
+    if (['pie', 'radar', 'radialBar'].includes(chartType)) {
+      if (metric === 'expenses') {
+        const catMap: { [key: string]: number } = {};
+        const catIdMap = new Map(categories.map(c => [c.id, c.name]));
+        products.forEach(p => {
+          const cName = (p.categoryId ? catIdMap.get(p.categoryId) : undefined) || p.category || 'General';
+          const costVal = (Number(p.stock) || 0) * (Number(p.costPrice) || (Number(p.price) || 0) * 0.6);
+          catMap[cName] = (catMap[cName] || 0) + costVal;
+        });
+        const res = Object.entries(catMap).filter(([_, v]) => v > 0).map(([name, expenses]) => ({ name, sales: expenses, expenses, profit: 0 }));
+        return res.length > 0 ? res : getMonthlySalesData(transactions, products);
+      }
+
+      if (metric === 'profit') {
+        const catMap: { [key: string]: number } = {};
+        const catIdMap = new Map(categories.map(c => [c.id, c.name]));
+        products.forEach(p => {
+          const cName = (p.categoryId ? catIdMap.get(p.categoryId) : undefined) || p.category || 'General';
+          const pPrice = Number(p.price) || 0;
+          const pCost = Number(p.costPrice) || (pPrice * 0.6);
+          const profitVal = (Number(p.stock) || 0) * Math.max(0, pPrice - pCost);
+          catMap[cName] = (catMap[cName] || 0) + profitVal;
+        });
+        const res = Object.entries(catMap).filter(([_, v]) => v > 0).map(([name, profit]) => ({ name, sales: profit, expenses: 0, profit }));
+        return res.length > 0 ? res : getMonthlySalesData(transactions, products);
+      }
+
+      return getInventoryValueData(products, categories);
     }
-    if (metric === 'sales' && (chartType === 'radar' || chartType === 'radialBar')) {
-        return getInventoryValueData(products, categories);
-    }
+
     return getMonthlySalesData(transactions, products);
   }, [transactions, products, categories, metric, chartType, isLoading]);
 
@@ -357,7 +385,7 @@ export function DataVisualizer() {
                   {isCategorical ? 'Stock' : (metric === 'sales' ? 'Revenue' : metric.charAt(0).toUpperCase() + metric.slice(1))}
                 </span>
                 <span className="font-bold text-foreground">
-                  {isCategorical ? payload[0].value.toLocaleString() : `₹${payload[0].value.toLocaleString('en-IN')}`}
+                  {isCategorical ? payload[0].value.toLocaleString() : `${currencySymbol}${payload[0].value.toLocaleString('en-IN')}`}
                 </span>
               </div>
             </div>
@@ -371,12 +399,23 @@ export function DataVisualizer() {
     const commonChildren = [
       <CartesianGrid key="grid" strokeDasharray="3 3" vertical={false} strokeOpacity={0.2} />,
       <XAxis key="xaxis" dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />,
-      <YAxis key="yaxis" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value: number) => chartType === 'pie' || chartType === 'radialBar' || chartType === 'radar' ? value.toString() : `₹${value}`} />,
+      <YAxis
+        key="yaxis"
+        stroke="hsl(var(--muted-foreground))"
+        fontSize={12}
+        tickLine={false}
+        axisLine={false}
+        tickFormatter={(value: number) =>
+          chartType === 'pie' || chartType === 'radialBar' || chartType === 'radar'
+            ? value.toString()
+            : `${currencySymbol}${value.toLocaleString('en-IN')}`
+        }
+      />,
       <Tooltip key="tooltip" content={<CustomTooltip />} cursor={{ fill: "hsl(var(--accent))", opacity: 0.5 }} />,
       <Legend key="legend" />,
     ];
 
-    if (data.length === 0 || (['bar', 'line', 'area'].includes(chartType) && data.every(i => (i as any)[metric] === 0))) {
+    if (data.length === 0 || (products.length === 0 && transactions.length === 0)) {
         return (
           <div className="flex h-full items-center justify-center">
             <div className="text-center space-y-2">

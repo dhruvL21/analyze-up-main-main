@@ -15,7 +15,8 @@ import { getMonthlySalesData } from "@/lib/chart-utils";
 import { useMemo } from "react";
 
 export function SalesChart() {
-  const { transactions, products, isLoading } = useData();
+  const { transactions, products, isLoading, businessProfile } = useData();
+  const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
 
   const data = useMemo(() => {
     if (isLoading || !transactions || !products) return [];
@@ -40,7 +41,7 @@ export function SalesChart() {
                 Revenue
               </span>
               <span className="font-bold text-primary">
-                ₹{payload[0].value.toLocaleString('en-IN')}
+                {currencySymbol}{payload[0].value.toLocaleString('en-IN')}
               </span>
             </div>
             <div className="flex flex-col space-y-1">
@@ -48,7 +49,7 @@ export function SalesChart() {
                 Expenses
               </span>
               <span className="font-bold text-destructive">
-                ₹{payload[1]?.value.toLocaleString('en-IN') || 0}
+                {currencySymbol}{payload[1]?.value.toLocaleString('en-IN') || 0}
               </span>
             </div>
           </div>
@@ -59,7 +60,7 @@ export function SalesChart() {
     return null;
   };
 
-  if (data.every(item => item.sales === 0 && item.expenses === 0)) {
+  if (data.length === 0 || (products.length === 0 && transactions.length === 0)) {
      return (
        <div className="flex h-[300px] items-center justify-center border-2 border-dashed rounded-xl">
          <p className="text-sm text-muted-foreground">No financial data recorded yet.</p>

@@ -21,7 +21,8 @@ const COLORS = [
 ];
 
 export function InventoryValueChart() {
-  const { products, categories, isLoading } = useData();
+  const { products, categories, isLoading, businessProfile } = useData();
+  const currencySymbol = businessProfile?.currency?.includes('USD') ? '$' : '₹';
 
   const data = useMemo(() => {
     if (isLoading || !products || !categories) return [];
@@ -38,7 +39,7 @@ export function InventoryValueChart() {
           <div className="flex flex-col space-y-1">
              <span className="text-xs font-semibold text-foreground">{item.name}</span>
              <span className="text-[0.70rem] uppercase text-muted-foreground">Inventory Value</span>
-             <span className="font-bold text-foreground">₹{item.sales.toLocaleString('en-IN')}</span>
+             <span className="font-bold text-foreground">{currencySymbol}{item.sales.toLocaleString('en-IN')}</span>
           </div>
         </div>
       );

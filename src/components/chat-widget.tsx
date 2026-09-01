@@ -4,29 +4,34 @@ import { useState, useRef, useEffect, useTransition } from 'react';
 import { useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
-import { X, Send, Bot, Sparkles, Loader2, Lock, PlusCircle, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { X, Send, Bot, Sparkles, Loader2, Lock, FileText, Database } from 'lucide-react';
 import type { ChatMessage } from '@/ai/flows/chat';
-import type { CopilotResponse } from '@/lib/copilot-engine';
-import { logBusinessAction } from '@/lib/audit-store';
+import type { Citation, RAGResponse } from '@/ai/rag/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { sanitizePlainData } from '@/lib/utils';
 import { FormattedMarkdown } from '@/components/formatted-markdown';
+
+interface ExtendedChatMessage extends ChatMessage {
+  citations?: Citation[];
+  ragResponse?: RAGResponse;
+}
 
 export function ChatWidget() {
   const { products, transactions, suppliers, orders, returns, activePlan, setShowSubscriptionModal, businessProfile, incrementAiQueryCount } = useData();
   const { toast } = useToast();
   const router = useRouter();
 
-  const hasData = (products && products.length > 0) || (transactions && transactions.length > 0);
+  const totalIndexedRecords = products.length + transactions.length + suppliers.length + orders.length + returns.length;
+  const hasData = totalIndexedRecords > 0;
 
   const [isOpen, setIsOpen] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
-  const [messages, setMessages] = useState<(ChatMessage & { copilotRes?: CopilotResponse })[]>([
+  const [messages, setMessages] = useState<ExtendedChatMessage[]>([
     {
       role: 'assistant',
       content: hasData
-        ? "Hello! I'm your AnalyzeUp AI Business Copilot. Ask me questions like 'What should I do today?', 'Why did profit drop?', or 'Which supplier is best?'."
+        ? "Hello! I am your AnalyzeUp AI Business Copilot powered by RAG Vector Intelligence & OpenAI. Ask me questions like 'What is our gross profit?', 'Which products are dead stock?', 'What was total revenue?', or lookup any specific SKU or order."
         : "Hello! I am your AI Business Copilot. Ask me questions about uploading your business data, our 22-column CSV template, or click any of the quick questions below to get started!",
     },
   ]);
@@ -50,55 +55,13 @@ export function ChatWidget() {
       setIsOpen(true);
       if (customEvt.detail?.query) {
         const queryText = customEvt.detail.query;
-        const userMsg: ChatMessage = { role: 'user', content: queryText };
-        setMessages(prev => [...prev, userMsg]);
-
-        startTransition(async () => {
-          try {
-            const [{ processCopilotQuery }, { askAnalyzeUpChat }] = await Promise.all([
-              import('@/lib/copilot-engine'),
-              import('@/ai/flows/chat'),
-            ]);
-            const copilotRes = processCopilotQuery(
-              queryText,
-              messages,
-              products,
-              transactions,
-              suppliers,
-              orders,
-              returns,
-              businessProfile
-            );
-
-            const responseText = await askAnalyzeUpChat(
-              queryText,
-              messages.slice(-8),
-              sanitizePlainData(products),
-              sanitizePlainData(transactions),
-              sanitizePlainData(suppliers),
-              sanitizePlainData(orders),
-              sanitizePlainData(returns),
-              sanitizePlainData(businessProfile)
-            );
-
-            setMessages(prev => [
-              ...prev,
-              {
-                role: 'assistant',
-                content: responseText || copilotRes.answerMarkdown,
-                copilotRes,
-              },
-            ]);
-          } catch (err) {
-            console.error('Error generating AI Copilot response:', err);
-          }
-        });
+        handleSendMessage(queryText);
       }
     };
 
     window.addEventListener('analyzeup_open_copilot', handleOpenCopilot);
     return () => window.removeEventListener('analyzeup_open_copilot', handleOpenCopilot);
-  }, [products, transactions, suppliers, orders, returns, businessProfile, messages]);
+  }, [products, transactions, suppliers, orders, returns, businessProfile]);
 
   const isPaid = activePlan !== 'Free Trial';
 
@@ -115,51 +78,24 @@ export function ChatWidget() {
   const handleSendMessage = (messageText: string) => {
     if (!messageText.trim() || isPending) return;
 
-    const userMsg: ChatMessage = { role: 'user', content: messageText };
+    const userMsg: ExtendedChatMessage = { role: 'user', content: messageText };
     setMessages(prev => [...prev, userMsg]);
     setInputMessage('');
 
     // Increment workspace AI Copilot query counter
     incrementAiQueryCount(1);
 
-    // Load AI engines only when the user opens a Copilot conversation. This keeps
-    // their code out of the initial dashboard bundle while preserving the same flow.
     startTransition(async () => {
-      let fallbackAnswer: string | null = null;
       try {
-        const { processCopilotQuery } = await import('@/lib/copilot-engine');
-        const copilotRes = processCopilotQuery(
+        const { askAnalyzeUpRAGChat } = await import('@/ai/flows/chat');
+        const { text, ragResponse } = await askAnalyzeUpRAGChat(
           messageText,
-          messages,
-          products,
-          transactions,
-          suppliers,
-          orders,
-          returns,
-          businessProfile
-        );
-        fallbackAnswer = copilotRes.answerMarkdown;
-
-        if (copilotRes.intent !== 'UNKNOWN') {
-          setMessages(prev => [
-            ...prev,
-            {
-              role: 'assistant',
-              content: copilotRes.answerMarkdown,
-            },
-          ]);
-          return;
-        }
-
-        const { askAnalyzeUpChat } = await import('@/ai/flows/chat');
-        const responseText = await askAnalyzeUpChat(
-          messageText,
-          messages.slice(-6),
-          sanitizePlainData(products.slice(0, 30)),
-          sanitizePlainData(transactions.slice(-20)),
-          sanitizePlainData(suppliers.slice(0, 10)),
-          sanitizePlainData(orders.slice(0, 10)),
-          sanitizePlainData(returns.slice(0, 10)),
+          messages.slice(-8),
+          sanitizePlainData(products),
+          sanitizePlainData(transactions),
+          sanitizePlainData(suppliers),
+          sanitizePlainData(orders),
+          sanitizePlainData(returns),
           sanitizePlainData(businessProfile)
         );
 
@@ -167,50 +103,29 @@ export function ChatWidget() {
           ...prev,
           {
             role: 'assistant',
-            content: responseText || copilotRes.answerMarkdown,
+            content: text,
+            citations: ragResponse?.citations,
+            ragResponse,
           },
         ]);
       } catch (err) {
-        console.error('Chat error:', err);
+        console.error('[ChatWidget] Error generating response:', err);
         setMessages(prev => [
           ...prev,
           {
             role: 'assistant',
-            content: fallbackAnswer || 'I could not complete that analysis. Please try again.',
+            content: 'I could not complete that analysis. Please verify your data and try again.',
           },
         ]);
       }
     });
   };
 
-  const handleExecuteCopilotAction = (recAction: NonNullable<CopilotResponse['recommendedAction']>) => {
-    if (recAction.targetRoute) {
-      router.push(recAction.targetRoute);
-      setIsOpen(false);
-      toast({
-        title: `🚀 Navigating to ${recAction.label}`,
-        description: 'Opening module for execution.',
-      });
-    } else if (recAction.actionTask) {
-      logBusinessAction({
-        title: recAction.actionTask.title,
-        productName: recAction.actionTask.targetName || 'Catalog Item',
-        actionType: recAction.actionTask.actionType as any,
-        changeDetails: recAction.actionTask.recommendation,
-        impactValue: recAction.actionTask.estimatedBenefit,
-      });
-      toast({
-        title: '✅ Action Added to AI Action Center!',
-        description: `Task "${recAction.actionTask.title}" logged in Action Center & Audit History.`,
-      });
-    }
-  };
-
   return (
     <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
       {/* Panel */}
       {isOpen && (
-        <div className="w-[440px] max-w-[calc(100vw-2rem)] h-[580px] max-h-[calc(100dvh-120px)] rounded-3xl border border-border/80 bg-card/90 shadow-2xl flex flex-col overflow-hidden backdrop-blur-xl transition-all duration-300 animate-in fade-in slide-in-from-bottom-5 relative">
+        <div className="w-[450px] max-w-[calc(100vw-2rem)] h-[600px] max-h-[calc(100dvh-100px)] rounded-3xl border border-border/80 bg-card/95 shadow-2xl flex flex-col overflow-hidden backdrop-blur-xl transition-all duration-300 animate-in fade-in slide-in-from-bottom-5 relative">
           <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
           <div className="absolute -top-24 -left-24 h-48 w-48 rounded-full bg-primary/5 blur-[80px]" />
 
@@ -248,22 +163,21 @@ export function ChatWidget() {
           ) : (
             <>
               {/* Header */}
-              <div className="relative flex items-center justify-between px-5 py-3.5 border-b border-border/40 bg-secondary/20">
+              <div className="relative flex items-center justify-between px-5 py-3 border-b border-border/40 bg-secondary/20">
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary border border-primary/25 shadow-sm">
                     <Bot className="h-4.5 w-4.5" />
                   </div>
                   <div>
-                    <h4 className="font-extrabold text-sm text-foreground tracking-tight flex items-center gap-1.5">
-                      AnalyzeUp Copilot
-                    </h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-extrabold text-sm text-foreground tracking-tight">
+                        AnalyzeUp AI
+                      </h4>
+                    </div>
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="relative flex h-1.5 w-1.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-                      </span>
-                      <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">
-                        Decision Intelligence
+                      <Database className="w-3 h-3 text-muted-foreground/70" />
+                      <span className="text-[10.5px] text-muted-foreground font-medium">
+                        {totalIndexedRecords.toLocaleString()} records vectorized
                       </span>
                     </div>
                   </div>
@@ -284,7 +198,7 @@ export function ChatWidget() {
                 {messages.map((msg, index) => (
                   <div
                     key={index}
-                    className={`flex gap-2.5 max-w-[90%] ${
+                    className={`flex gap-2.5 max-w-[92%] ${
                       msg.role === 'user' ? 'ml-auto flex-row-reverse' : 'mr-auto'
                     }`}
                   >
@@ -307,6 +221,27 @@ export function ChatWidget() {
                           <FormattedMarkdown content={msg.content} />
                         )}
                       </div>
+
+                      {/* Verified Source Citations */}
+                      {msg.citations && msg.citations.length > 0 && (
+                        <div className="pt-1 pl-1 space-y-1">
+                          <div className="text-[10px] font-bold text-muted-foreground/80 flex items-center gap-1 uppercase tracking-wider">
+                            <FileText className="w-3 h-3 text-primary" /> Verified Sources ({msg.citations.length})
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {msg.citations.slice(0, 4).map((cit, cIdx) => (
+                              <Badge
+                                key={cIdx}
+                                variant="outline"
+                                className="text-[10px] font-normal py-0.5 px-2 bg-background/50 border-border/60 text-muted-foreground hover:text-foreground cursor-default transition-colors truncate max-w-[200px]"
+                                title={cit.snippet || cit.label}
+                              >
+                                {cit.label}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -316,7 +251,7 @@ export function ChatWidget() {
                     <div className="h-7 w-7 rounded-xl bg-primary/10 text-primary border border-primary/20 flex items-center justify-center shrink-0">
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     </div>
-                    <span>Analyzing business logs & intelligence engines...</span>
+                    <span>Searching vector knowledge base & calculating verified metrics...</span>
                   </div>
                 )}
               </div>
@@ -346,7 +281,7 @@ export function ChatWidget() {
                   <input
                     value={inputMessage}
                     onChange={e => setInputMessage(e.target.value)}
-                    placeholder="Ask Copilot anything about your business..."
+                    placeholder="Ask AnalyzeUp AI anything about your business..."
                     disabled={isPending}
                     className="flex-1 bg-secondary/40 border border-border/60 focus:border-primary text-xs h-9 rounded-xl px-3 text-foreground placeholder:text-muted-foreground outline-none"
                   />
