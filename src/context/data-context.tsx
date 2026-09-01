@@ -593,6 +593,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
           requestResourceData: 'Bulk Product Add',
         }));
       });
+      await new Promise(r => setTimeout(r, 10));
     }
 
     if (typeof window !== 'undefined') {
@@ -703,6 +704,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
           requestResourceData: 'Bulk Transaction Add',
         }));
       });
+      await new Promise(r => setTimeout(r, 10));
     }
 
     if (typeof window !== 'undefined') {
@@ -1194,22 +1196,31 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
           'tasks',
         ];
 
+        // Fetch independent collections at the same time. The previous sequential
+        // loop waited for every empty collection too, making Reset appear frozen.
+        const snapshots = await Promise.all(
+          colNames.map(async (colName) => ({
+            colName,
+            snapshot: await getDocs(collection(firestore, 'users', uid, colName)),
+          }))
+        );
+
+        const deletionBatches: ReturnType<typeof writeBatch>[] = [];
         let totalDeleted = 0;
-        for (const colName of colNames) {
-          const colRef = collection(firestore, 'users', uid, colName);
-          const snap = await getDocs(colRef);
-          if (!snap.empty) {
-            const CHUNK_SIZE = 400;
-            for (let i = 0; i < snap.docs.length; i += CHUNK_SIZE) {
-              const chunk = snap.docs.slice(i, i + CHUNK_SIZE);
-              const batch = writeBatch(firestore);
-              chunk.forEach(d => batch.delete(d.ref));
-              await batch.commit();
-              totalDeleted += chunk.length;
-            }
-            console.log(`[ClearAllData] Successfully purged ${snap.docs.length} docs from ${colName}`);
+        const CHUNK_SIZE = 400;
+        snapshots.forEach(({ colName, snapshot }) => {
+          for (let i = 0; i < snapshot.docs.length; i += CHUNK_SIZE) {
+            const batch = writeBatch(firestore);
+            snapshot.docs.slice(i, i + CHUNK_SIZE).forEach((document) => batch.delete(document.ref));
+            deletionBatches.push(batch);
           }
-        }
+          totalDeleted += snapshot.docs.length;
+          if (!snapshot.empty) console.log(`[ClearAllData] Queued ${snapshot.docs.length} docs from ${colName}`);
+        });
+
+        // Commits are independent and do not need to hold the UI in a long
+        // network waterfall. A rejected commit still fails the reset visibly.
+        await Promise.all(deletionBatches.map((batch) => batch.commit()));
 
         // A reset is a disconnect: remove Drive as well as every other supported integration.
         const integrations = ['google-drive', 'google_drive', 'shopify', 'zoho', 'tally', 'woocommerce'];

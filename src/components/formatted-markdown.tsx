@@ -15,8 +15,9 @@ function parseInlineMarkdown(text: string): React.ReactNode[] {
   const tokens: React.ReactNode[] = [];
   let remaining = text;
   let keyIndex = 0;
+  let maxSafetyIterations = 500;
 
-  while (remaining.length > 0) {
+  while (remaining.length > 0 && maxSafetyIterations-- > 0) {
     // Match **bold**
     const boldMatch = remaining.match(/\*\*(.+?)\*\*/);
     // Match *italic*
@@ -44,7 +45,7 @@ function parseInlineMarkdown(text: string): React.ReactNode[] {
       matchResult = codeMatch;
     }
 
-    if (matchType && matchResult && matchResult.index !== undefined) {
+    if (matchType && matchResult && matchResult.index !== undefined && matchResult[0].length > 0) {
       // Add preceding plain text (cleaning any stray asterisks or hashes)
       if (matchResult.index > 0) {
         const plain = remaining.substring(0, matchResult.index).replace(/[*#]/g, '');

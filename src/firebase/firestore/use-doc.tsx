@@ -1,4 +1,3 @@
-
 'use client';
 
 import {
@@ -6,9 +5,6 @@ import {
   type DocumentReference,
 } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
-import { errorEmitter } from '../error-emitter';
-import { FirestorePermissionError } from '../errors';
-
 
 type UseDocState<T> = {
   data: T | null;
@@ -18,32 +14,30 @@ type UseDocState<T> = {
 export function useDoc<T>(ref: DocumentReference | null) {
   const [state, setState] = useState<UseDocState<T>>({
     data: null,
-    loading: true,
+    loading: !!ref,
   });
+
+  const path = ref ? ref.path : undefined;
 
   useEffect(() => {
     if (!ref) {
+      setState({ data: null, loading: false });
       return;
     }
     setState((prev) => (prev.loading ? prev : { ...prev, loading: true }));
     const unsubscribe = onSnapshot(
       ref,
       (snapshot) => {
-        const data = { id: snapshot.id, ...snapshot.data() } as T;
+        const data = snapshot.exists() ? ({ id: snapshot.id, ...snapshot.data() } as T) : null;
         setState({ data, loading: false });
       },
       (serverError) => {
-        console.error('Error listening to document:', serverError);
-        const permissionError = new FirestorePermissionError({
-            path: ref.path,
-            operation: 'get',
-        });
-        errorEmitter.emit('permission-error', permissionError);
+        console.warn('Firestore doc listener notice:', serverError.message);
         setState({ data: null, loading: false });
       }
     );
     return () => unsubscribe();
-  }, [ref]);
+  }, [path]);
 
   return state;
 }

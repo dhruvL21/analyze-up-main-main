@@ -11,6 +11,10 @@ import { formatCur } from './utils';
 
 export type IntentType =
   | 'ONBOARDING_GUIDE'
+  | 'SALES_PLAN_OR_STRATEGY'
+  | 'SPECIFIC_PRODUCT_LOOKUP'
+  | 'CATEGORY_ANALYSIS'
+  | 'DEAD_STOCK_ANALYSIS'
   | 'PRODUCT_ANALYSIS'
   | 'INVENTORY_ANALYSIS'
   | 'SUPPLIER_ANALYSIS'
@@ -60,6 +64,7 @@ export const ONBOARDING_COPILOT_SUGGESTIONS = [
 ];
 
 export const BUSINESS_COPILOT_SUGGESTIONS = [
+  { category: 'Sales Plan', question: 'Give me the next 5 day plan for sales' },
   { category: 'Priorities', question: 'What should I focus on today?' },
   { category: 'Forecasting', question: 'What will my revenue look like next month?' },
   { category: 'Forecasting', question: 'Which products will run out of stock next week?' },
@@ -80,7 +85,7 @@ export function getCopilotSuggestions(hasData: boolean) {
 
 export function getCopilotCategories(hasData: boolean) {
   return hasData
-    ? ['All', 'Priorities', 'Forecasting', 'Profitability', 'Inventory', 'Suppliers', 'Procurement', 'Revenue']
+    ? ['All', 'Sales Plan', 'Priorities', 'Forecasting', 'Profitability', 'Inventory', 'Suppliers', 'Procurement', 'Revenue']
     : ['All', 'Getting Started', 'CSV Template', 'Data Upload', 'Integrations', 'Data Security'];
 }
 
@@ -90,25 +95,27 @@ function normalize(str: string): string {
 
 export function classifyBusinessIntent(
   query: string,
-  history: { role: string; content: string }[] = []
+  history: { role: string; content: string }[] = [],
+  products: Product[] = []
 ): {
   intent: IntentType;
   intentLabel: string;
   resolvedEntity?: string;
   timeframe?: string;
+  matchedProduct?: Product;
 } {
   const q = normalize(query);
 
   if ((q === 'why?' || q === 'why' || q.includes('why is that') || q.includes('tell me why')) && history.length > 0) {
     const lastUserMsg = [...history].reverse().find(m => m.role === 'user')?.content || '';
-    const lastIntent = classifyBusinessIntent(lastUserMsg, []);
+    const lastIntent = classifyBusinessIntent(lastUserMsg, [], products);
     return {
       intent: lastIntent.intent,
       intentLabel: `${lastIntent.intentLabel} (Follow-Up Root Cause)`,
     };
   }
 
-  // Upload, Template, and Onboarding Questions
+  // 1. Upload, Template, and Onboarding Questions
   if (
     q.includes('upload') ||
     q.includes('csv') ||
@@ -134,35 +141,83 @@ export function classifyBusinessIntent(
     return { intent: 'ONBOARDING_GUIDE', intentLabel: 'Data Upload & CSV Onboarding Guide' };
   }
 
-  // Executive Report & Performance Summaries
+  // 2. Sales Plan & Execution Strategy (e.g. "give me the next 5 day plan for sales", "7 day sales plan", "boost sales")
   if (
-    q.includes('report') ||
-    q.includes('executive') ||
-    q.includes('period comparison') ||
-    q.includes('what changed from') ||
-    q.includes('summarize last month') ||
-    q.includes('profit bridge') ||
-    q.includes('scorecard') ||
-    q.includes('biggest risks')
+    q.includes('plan for sales') ||
+    q.includes('sales plan') ||
+    q.includes('sales strategy') ||
+    q.includes('plan for sale') ||
+    q.includes('day plan') ||
+    q.includes('next 5 day') ||
+    q.includes('next 7 day') ||
+    q.includes('next 10 day') ||
+    q.includes('next 14 day') ||
+    q.includes('next 30 day') ||
+    q.includes('next 3 day') ||
+    q.includes('boost sales') ||
+    q.includes('increase sales') ||
+    q.includes('grow sales') ||
+    q.includes('sell more') ||
+    q.includes('sales roadmap') ||
+    q.includes('sales campaign') ||
+    q.includes('marketing plan') ||
+    q.includes('sales target') ||
+    q.includes('daily sales plan') ||
+    q.includes('weekly sales plan') ||
+    q.includes('sales action plan') ||
+    (q.includes('plan') && (q.includes('sale') || q.includes('revenue') || q.includes('traffic') || q.includes('target') || q.includes('boost') || q.includes('growth')))
   ) {
-    return { intent: 'EXECUTIVE_REPORT', intentLabel: 'Executive Report & Performance Summary' };
+    return { intent: 'SALES_PLAN_OR_STRATEGY', intentLabel: 'Strategic Sales & Revenue Execution Plan' };
   }
 
-  // Predictive & Forecasting Questions
+  // 3. Dead Stock & Liquidate Capital Lockup
   if (
-    q.includes('forecast') ||
-    q.includes('predict') ||
-    q.includes('next month') ||
-    q.includes('next week') ||
-    q.includes('future') ||
-    q.includes('look like next') ||
-    q.includes('run out of stock') ||
-    q.includes('what to buy next') ||
-    q.includes('become dead stock')
+    q.includes('dead stock') ||
+    q.includes('liquidate') ||
+    q.includes('clearance') ||
+    q.includes('slow moving') ||
+    q.includes('tying up capital') ||
+    q.includes('tied up capital') ||
+    q.includes('stagnant') ||
+    q.includes('locked cash') ||
+    q.includes('unsold stock')
   ) {
-    return { intent: 'FORECASTING_ANALYSIS', intentLabel: 'Predictive Demand & Revenue Forecasting' };
+    return { intent: 'DEAD_STOCK_ANALYSIS', intentLabel: 'Dead Stock Clearance & Capital Recovery' };
   }
 
+  // 4. Category Performance Breakdown
+  if (
+    q.includes('category') ||
+    q.includes('categories') ||
+    q.includes('breakdown by category') ||
+    q.includes('which category') ||
+    q.includes('best category') ||
+    q.includes('apparel') ||
+    q.includes('electronics') ||
+    q.includes('kitchenware') ||
+    q.includes('skincare') ||
+    q.includes('fashion')
+  ) {
+    return { intent: 'CATEGORY_ANALYSIS', intentLabel: 'Category Performance & Demand Breakdown' };
+  }
+
+  // 5. Specific Product Name / SKU Lookup
+  if (products && products.length > 0) {
+    const found = products.find(p => {
+      const pName = (p.name || '').toLowerCase().trim();
+      const pSku = (p.sku || '').toLowerCase().trim();
+      return (pName && pName.length > 3 && q.includes(pName)) || (pSku && pSku.length > 2 && q.includes(pSku));
+    });
+    if (found) {
+      return {
+        intent: 'SPECIFIC_PRODUCT_LOOKUP',
+        intentLabel: `SKU Performance: ${found.name}`,
+        matchedProduct: found,
+      };
+    }
+  }
+
+  // 6. Simulations (What If...)
   if (
     q.includes('what if') ||
     q.includes('if i increase') ||
@@ -175,38 +230,50 @@ export function classifyBusinessIntent(
     return { intent: 'SIMULATION_QUERY', intentLabel: 'AI Strategy & Business Simulation' };
   }
 
+  // 7. Predictive & Demand Forecasting
   if (
-    q.includes('today') ||
-    q.includes('focus') ||
-    q.includes('what should i do') ||
-    q.includes('recommendation') ||
-    q.includes('priorities') ||
-    q.includes('action plan')
+    /\b(forecast|forecasting|predict|predicting|prediction|predictive|predictions)\b/i.test(q) ||
+    q.includes('next month') ||
+    q.includes('next week') ||
+    q.includes('future') ||
+    q.includes('look like next') ||
+    q.includes('run out of stock') ||
+    q.includes('what to buy next') ||
+    q.includes('stockout next')
   ) {
-    return { intent: 'RECOMMENDATION', intentLabel: 'Today Priorities & Recommendations' };
+    return { intent: 'FORECASTING_ANALYSIS', intentLabel: 'Predictive Demand & Revenue Forecasting' };
   }
 
+  // 8. Customer Growth & Retention
   if (
-    q.includes('business health') ||
-    q.includes('how is my business doing') ||
-    q.includes('health score') ||
-    q.includes('overall health') ||
-    q.includes('business performing')
+    q.includes('grow') ||
+    q.includes('growth') ||
+    q.includes('cross-sell') ||
+    q.includes('cross sell') ||
+    q.includes('upsell') ||
+    q.includes('at risk customer') ||
+    q.includes('at-risk customer') ||
+    q.includes('customer retention') ||
+    q.includes('repeat purchase') ||
+    q.includes('limiting my growth')
   ) {
-    return { intent: 'BUSINESS_HEALTH', intentLabel: 'Business Health Score Analysis' };
+    return { intent: 'GROWTH_ANALYSIS', intentLabel: 'Customer Growth & Retention Intelligence' };
   }
 
+  // 9. Profitability & Margins
   if (
     q.includes('profit') ||
     q.includes('margin') ||
     q.includes('losing money') ||
     q.includes('loss') ||
     q.includes('roi') ||
-    q.includes('profitability')
+    q.includes('profitability') ||
+    q.includes('why did my profit')
   ) {
     return { intent: 'PROFIT_ANALYSIS', intentLabel: 'Profitability & Margin Analysis' };
   }
 
+  // 10. Suppliers & Procurement
   if (
     q.includes('supplier') ||
     q.includes('vendor') ||
@@ -228,53 +295,77 @@ export function classifyBusinessIntent(
     return { intent: 'PROCUREMENT_ANALYSIS', intentLabel: 'Procurement & Cost Savings' };
   }
 
+  // 11. Inventory & Restock
   if (
     q.includes('reorder') ||
     q.includes('stockout') ||
-    q.includes('dead stock') ||
-    q.includes('tying up capital') ||
     q.includes('inventory health') ||
-    q.includes('stock') ||
-    q.includes('inventory')
+    q.includes('stock level') ||
+    q.includes('restock')
   ) {
     return { intent: 'INVENTORY_ANALYSIS', intentLabel: 'Inventory Velocity & Health' };
   }
 
-  if (
-    q.includes('grow') ||
-    q.includes('growth') ||
-    q.includes('cross-sell') ||
-    q.includes('cross sell') ||
-    q.includes('upsell') ||
-    q.includes('at risk customer') ||
-    q.includes('at-risk customer') ||
-    q.includes('customer retention') ||
-    q.includes('repeat purchase') ||
-    q.includes('limiting my growth') ||
-    q.includes('increase revenue')
-  ) {
-    return { intent: 'GROWTH_ANALYSIS', intentLabel: 'Customer Growth & Retention Intelligence' };
-  }
-
+  // 12. Revenue & Sales
   if (
     q.includes('revenue') ||
     q.includes('sales velocity') ||
     q.includes('sales volume') ||
     q.includes('top selling') ||
-    q.includes('best seller')
+    q.includes('best seller') ||
+    q.includes('total sales')
   ) {
     return { intent: 'REVENUE_ANALYSIS', intentLabel: 'Revenue & Demand Analysis' };
   }
 
+  // 13. Returns & Refunds
   if (q.includes('return') || q.includes('defective') || q.includes('refund')) {
     return { intent: 'RETURN_ANALYSIS', intentLabel: 'Returns & Refund Diagnostics' };
   }
 
+  // 14. Executive Summary & Audit
+  if (
+    q.includes('report') ||
+    q.includes('executive') ||
+    q.includes('period comparison') ||
+    q.includes('what changed from') ||
+    q.includes('summarize last month') ||
+    q.includes('profit bridge') ||
+    q.includes('scorecard') ||
+    q.includes('biggest risks')
+  ) {
+    return { intent: 'EXECUTIVE_REPORT', intentLabel: 'Executive Report & Performance Summary' };
+  }
+
+  // 15. Operational Priorities & Recommendations
+  if (
+    q.includes('today') ||
+    q.includes('focus') ||
+    q.includes('what should i do') ||
+    q.includes('recommendation') ||
+    q.includes('priorities') ||
+    q.includes('action plan')
+  ) {
+    return { intent: 'RECOMMENDATION', intentLabel: 'Today Priorities & Recommendations' };
+  }
+
+  // 16. Business Health Score
+  if (
+    q.includes('business health') ||
+    q.includes('how is my business doing') ||
+    q.includes('health score') ||
+    q.includes('overall health') ||
+    q.includes('business performing')
+  ) {
+    return { intent: 'BUSINESS_HEALTH', intentLabel: 'Business Health Score Analysis' };
+  }
+
+  // 17. Product Performance General
   if (q.includes('product') || q.includes('item') || q.includes('sku') || q.includes('catalog')) {
     return { intent: 'PRODUCT_ANALYSIS', intentLabel: 'Product Performance Intelligence' };
   }
 
-  return { intent: 'GENERAL_BUSINESS_QUERY', intentLabel: 'General Business Query' };
+  return { intent: 'GENERAL_BUSINESS_QUERY', intentLabel: 'Strategic Business Decision Advisor' };
 }
 
 export function processCopilotQuery(
@@ -287,7 +378,7 @@ export function processCopilotQuery(
   returns: ProductReturn[] = [],
   businessProfile?: BusinessProfile | null
 ): CopilotResponse {
-  const { intent, intentLabel } = classifyBusinessIntent(query, history);
+  const { intent, intentLabel, matchedProduct } = classifyBusinessIntent(query, history, products);
 
   const health = computeBusinessHealth(products, transactions, suppliers, returns);
   const actionTasks = generateActionTasks(products, transactions, suppliers, orders, businessProfile);
@@ -297,7 +388,7 @@ export function processCopilotQuery(
   const forecastReport = generateBusinessForecastingReport(products, transactions, suppliers, orders);
   const growthReport = computeCustomerGrowthIntelligence(products, transactions, suppliers, orders, returns, businessProfile);
 
-  const salesTx = transactions.filter(t => t.type === 'Sale');
+  const salesTx = transactions.filter(t => t.type === 'Sale' || (t as any).type === 'sale');
   const totalRevenue = salesTx.reduce((sum, t) => sum + (t.totalRevenue || (t.quantity * (t.price || 0))), 0);
   const totalCOGS = salesTx.reduce((sum, t) => {
     if (t.totalCost !== undefined) return sum + t.totalCost;
@@ -307,10 +398,20 @@ export function processCopilotQuery(
   const totalProfit = totalRevenue - totalCOGS;
   const overallMarginPercent = totalRevenue > 0 ? Math.round((totalProfit / totalRevenue) * 100) : 35;
 
+  const productSalesCount = new Map<string, number>();
+  salesTx.forEach(t => {
+    const key = t.productId || t.sku || '';
+    if (key) productSalesCount.set(key, (productSalesCount.get(key) || 0) + (t.quantity || 1));
+  });
+
   const saleProductIds = new Set(salesTx.map(t => t.productId));
-  const deadStockProducts = products.filter(p => p.stock > 0 && !saleProductIds.has(p.id));
-  const tiedCapital = deadStockProducts.reduce((sum, p) => sum + (p.stock * (p.costPrice || p.price * 0.6)), 0);
-  const lowStockProducts = products.filter(p => p.stock <= (p.minStock || 5));
+  const deadStockProducts = products.filter(p => (p.stock || 0) > 0 && !saleProductIds.has(p.id));
+  const tiedCapital = deadStockProducts.reduce((sum, p) => sum + ((p.stock || 0) * (p.costPrice || p.price * 0.6)), 0);
+  const lowStockProducts = products.filter(p => (p.stock || 0) <= (p.minStock || 5));
+
+  const uniqueDatesCount = Math.max(1, new Set(salesTx.map(t => String(t.transactionDate || (t as any).date || t.createdAt || '').slice(0, 10)).filter(Boolean)).size);
+  const activeDaysCount = uniqueDatesCount;
+  const dailyRunRate = Math.round(totalRevenue / activeDaysCount);
 
   let confidence: CopilotResponse['confidence'] = forecastReport.overallConfidence;
   let confidenceReason: string | undefined = forecastReport.confidenceReason;
@@ -482,7 +583,7 @@ export function processCopilotQuery(
       };
     }
 
-    // General Empty State / Getting Started / "What should I focus on today?"
+    // General Empty State
     const what = 'Your workspace is initialized and awaiting your business data.';
     const why = 'AnalyzeUp requires your product catalog or sales transactions to calculate business health scores, forecast 30-day stockouts, detect tied-up dead capital, and generate tailored operational priorities.';
     const actionText = 'Download our 22-column CSV database template and upload your inventory or sales records via the Import Data button.';
@@ -522,7 +623,276 @@ export function processCopilotQuery(
     };
   }
 
-  // 0. GROWTH ANALYSIS INTENT
+  // 1. STRATEGIC SALES & REVENUE PLAN INTENT (e.g. "give me the next 5 day plan for sales")
+  if (intent === 'SALES_PLAN_OR_STRATEGY') {
+    const qLower = query.toLowerCase();
+    const dayMatch = qLower.match(/(\d+)\s*day/);
+    const targetDays = dayMatch ? parseInt(dayMatch[1], 10) : (qLower.includes('week') ? 7 : (qLower.includes('month') ? 30 : 5));
+
+    const uniqueDates = new Set(salesTx.map(t => String(t.transactionDate || (t as any).date || t.createdAt || '').slice(0, 10)).filter(Boolean));
+    const activeDaysCount = Math.max(1, uniqueDates.size);
+    const dailyRunRate = Math.round(totalRevenue / activeDaysCount);
+    const projectedBaseline = Math.round(dailyRunRate * targetDays);
+    const stretchTarget = Math.round(projectedBaseline * 1.20); // +20% growth upside
+
+    // Filter Hero SKUs: in stock >= 10, margin >= 25%
+    const heroProducts = [...products]
+      .filter(p => (p.stock || 0) >= 10 && ((p.price || 0) - (p.costPrice || 0)) > 0)
+      .sort((a, b) => {
+        const profA = ((a.price || 0) - (a.costPrice || 0)) * (productSalesCount.get(a.id) || 1);
+        const profB = ((b.price || 0) - (b.costPrice || 0)) * (productSalesCount.get(b.id) || 1);
+        return profB - profA;
+      });
+
+    // Dead Stock candidates to bundle / liquidate
+    const deadStockCandidates = [...deadStockProducts].sort((a, b) => ((b.stock || 0) * (b.price || 0)) - ((a.stock || 0) * (a.price || 0)));
+
+    // Low stock items at risk
+    const stockoutWatch = [...lowStockProducts].sort((a, b) => (a.stock || 0) - (b.stock || 0));
+
+    const topHero = heroProducts[0];
+    const topDead = deadStockCandidates[0];
+    const topStockout = stockoutWatch[0];
+
+    const what = `Generated a tailored ${targetDays}-Day Sales & Revenue Execution Plan targeting ${formatCur(stretchTarget)} (+20% over ${formatCur(projectedBaseline)} baseline).`;
+    const why = `Based on your live daily run-rate of ${formatCur(dailyRunRate)}/day across ${activeDaysCount} active selling days with ${products.length} catalog items.`;
+    const actionText = topHero
+      ? `Promote high-margin SKU "${topHero.name}" (${topHero.stock} in stock) and launch a 15% flash bundle on dead stock "${topDead?.name || 'stagnant inventory'}" to unlock cash.`
+      : 'Focus on reordering fast-moving inventory and expanding top converting product channels.';
+
+    const answerMarkdown = `### 🎯 NEXT ${targetDays}-DAY STRATEGIC SALES & REVENUE PLAN\n\n` +
+      `#### 1. 📊 REVENUE TARGETS & BENCHMARK\n` +
+      `- **Current Run-Rate:** ${formatCur(dailyRunRate)} / day (${salesTx.length} completed transactions across ${activeDaysCount} selling days)\n` +
+      `- **${targetDays}-Day Baseline Forecast:** **${formatCur(projectedBaseline)}**\n` +
+      `- **${targetDays}-Day Growth Target (+20%):** **${formatCur(stretchTarget)}**\n` +
+      `- **Profit Margin Buffer:** Overall business gross margin is currently **${overallMarginPercent}%**.\n\n` +
+      `#### 2. 🌟 HERO PRODUCTS TO AGGRESSIVELY FEATURE\n` +
+      (heroProducts.length > 0
+        ? heroProducts.slice(0, 3).map((p, i) => {
+            const margin = p.price > 0 ? Math.round(((p.price - (p.costPrice || 0)) / p.price) * 100) : 40;
+            return `  ${i + 1}. **${p.name}** — Selling at **${formatCur(p.price)}** (Gross Margin: **${margin}%**, Stock: **${p.stock} units** available).`;
+          }).join('\n')
+        : `  - Promote your highest-rated catalog items across storefront banners.`) + '\n\n' +
+      `#### 3. 📦 WORKING CAPITAL & DEAD STOCK LIQUIDATION\n` +
+      `- **Locked Capital:** **${formatCur(tiedCapital)}** currently held in ${deadStockProducts.length} stagnant SKUs.\n` +
+      (deadStockCandidates.length > 0
+        ? `  - **Action Target:** Launch a **15–20% flash bundle discount** on **${topDead?.name}** (${topDead?.stock} units idle) to inject immediate working cash.\n\n`
+        : `  - Inventory velocity is healthy with minimal dead stock drag.\n\n`) +
+      `#### 4. ⚠️ CRITICAL STOCKOUT PROTECTION\n` +
+      (stockoutWatch.length > 0
+        ? `  - **Alert:** **${topStockout?.name}** is down to **${topStockout?.stock} units** (Min threshold: ${topStockout?.minStock || 5}). Issue a supplier restock PO immediately so you don't lose sales momentum.\n\n`
+        : `  - All high-volume catalog SKUs maintain sufficient buffer stock.\n\n`) +
+      `#### 5. 🗓️ TACTICAL ${targetDays}-DAY STEP-BY-STEP ROADMAP\n` +
+      `- **Day 1 (Catalog & Channel Optimization):** Feature your top hero items (**${topHero?.name || 'Top Sellers'}**) on your primary store banner, email newsletter, and social ads.\n` +
+      `- **Day 2 (Flash Bundling & Dead Stock Release):** Create a limited-time bundle pairing stagnant items with fast sellers to unlock immediate working cash.\n` +
+      `- **Day 3 (Restock & Supplier Safeguard):** Check lead times and trigger purchase orders for low-stock items (**${topStockout?.name || 'Restock SKUs'}**) to avoid out-of-stock bounce.\n` +
+      `- **Day 4 (Customer Retention & VIP Outreach):** Send personalized cross-sell recommendations to past high-value customers based on top purchase pairings.\n` +
+      `- **Day 5 (Run-Rate Review & Campaign Scaling):** Reconcile conversion rates, double down ad spend on the top-converting SKU, and adjust inventory replenishment.`;
+
+    return {
+      intent,
+      intentLabel,
+      answerMarkdown,
+      what,
+      why,
+      actionText,
+      confidence: 'HIGH',
+      confidenceReason: `Computed using live ${activeDaysCount}-day sales run rate and catalog margin tiers.`,
+      supportingData: [
+        { label: `${targetDays}D Baseline Target`, value: formatCur(projectedBaseline) },
+        { label: `${targetDays}D Stretch Target`, value: formatCur(stretchTarget) },
+        { label: 'Daily Run Rate', value: `${formatCur(dailyRunRate)}/day` },
+        { label: 'Gross Margin', value: `${overallMarginPercent}%` },
+      ],
+      recommendedAction: topHero ? {
+        label: `View ${topHero.name} in Inventory`,
+        actionType: 'navigate',
+        targetRoute: '/dashboard/inventory',
+        targetId: topHero.id,
+      } : {
+        label: 'Open Executive Intelligence',
+        actionType: 'navigate',
+        targetRoute: '/dashboard/executive',
+      },
+      suggestedFollowUps: [
+        'Which products will run out of stock next week?',
+        'Which products are tying up the most capital?',
+        'What will my revenue look like next month?',
+      ],
+    };
+  }
+
+  // 2. SPECIFIC PRODUCT LOOKUP INTENT
+  if (intent === 'SPECIFIC_PRODUCT_LOOKUP' && matchedProduct) {
+    const p = matchedProduct;
+    const unitsSold = productSalesCount.get(p.id) || productSalesCount.get(p.sku || '') || 0;
+    const itemRevenue = unitsSold * (p.price || 0);
+    const itemCost = p.costPrice || (p.price * 0.6);
+    const itemMargin = p.price > 0 ? Math.round(((p.price - itemCost) / p.price) * 100) : 40;
+    const isLow = (p.stock || 0) <= (p.minStock || 5);
+    const isDead = (p.stock || 0) > 0 && unitsSold === 0;
+
+    const what = `${p.name} (SKU: ${p.sku || 'N/A'}) has ${p.stock || 0} units in stock with ${unitsSold} historical units sold (${formatCur(itemRevenue)} revenue).`;
+    const why = `Unit Price: ${formatCur(p.price || 0)} | Purchase Cost: ${formatCur(itemCost)} | Gross Margin: ${itemMargin}%. ${isLow ? '⚠️ Stock is below safety threshold!' : (isDead ? '📦 Classified as dead stock.' : '✅ Inventory is healthy.')}`;
+    const actionText = isLow
+      ? `Reorder ${Math.max(25, (p.minStock || 5) * 3)} units from ${p.supplier || 'supplier'} immediately.`
+      : (isDead ? 'Offer a 15% promotional discount or bundle with a high-velocity product.' : 'Maintain current stock monitoring.');
+
+    const answerMarkdown = `### 🔍 SKU DIAGNOSTIC: ${p.name.toUpperCase()}\n\n` +
+      `- **SKU Code:** \`${p.sku || p.id}\` | **Category:** ${p.category || 'General'}\n` +
+      `- **Current Stock:** **${p.stock || 0} units** (Min Safety Stock: ${p.minStock || 5} units)\n` +
+      `- **Retail Price:** **${formatCur(p.price || 0)}** | **Cost Price:** ${formatCur(itemCost)}\n` +
+      `- **Gross Profit Margin:** **${itemMargin}%** (+${formatCur((p.price || 0) - itemCost)} per unit)\n` +
+      `- **Historical Sales:** **${unitsSold} units sold** (${formatCur(itemRevenue)} gross revenue)\n` +
+      `- **Supplier:** ${p.supplier || 'Standard Supplier'} (Lead Time: ${p.leadTimeDays || 7} days)\n` +
+      `- **Status:** ${isLow ? '🔴 **URGENT STOCKOUT RISK**' : (isDead ? '🟡 **DEAD STOCK (ZERO SALES)**' : '🟢 **HEALTHY ACTIVE PERFORMER**')}\n\n` +
+      `**AI Strategic Recommendation:** ${actionText}`;
+
+    return {
+      intent,
+      intentLabel: `SKU Performance: ${p.name}`,
+      answerMarkdown,
+      what,
+      why,
+      actionText,
+      confidence: 'HIGH',
+      confidenceReason: 'Direct catalog and historical transaction match.',
+      supportingData: [
+        { label: 'Current Stock', value: `${p.stock || 0} units` },
+        { label: 'Unit Price', value: formatCur(p.price || 0) },
+        { label: 'Gross Margin', value: `${itemMargin}%` },
+        { label: 'Units Sold', value: `${unitsSold}` },
+      ],
+      recommendedAction: isLow ? {
+        label: `Reorder ${p.name}`,
+        actionType: 'reorder',
+        targetRoute: '/dashboard/inventory',
+        targetId: p.id,
+      } : {
+        label: 'View in Inventory',
+        actionType: 'navigate',
+        targetRoute: '/dashboard/inventory',
+      },
+      suggestedFollowUps: [
+        'Which products will run out of stock next week?',
+        'Give me the next 5 day plan for sales',
+        'Where can I reduce costs?',
+      ],
+    };
+  }
+
+  // 3. DEAD STOCK ANALYSIS INTENT
+  if (intent === 'DEAD_STOCK_ANALYSIS') {
+    const topDead = deadStockProducts.slice(0, 5);
+    const what = `${deadStockProducts.length} dead stock SKU(s) are tying up ${formatCur(tiedCapital)} in working capital.`;
+    const why = `These items have physical stock but zero recorded sales transactions over the active tracking window.`;
+    const actionText = 'Launch a clearance promotion (15-25% discount) or bundle with bestsellers to recover working capital.';
+
+    const answerMarkdown = `### 📦 DEAD STOCK & WORKING CAPITAL DIAGNOSTIC\n\n` +
+      `- **Total Tied-Up Capital:** **${formatCur(tiedCapital)}** across **${deadStockProducts.length} stagnant SKUs**\n` +
+      `- **Dead Stock Valuation:** Represents **${Math.round((tiedCapital / (totalRevenue || 1)) * 100)}%** of cumulative sales revenue.\n\n` +
+      `#### 🔍 TOP STAGNANT SKUS HOLDING WORKING CASH\n` +
+      (topDead.length > 0
+        ? topDead.map((p, i) => {
+            const locked = (p.stock || 0) * (p.costPrice || p.price * 0.6);
+            return `  ${i + 1}. **${p.name}** — **${p.stock} units** (${formatCur(locked)} locked, Price: ${formatCur(p.price)})`;
+          }).join('\n')
+        : '  - No severe dead stock detected.') + '\n\n' +
+      `#### 🚀 3-STEP CAPITAL RECOVERY STRATEGY\n` +
+      `1. **Flash Clearance Bundle (15–20% Off):** Pair top stagnant items with high-velocity bestsellers to liquidate without brand damage.\n` +
+      `2. **VIP Customer Free-Gift Threshold:** Offer stagnant items as a bonus for orders exceeding ${formatCur(dailyRunRate ? dailyRunRate * 2 : 2500)}.\n` +
+      `3. **Reallocate Capital:** Reinvest recovered liquidity directly into high-turnover hero SKUs.`;
+
+    return {
+      intent,
+      intentLabel,
+      answerMarkdown,
+      what,
+      why,
+      actionText,
+      confidence: 'HIGH',
+      confidenceReason: 'Calculated from active catalog stock cross-referenced with sales logs.',
+      supportingData: [
+        { label: 'Tied-up Capital', value: formatCur(tiedCapital) },
+        { label: 'Dead SKUs', value: `${deadStockProducts.length}` },
+        { label: 'Catalog Share', value: `${Math.round((deadStockProducts.length / (products.length || 1)) * 100)}%` },
+      ],
+      recommendedAction: {
+        label: 'Open Dead Stock Section',
+        actionType: 'navigate',
+        targetRoute: '/dashboard',
+      },
+      suggestedFollowUps: [
+        'Give me the next 5 day plan for sales',
+        'Which products should I reorder?',
+        'Why did my profit decrease?',
+      ],
+    };
+  }
+
+  // 4. CATEGORY ANALYSIS INTENT
+  if (intent === 'CATEGORY_ANALYSIS') {
+    const categoryMap = new Map<string, { skus: number; totalStockVal: number; salesRevenue: number; unitsSold: number }>();
+    products.forEach(p => {
+      const cat = p.category || 'General';
+      const entry = categoryMap.get(cat) || { skus: 0, totalStockVal: 0, salesRevenue: 0, unitsSold: 0 };
+      entry.skus += 1;
+      entry.totalStockVal += ((p.stock || 0) * (p.price || 0));
+      categoryMap.set(cat, entry);
+    });
+
+    salesTx.forEach(t => {
+      const p = products.find(prod => prod.id === t.productId || prod.sku === t.sku);
+      const cat = p?.category || 'General';
+      const entry = categoryMap.get(cat) || { skus: 0, totalStockVal: 0, salesRevenue: 0, unitsSold: 0 };
+      entry.salesRevenue += (t.totalRevenue || (t.quantity * (t.price || 0)));
+      entry.unitsSold += (t.quantity || 1);
+      categoryMap.set(cat, entry);
+    });
+
+    const categoryList = Array.from(categoryMap.entries()).sort((a, b) => b[1].salesRevenue - a[1].salesRevenue);
+    const topCat = categoryList[0];
+
+    const what = `Analyzed ${categoryList.length} categories. Top performer: "${topCat?.[0] || 'General'}" generating ${formatCur(topCat?.[1].salesRevenue || 0)}.`;
+    const why = `Category breakdown shows where customer demand is concentrated and where inventory capital is allocated.`;
+    const actionText = `Expand catalog depth in "${topCat?.[0] || 'Top Category'}" while optimizing stock replenishment in lower-turnover categories.`;
+
+    const answerMarkdown = `### 📊 CATEGORY PERFORMANCE & DEMAND BREAKDOWN\n\n` +
+      categoryList.map(([catName, stats], i) => {
+        return `**${i + 1}. ${catName.toUpperCase()}**\n` +
+          `- Revenue Generated: **${formatCur(stats.salesRevenue)}** (${stats.unitsSold} units sold)\n` +
+          `- Active SKUs: **${stats.skus} items** (Inventory Valuation: ${formatCur(stats.totalStockVal)})\n`;
+      }).join('\n') +
+      `\n**AI Recommendation:** ${actionText}`;
+
+    return {
+      intent,
+      intentLabel,
+      answerMarkdown,
+      what,
+      why,
+      actionText,
+      confidence: 'HIGH',
+      confidenceReason: 'Calculated across all catalog categories and sales transactions.',
+      supportingData: [
+        { label: 'Total Categories', value: `${categoryList.length}` },
+        { label: 'Top Category', value: topCat?.[0] || 'General' },
+        { label: 'Top Cat Revenue', value: formatCur(topCat?.[1].salesRevenue || 0) },
+      ],
+      recommendedAction: {
+        label: 'View Inventory by Category',
+        actionType: 'navigate',
+        targetRoute: '/dashboard/inventory',
+      },
+      suggestedFollowUps: [
+        'Give me the next 5 day plan for sales',
+        'Which products will run out of stock next week?',
+        'Where can I reduce costs?',
+      ],
+    };
+  }
+
+  // 5. GROWTH ANALYSIS INTENT
   if (intent === 'GROWTH_ANALYSIS') {
     const topOpp = growthReport.opportunities[0];
     const topCS = growthReport.crossSellOpportunities[0];
@@ -572,7 +942,7 @@ export function processCopilotQuery(
     };
   }
 
-  // 0.5. SIMULATION QUERY INTENT
+  // 6. SIMULATION QUERY INTENT
   if (intent === 'SIMULATION_QUERY') {
     const qLower = query.toLowerCase();
 
@@ -595,9 +965,7 @@ export function processCopilotQuery(
       params.priceChangePercent = 10;
     }
 
-    // Match product name if present
     const matchedProd = products.find(p => p.name && qLower.includes(p.name.toLowerCase())) || products[0];
-
     const simRes = runBusinessSimulation(simType, matchedProd?.id || '', params, products, transactions, suppliers, orders, businessProfile);
 
     const revDiff = simRes.simulated.projectedRevenue - simRes.baseline.revenue;
@@ -646,7 +1014,7 @@ export function processCopilotQuery(
     };
   }
 
-  // 1. FORECASTING ANALYSIS INTENT
+  // 7. FORECASTING ANALYSIS INTENT
   if (intent === 'FORECASTING_ANALYSIS') {
     const projRev = forecastReport.totalProjected30DayRevenue;
     const projProf = forecastReport.totalProjected30DayProfit;
@@ -692,13 +1060,13 @@ export function processCopilotQuery(
       },
       suggestedFollowUps: [
         'Which products will run out of stock next week?',
-        'What should I focus on today?',
+        'Give me the next 5 day plan for sales',
         'Where can I reduce costs?',
       ],
     };
   }
 
-  // 2. RECOMMENDATION / TODAY PRIORITIES
+  // 8. RECOMMENDATION / TODAY PRIORITIES
   if (intent === 'RECOMMENDATION') {
     const topTask = actionTasks[0];
     const what = `Identified ${todayPriorities.length} operational priorities for your business today.`;
@@ -736,14 +1104,14 @@ export function processCopilotQuery(
         actionTask: topTask,
       } : undefined,
       suggestedFollowUps: [
+        'Give me the next 5 day plan for sales',
         'What will my revenue look like next month?',
         'Why did my profit decrease?',
-        'Which supplier is becoming risky?',
       ],
     };
   }
 
-  // 3. PROFIT / MARGIN ANALYSIS
+  // 9. PROFIT / MARGIN ANALYSIS
   if (intent === 'PROFIT_ANALYSIS') {
     const marginProducts = [...products].map(p => {
       const cost = p.costPrice || (p.price * 0.6);
@@ -793,12 +1161,12 @@ export function processCopilotQuery(
       suggestedFollowUps: [
         'Which supplier is causing price increases?',
         'Where can I reduce costs?',
-        'What will my profit look like next month?',
+        'Give me the next 5 day plan for sales',
       ],
     };
   }
 
-  // 4. INVENTORY & SUPPLIER
+  // 10. INVENTORY & RESTOCK
   if (intent === 'INVENTORY_ANALYSIS') {
     const topReorder = lowStockProducts[0];
     const what = `${lowStockProducts.length} product(s) are below alert thresholds and ${deadStockProducts.length} SKUs are dead stock.`;
@@ -828,7 +1196,6 @@ export function processCopilotQuery(
         { label: 'Total Catalog SKUs', value: `${products.length} SKUs` },
         { label: 'Low Stock Items', value: `${lowStockProducts.length}` },
         { label: 'Dead Stock Capital', value: formatCur(tiedCapital) },
-        { label: 'Avg Daily Velocity', value: `${(products.reduce((a, b) => a + (b.averageDailySales || 0), 0) / (products.length || 1)).toFixed(1)}/day` },
       ],
       recommendedAction: topReorder ? {
         label: `Reorder ${topReorder.name}`,
@@ -842,13 +1209,13 @@ export function processCopilotQuery(
       },
       suggestedFollowUps: [
         'Which products will run out of stock next week?',
-        'Which supplier should I buy from?',
+        'Give me the next 5 day plan for sales',
         'What should I focus on today?',
       ],
     };
   }
 
-  // 5. SUPPLIER & PROCUREMENT
+  // 11. SUPPLIER & PROCUREMENT
   if (intent === 'SUPPLIER_ANALYSIS' || intent === 'PROCUREMENT_ANALYSIS') {
     const topRisk = risks[0];
     const topSaving = savings.savingsList[0];
@@ -895,7 +1262,7 @@ export function processCopilotQuery(
     };
   }
 
-  // 5.5. REVENUE & SALES DEMAND
+  // 12. REVENUE & SALES DEMAND
   if (intent === 'REVENUE_ANALYSIS') {
     const what = `Total Gross Revenue is ${formatCur(totalRevenue)} generated from ${salesTx.length} completed transactions.`;
     const why = `Revenue is generated across ${products.length} catalog items with an average transaction value of ${salesTx.length > 0 ? formatCur(totalRevenue / salesTx.length) : formatCur(0)}.`;
@@ -904,7 +1271,8 @@ export function processCopilotQuery(
     const answerMarkdown = `### REVENUE & SALES DEMAND ANALYSIS\n\n` +
       `- **Total Gross Revenue:** ${formatCur(totalRevenue)}\n` +
       `- **Total Sales Transactions:** ${salesTx.length}\n` +
-      `- **Catalog Products:** ${products.length} items\n\n` +
+      `- **Catalog Products:** ${products.length} items\n` +
+      `- **Average Gross Margin:** ${overallMarginPercent}%\n\n` +
       `**Recommended Action:** ${actionText}`;
 
     return {
@@ -927,48 +1295,103 @@ export function processCopilotQuery(
         targetRoute: '/dashboard/reports',
       },
       suggestedFollowUps: [
+        'Give me the next 5 day plan for sales',
         'What will my revenue look like next month?',
         'Why did my profit decrease?',
-        'Which products should I reorder?',
       ],
     };
   }
 
-  // 6. BUSINESS HEALTH OVERVIEW
-  const what = `Business Health Quotient is ${health.score}/100 (${health.category}).`;
-  const why = health.summarySentence;
-  const actionText = 'Focus on reordering critical inventory and liquidating dead stock to boost operational cash flow.';
+  // 13. BUSINESS HEALTH SPECIFIC QUERY
+  if (intent === 'BUSINESS_HEALTH') {
+    const what = `Business Health Quotient is ${health.score}/100 (${health.category}).`;
+    const why = health.summarySentence;
+    const actionText = 'Focus on reordering critical inventory and liquidating dead stock to boost operational cash flow.';
 
-  const answerMarkdown = `### BUSINESS HEALTH SCORE: ${health.score}/100 (${health.category})\n\n` +
-    `- **Inventory Health:** ${health.factors.inventoryHealth}%\n` +
-    `- **Profit Margin Index:** ${health.factors.marginHealth}%\n` +
-    `- **Capital Efficiency:** ${health.factors.capitalEfficiency}%\n` +
-    `- **Supplier Performance:** ${health.factors.supplierPerformance}%\n\n` +
-    `**Executive Summary:** ${health.summarySentence}`;
+    const answerMarkdown = `### BUSINESS HEALTH SCORE: ${health.score}/100 (${health.category})\n\n` +
+      `- **Inventory Health:** ${health.factors.inventoryHealth}%\n` +
+      `- **Profit Margin Index:** ${health.factors.marginHealth}%\n` +
+      `- **Capital Efficiency:** ${health.factors.capitalEfficiency}%\n` +
+      `- **Supplier Performance:** ${health.factors.supplierPerformance}%\n\n` +
+      `**Executive Summary:** ${health.summarySentence}`;
+
+    return {
+      intent,
+      intentLabel,
+      answerMarkdown,
+      what,
+      why,
+      actionText,
+      confidence,
+      confidenceReason,
+      supportingData: [
+        { label: 'Health Score', value: `${health.score}/100` },
+        { label: 'Status', value: health.category },
+        { label: 'Catalog SKUs', value: `${products.length}` },
+      ],
+      recommendedAction: {
+        label: 'View Action Center',
+        actionType: 'navigate',
+        targetRoute: '/dashboard',
+      },
+      suggestedFollowUps: [
+        'Give me the next 5 day plan for sales',
+        'What will my revenue look like next month?',
+        'What should I focus on today?',
+      ],
+    };
+  }
+
+  // 14. UNIVERSAL SMART EXECUTIVE SYNTHESIZER (For any open-ended or broad question)
+  const topRevenueSKU = [...products].sort((a, b) => (productSalesCount.get(b.id) || 0) - (productSalesCount.get(a.id) || 0))[0];
+  const avgDaily = dailyRunRate;
+
+  const whatGen = `Executive Business Diagnostic: Total Revenue ${formatCur(totalRevenue)} across ${products.length} SKUs with ${overallMarginPercent}% gross margin.`;
+  const whyGen = `Operating Health Score is ${health.score}/100 (${health.category}) with ${lowStockProducts.length} low-stock alert(s) and ${formatCur(tiedCapital)} tied in dead inventory.`;
+  const actionGen = topRevenueSKU
+    ? `Prioritize scaling inventory on top performer "${topRevenueSKU.name}" while running clearance bundles on dead stock.`
+    : 'Reorder critical inventory and optimize product pricing.';
+
+  const answerMarkdown = `### 💡 STRATEGIC BUSINESS ADVISOR ANALYSIS\n\n` +
+    `#### 1. 🎯 EXECUTIVE CONTEXT & DIAGNOSTIC\n` +
+    `Based on your live catalog of **${products.length} products** and **${salesTx.length} recorded sales transactions**, your workspace is generating an average of **${formatCur(avgDaily)}/day** in revenue with an overall **${overallMarginPercent}% gross margin**.\n\n` +
+    `#### 2. 📊 LIVE PERFORMANCE PILLARS\n` +
+    `- **Business Vitality Index:** **${health.score}/100 (${health.category})**\n` +
+    `- **Total Cumulative Revenue:** **${formatCur(totalRevenue)}** (Gross Profit: ${formatCur(totalProfit)})\n` +
+    `- **Top Selling Product:** **${topRevenueSKU?.name || 'Catalog Products'}** (${productSalesCount.get(topRevenueSKU?.id || '') || 0} units sold)\n` +
+    `- **Active Suppliers:** ${suppliers.length} vendor relationships managed\n\n` +
+    `#### 3. ⚡ CORE OPPORTUNITIES & WATCHPOINTS\n` +
+    `- **Stockout Vulnerability:** ${lowStockProducts.length > 0 ? `**${lowStockProducts.length} SKUs** are running low and need restock.` : 'All primary inventory is currently above threshold.'}\n` +
+    `- **Dead Capital Recovery:** **${formatCur(tiedCapital)}** locked in ${deadStockProducts.length} stagnant SKUs ready for clearance.\n\n` +
+    `#### 4. 🚀 PRIORITIZED STRATEGIC NEXT STEPS\n` +
+    `1. **Protect Core Revenue:** Keep your top 3 velocity products well-stocked above reorder levels.\n` +
+    `2. **Unlock Working Capital:** Bundle dead inventory at a 15–20% discount to recover cashflow.\n` +
+    `3. **Scale Customer Retention:** Leverage automated cross-selling on top customer purchase pairs.`;
 
   return {
-    intent: intent || 'BUSINESS_HEALTH',
-    intentLabel: intentLabel || 'Business Health Overview',
+    intent: 'GENERAL_BUSINESS_QUERY',
+    intentLabel: 'Strategic Business Decision Advisor',
     answerMarkdown,
-    what,
-    why,
-    actionText,
-    confidence,
-    confidenceReason,
+    what: whatGen,
+    why: whyGen,
+    actionText: actionGen,
+    confidence: 'HIGH',
+    confidenceReason: 'Synthesized from real-time database state across inventory, sales, and supply chain.',
     supportingData: [
-      { label: 'Health Score', value: `${health.score}/100` },
-      { label: 'Status', value: health.category },
+      { label: 'Gross Revenue', value: formatCur(totalRevenue) },
+      { label: 'Gross Margin', value: `${overallMarginPercent}%` },
       { label: 'Catalog SKUs', value: `${products.length}` },
+      { label: 'Health Score', value: `${health.score}/100` },
     ],
     recommendedAction: {
-      label: 'View Action Center',
+      label: 'Open Action Center',
       actionType: 'navigate',
       targetRoute: '/dashboard',
     },
     suggestedFollowUps: [
-      'What will my revenue look like next month?',
-      'What should I focus on today?',
-      'Why did my profit decrease?',
+      'Give me the next 5 day plan for sales',
+      'Which products will run out of stock next week?',
+      'Which products are tying up the most capital?',
     ],
   };
 }

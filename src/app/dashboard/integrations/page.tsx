@@ -212,6 +212,15 @@ export default function IntegrationsPage() {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [isFolderCreating, setIsFolderCreating] = useState(false);
   const [syncState, setSyncState] = useState<'idle' | 'scanning' | 'syncing' | 'success'>('idle');
+  const [syncProgress, setSyncProgress] = useState<{
+    stage: string;
+    percent: number;
+    fileName?: string;
+    recordsCount?: number;
+  }>({
+    stage: 'Connecting to Google Drive...',
+    percent: 15,
+  });
   const [isSyncingFileId, setIsSyncingFileId] = useState<string | null>(null);
   const [folderSearchTerm, setFolderSearchTerm] = useState('');
   const [folderSection, setFolderSection] = useState<'all' | 'mydrive' | 'shared' | 'starred' | 'recent'>('all');
@@ -601,6 +610,12 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
   ) => {
     if (!user) return;
     try {
+      setSyncProgress({
+        stage: `Parsing "${fileName}"...`,
+        percent: 25,
+        fileName,
+      });
+
       const results = Papa.parse(csvContent, { header: true, skipEmptyLines: true });
       const rawRows = results.data as Record<string, any>[];
       const headers = Object.keys(rawRows[0] || {});
@@ -619,9 +634,15 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
       }
 
       const safeFieldMapping = fieldMapping || {};
-
       const existingSkus = new Set(products.map(p => p.sku?.toUpperCase()));
       const seenSkusInFile = new Set<string>();
+
+      setSyncProgress({
+        stage: `Normalizing ${rawRows.length.toLocaleString()} spreadsheet records...`,
+        percent: 45,
+        fileName,
+        recordsCount: rawRows.length,
+      });
 
       // Normalize Rows using the matched mapping profile
       const normalizedItems = rawRows.map((rawRow, idx) => {
@@ -666,6 +687,8 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
             paymentMode,
             date,
             sku: obj.sku || `SKU-${idx + 1}`,
+            category: obj.category || 'General',
+            supplier: obj.supplier || 'Google Drive Vendor',
           };
         } else if (fileType === 'INVENTORY_MASTER' || fileType === 'WAREHOUSE_STOCK') {
           const name = obj.name || obj.productName || '';
@@ -689,7 +712,7 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
           const name = obj.name || obj.productName || `Item #${idx + 1}`;
           const price = parseFloat((obj.price || '0').replace(/[^0-9.]/g, '')) || 0;
           const qty = parseInt((obj.quantity || '1').replace(/[^0-9]/g, ''), 10) || 1;
-          obj.parsed = { name, price, qty, sku: obj.sku || `ITEM-${idx + 1}` };
+          obj.parsed = { name, price, qty, sku: obj.sku || `ITEM-${idx + 1}`, category: obj.category || 'General', supplier: obj.supplier || 'Vendor' };
         }
 
         obj.isValid = obj.errors.length === 0;
@@ -701,12 +724,19 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
         throw new Error('No valid records found in spreadsheet.');
       }
 
+      setSyncProgress({
+        stage: `Registering categories & suppliers...`,
+        percent: 60,
+        fileName,
+        recordsCount: validRows.length,
+      });
+
       // Auto-create Categories
       const fileCategories = Array.from(new Set(validRows.map(r => r.parsed.category || 'General').filter(Boolean)));
       const existingCatMap = new Map(categories.map(c => [c.name.toLowerCase(), c.id]));
       for (const catName of fileCategories) {
         if (!existingCatMap.has(catName.toLowerCase())) {
-          await addCategory({ name: catName, description: 'Created during AI business import' });
+          await addCategory({ name: catName, description: 'Created during AI business import' }).catch(() => {});
         }
       }
 
@@ -721,29 +751,43 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
             email: `orders@${supName.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`,
             phone: '+91 90000 00000',
             address: 'Imported via AI Engine',
-          });
+          }).catch(() => {});
         }
       }
 
-      // Ingest Products & Transactions to drive live dashboard, catalog table, health scores, and charts
-      const productsToImport = validRows.map(r => ({
-        name: r.parsed.name,
-        sku: r.parsed.sku || `SKU-${r.parsed.name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10)}`,
-        description: r.parsed.description || `Imported ${r.parsed.name}`,
-        categoryId: existingCatMap.get((r.parsed.category || '').toLowerCase()) || 'cat-general',
-        category: r.parsed.category || 'General',
-        supplier: r.parsed.supplier || 'Google Drive Vendor',
-        supplierId: existingSupMap.get((r.parsed.supplier || '').toLowerCase()) || '',
-        price: r.parsed.price || 499,
-        costPrice: r.parsed.costPrice && r.parsed.costPrice > 0 ? r.parsed.costPrice : Math.round((r.parsed.price || 499) * 0.6),
-        stock: r.parsed.stock !== undefined && r.parsed.stock > 0 ? r.parsed.stock : 25,
-        minStock: 5,
-        maxStock: Math.max(100, (r.parsed.stock || 25) * 2),
-        unit: r.parsed.unit || 'Piece',
-        status: 'Active' as const,
-        averageDailySales: 1.5,
-        leadTimeDays: 7,
-      }));
+      // Group unique products by SKU / Name to avoid writing thousands of redundant duplicate product documents
+      const uniqueProductsMap = new Map<string, any>();
+      validRows.forEach(r => {
+        const skuKey = (r.parsed.sku || r.parsed.name || '').toUpperCase();
+        if (!uniqueProductsMap.has(skuKey)) {
+          uniqueProductsMap.set(skuKey, {
+            name: r.parsed.name,
+            sku: r.parsed.sku || `SKU-${r.parsed.name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10)}`,
+            description: r.parsed.description || `Imported ${r.parsed.name}`,
+            categoryId: existingCatMap.get((r.parsed.category || '').toLowerCase()) || 'cat-general',
+            category: r.parsed.category || 'General',
+            supplier: r.parsed.supplier || 'Google Drive Vendor',
+            supplierId: existingSupMap.get((r.parsed.supplier || '').toLowerCase()) || '',
+            price: r.parsed.price || 499,
+            costPrice: r.parsed.costPrice && r.parsed.costPrice > 0 ? r.parsed.costPrice : Math.round((r.parsed.price || 499) * 0.6),
+            stock: r.parsed.stock !== undefined && r.parsed.stock > 0 ? r.parsed.stock : 25,
+            minStock: 5,
+            maxStock: Math.max(100, (r.parsed.stock || 25) * 2),
+            unit: r.parsed.unit || 'Piece',
+            status: 'Active' as const,
+            averageDailySales: 1.5,
+            leadTimeDays: 7,
+          });
+        }
+      });
+      const productsToImport = Array.from(uniqueProductsMap.values());
+
+      setSyncProgress({
+        stage: `Saving ${productsToImport.length} catalog items and ${validRows.length} transactions...`,
+        percent: 75,
+        fileName,
+        recordsCount: validRows.length,
+      });
 
       await bulkAddProducts(productsToImport, true); // overwriteStock = true
 
@@ -771,6 +815,13 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
       });
 
       await bulkAddTransactions(transactionsToImport);
+
+      setSyncProgress({
+        stage: 'Updating business intelligence and health score...',
+        percent: 92,
+        fileName,
+        recordsCount: validRows.length,
+      });
 
       // Track Google Drive file and sync history via DataContext
       await recordSyncSuccess(
@@ -805,9 +856,15 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
         window.dispatchEvent(new CustomEvent('analyzeup_audit_logged'));
         window.dispatchEvent(new CustomEvent('analyzeup_tasks_updated'));
         window.dispatchEvent(new CustomEvent('analyzeup_drive_synced', { detail: { fileName, rowsCount: validRows.length } }));
-        // Clear completed task cache so AI Action Center generates fresh insights on new synced data
         localStorage.removeItem('analyzeup_completed_tasks');
       }
+
+      setSyncProgress({
+        stage: 'Sync Complete! 🎉',
+        percent: 100,
+        fileName,
+        recordsCount: validRows.length,
+      });
 
       if (showNotification) {
         toast({
@@ -820,11 +877,11 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
         scanDriveFolder();
       }
     } catch (err: any) {
-      console.error(err);
+      console.error('runSilentIngestion error:', err);
       if (showNotification) {
         toast({
           variant: 'destructive',
-          title: 'Sync Ingestion Failed',
+          title: 'Sync Ingestion Notice',
           description: err?.message || 'Failed to normalize data.',
         });
       }
@@ -836,10 +893,27 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
     if (!user) return;
     setIsSyncingFileId(file.id);
     setSyncState('syncing');
+    setSyncProgress({
+      stage: `Connecting to Google Drive for "${file.name}"...`,
+      percent: 15,
+      fileName: file.name,
+    });
+
+    // Safety watchdog timer: automatically close modal after 30 seconds if any edge case stalls
+    const watchdogTimer = setTimeout(() => {
+      setSyncState('idle');
+      setIsSyncingFileId(null);
+    }, 30000);
 
     try {
       const token = await getClientDriveToken(driveConnection, user, firestore);
       if (!token) throw new Error('Could not obtain valid Google Drive token');
+
+      setSyncProgress({
+        stage: `Downloading "${file.name}" from Google Drive...`,
+        percent: 30,
+        fileName: file.name,
+      });
 
       const res = await fetch('/api/drive/sync', {
         method: 'POST',
@@ -855,6 +929,12 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Failed to download file content.');
       }
+
+      setSyncProgress({
+        stage: `Processing spreadsheet content...`,
+        percent: 45,
+        fileName: file.name,
+      });
 
       // Parse CSV rows
       const results = Papa.parse(data.csvContent, { header: true, skipEmptyLines: true });
@@ -879,6 +959,13 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
       }
 
       if (matchedProfile) {
+        setSyncProgress({
+          stage: `Auto-mapping ${rawRows.length} records...`,
+          percent: 55,
+          fileName: file.name,
+          recordsCount: rawRows.length,
+        });
+
         // Auto Sync: Run direct ingestion silently on the client side
         await runSilentIngestion(file.id, file.name, data.csvContent, matchedProfile, !isBackground, !isBackground);
         
@@ -924,6 +1011,7 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
         }
       }
     } catch (err: any) {
+      console.error('syncFile error:', err);
       if (!isBackground) {
         toast({
           variant: 'destructive',
@@ -932,6 +1020,7 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
         });
       }
     } finally {
+      clearTimeout(watchdogTimer);
       setIsSyncingFileId(null);
       setSyncState('idle');
     }
@@ -2024,23 +2113,49 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
       </Dialog>
 
       {/* Dialog 3: Silent Sync loading screen */}
-      <Dialog open={syncState === 'syncing'} onOpenChange={() => {}}>
-        <DialogContent hideCloseButton className="max-w-sm bg-zinc-950/95 border border-blue-500/30 rounded-3xl ios-glass text-white shadow-2xl p-7 flex flex-col items-center justify-center space-y-4">
+      <Dialog open={syncState === 'syncing'} onOpenChange={(open) => { if (!open) setSyncState('idle'); }}>
+        <DialogContent className="max-w-md bg-zinc-950/95 border border-blue-500/30 rounded-3xl ios-glass text-white shadow-2xl p-7 flex flex-col items-center justify-center space-y-4">
           <div className="relative flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400">
             <Loader2 className="w-7 h-7 text-blue-400 animate-spin" />
             <div className="absolute inset-0 rounded-2xl bg-blue-500/10 animate-ping opacity-30 pointer-events-none" />
           </div>
-          <DialogHeader className="items-center text-center space-y-1.5">
-            <DialogTitle className="text-base font-extrabold text-zinc-100">
-              Syncing File Data
-            </DialogTitle>
+          <DialogHeader className="items-center text-center space-y-1.5 w-full">
+            <div className="flex items-center justify-center gap-2">
+              <DialogTitle className="text-base font-extrabold text-zinc-100">
+                Syncing File Data
+              </DialogTitle>
+              {syncProgress.recordsCount ? (
+                <Badge className="bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[10px] px-2 py-0.5 font-bold">
+                  {syncProgress.recordsCount.toLocaleString()} Rows
+                </Badge>
+              ) : null}
+            </div>
             <DialogDescription className="text-xs text-zinc-400 text-center max-w-xs leading-relaxed font-medium">
-              Processing spreadsheet records and updating business intelligence...
+              {syncProgress.stage || 'Processing spreadsheet records and updating business intelligence...'}
             </DialogDescription>
           </DialogHeader>
-          <div className="w-full bg-zinc-900 h-1.5 rounded-full overflow-hidden border border-zinc-800">
-            <div className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-400 animate-pulse w-3/4 rounded-full" />
+          
+          <div className="w-full space-y-2">
+            <div className="flex items-center justify-between text-[11px] font-semibold text-zinc-400">
+              <span className="truncate max-w-[220px] text-zinc-300">{syncProgress.fileName || 'Google Drive File'}</span>
+              <span className="text-emerald-400 font-bold font-mono">{syncProgress.percent}%</span>
+            </div>
+            <div className="w-full bg-zinc-900 h-2 rounded-full overflow-hidden border border-zinc-800 p-0.5">
+              <div
+                className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-400 rounded-full transition-all duration-300"
+                style={{ width: `${Math.max(8, syncProgress.percent)}%` }}
+              />
+            </div>
           </div>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSyncState('idle')}
+            className="text-xs text-zinc-400 hover:text-white hover:bg-zinc-900/60 rounded-xl h-8 px-4 mt-1 border border-zinc-800/60"
+          >
+            Run in Background
+          </Button>
         </DialogContent>
       </Dialog>
 

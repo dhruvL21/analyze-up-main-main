@@ -159,6 +159,9 @@ export default function SettingsPage() {
       return;
     }
     setIsResetting(true);
+    // Let React paint the progress state before starting Firestore work so the
+    // confirmation dialog never looks like a frozen browser tab.
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
     try {
       await clearAllData();
       setResetDialogOpen(false);

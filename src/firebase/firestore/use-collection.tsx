@@ -6,8 +6,6 @@ import {
   type Query,
 } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
-import { errorEmitter } from '../error-emitter';
-import { FirestorePermissionError } from '../errors';
 import { serializePlainData } from '@/lib/utils';
 
 type UseCollectionState<T> = {
@@ -18,7 +16,7 @@ type UseCollectionState<T> = {
 export function useCollection<T>(ref: Query | CollectionReference | null) {
   const [state, setState] = useState<UseCollectionState<T>>({
     data: null,
-    loading: true,
+    loading: !!ref,
   });
 
   const path = ref && 'path' in ref ? (ref as CollectionReference).path : undefined;
@@ -26,6 +24,7 @@ export function useCollection<T>(ref: Query | CollectionReference | null) {
 
   useEffect(() => {
     if (!ref) {
+      setState({ data: null, loading: false });
       return;
     }
 
@@ -38,10 +37,6 @@ export function useCollection<T>(ref: Query | CollectionReference | null) {
       (snapshot) => {
         const changes = snapshot.docChanges();
 
-        // Firestore sends the full collection in every snapshot. Rebuilding and
-        // deeply serializing all records on every import batch blocks the main
-        // thread for large datasets. Apply only changed documents to the local
-        // snapshot cache; the initial snapshot still contains every document.
         changes.forEach((change) => {
           if (change.type === 'removed') {
             recordsRef.current.delete(change.doc.id);
@@ -59,17 +54,12 @@ export function useCollection<T>(ref: Query | CollectionReference | null) {
         }
       },
       (serverError) => {
-        console.error('Error listening to collection:', serverError);
-        const permissionError = new FirestorePermissionError({
-          path: path || 'query',
-          operation: 'list',
-        });
-        errorEmitter.emit('permission-error', permissionError);
+        console.warn('Firestore collection listener notice:', serverError.message);
         setState({ data: null, loading: false });
       }
     );
     return () => unsubscribe();
-  }, [ref, path]);
+  }, [path]);
 
   return state;
 }

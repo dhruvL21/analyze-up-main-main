@@ -15,9 +15,10 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import Link from 'next/link';
-import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/firebase';
+import { useEffect } from 'react';
+import { useAuth, useUser } from '@/firebase';
 import { signUp } from '@/firebase/auth/auth-service';
+import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import { AnalyzeUpIcon } from '@/components/analyze-up-icon';
 
@@ -25,10 +26,17 @@ export default function RegisterPage() {
   const router = useRouter();
   const { toast } = useToast();
   const auth = useAuth();
+  const { user, loading: userLoading } = useUser();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (user && !userLoading) {
+      router.replace('/dashboard');
+    }
+  }, [user, userLoading, router]);
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
