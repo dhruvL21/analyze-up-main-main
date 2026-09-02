@@ -15,6 +15,15 @@ export function executeDeterministicAnalytics(
   returns: ProductReturn[] = [],
   profile?: BusinessProfile | null
 ): AnalyticsResult | null {
+  if (
+    intent === 'GREETING' ||
+    intent === 'CAPABILITIES' ||
+    intent === 'CONVERSATIONAL' ||
+    intent === 'GENERAL_KNOWLEDGE'
+  ) {
+    return null;
+  }
+
   const currency = '₹';
   const normQuery = query.toLowerCase();
 

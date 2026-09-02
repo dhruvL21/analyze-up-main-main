@@ -2130,7 +2130,7 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
                 </Badge>
               ) : null}
             </div>
-            <DialogDescription className="text-xs text-zinc-400 text-center max-w-xs leading-relaxed font-medium">
+            <DialogDescription className="text-xs text-zinc-400 text-center w-full max-w-sm mx-auto leading-relaxed font-medium break-words [overflow-wrap:anywhere]">
               {syncProgress.stage || 'Processing spreadsheet records and updating business intelligence...'}
             </DialogDescription>
           </DialogHeader>

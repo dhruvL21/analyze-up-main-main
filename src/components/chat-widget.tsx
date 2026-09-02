@@ -251,7 +251,7 @@ export function ChatWidget() {
                     <div className="h-7 w-7 rounded-xl bg-primary/10 text-primary border border-primary/20 flex items-center justify-center shrink-0">
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     </div>
-                    <span>Searching vector knowledge base & calculating verified metrics...</span>
+                    <span>AnalyzeUp AI is thinking...</span>
                   </div>
                 )}
               </div>

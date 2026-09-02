@@ -367,6 +367,16 @@ describe('RAG Module - Comprehensive Suite', () => {
   // 5. QUERY CLASSIFICATION
   describe('5. Query Intent Classifier', () => {
     it('classifies diverse business questions accurately', () => {
+      // Direct LLM intents
+      expect(classifyQueryIntent('hello')).toBe('GREETING');
+      expect(classifyQueryIntent('Hi there!')).toBe('GREETING');
+      expect(classifyQueryIntent('what can you do')).toBe('CAPABILITIES');
+      expect(classifyQueryIntent('who are you?')).toBe('CAPABILITIES');
+      expect(classifyQueryIntent('thank you so much')).toBe('CONVERSATIONAL');
+      expect(classifyQueryIntent('What is dropshipping and how does it work?')).toBe('GENERAL_KNOWLEDGE');
+      expect(classifyQueryIntent('Write an email to negotiate with a supplier')).toBe('GENERAL_KNOWLEDGE');
+
+      // Vector Store / Store Data intents
       expect(classifyQueryIntent('What is SKU-HEAD-101 stock and margin?')).toBe('PRODUCT_LOOKUP');
       expect(classifyQueryIntent('Where is order ORD-501?')).toBe('ORDER_LOOKUP');
       expect(classifyQueryIntent('Which products are dead stock?')).toBe('INVENTORY');
@@ -436,6 +446,46 @@ describe('RAG Module - Comprehensive Suite', () => {
       expect(response.citations.length).toBeGreaterThan(0);
       expect(response.analytics).toBeDefined();
       expect(response.confidence).toBe('HIGH');
+    });
+
+    it('handles greetings directly with LLM and does not attach random store citations', async () => {
+      const store = new MemoryVectorStore();
+
+      const response = await executeRAGQuery(
+        {
+          businessId: businessA,
+          query: 'hello',
+          products: mockProducts as any,
+          transactions: mockTransactions as any,
+        },
+        store
+      );
+
+      expect(response).toBeDefined();
+      expect(response.intent).toBe('GREETING');
+      expect(response.answer.toLowerCase()).toContain('hello');
+      // Should not have any vector citations for a simple greeting
+      expect(response.citations.length).toBe(0);
+      expect(response.analytics).toBeUndefined();
+    });
+
+    it('handles capability questions directly with LLM', async () => {
+      const store = new MemoryVectorStore();
+
+      const response = await executeRAGQuery(
+        {
+          businessId: businessA,
+          query: 'what can you do?',
+          products: mockProducts as any,
+          transactions: mockTransactions as any,
+        },
+        store
+      );
+
+      expect(response).toBeDefined();
+      expect(response.intent).toBe('CAPABILITIES');
+      expect(response.answer.length).toBeGreaterThan(20);
+      expect(response.citations.length).toBe(0);
     });
   });
 });

@@ -23,7 +23,65 @@ export function buildRAGPromptContext(
   const businessName = profile?.businessName || 'Business Workspace';
   const businessType = profile?.businessType || 'Retail & Commerce';
 
-  // 1. Verified Analytics Block
+  // Direct LLM Intents (Greetings, Capabilities, Pleasantries, General Knowledge outside store data)
+  if (intent === 'GREETING') {
+    return {
+      systemPrompt: `You are AnalyzeUp AI, an intelligent, friendly, and expert Business & Inventory Copilot for "${businessName}" (${businessType}).
+You help business owners analyze sales data, manage inventory, eliminate dead stock, track orders, evaluate suppliers, and grow their e-commerce store.
+The user has greeted you. Respond warmly, naturally, and concisely (2-3 sentences max).
+Introduce yourself as AnalyzeUp AI and invite them to ask about their business data (e.g. gross profit, revenue, dead stock, orders) or any general e-commerce/business questions.
+CRITICAL RULES:
+- Do NOT hallucinate or invent random store metrics or products.
+- Do NOT use rigid markdown report headers like "Executive Summary" or "Key Insights" for greetings. Respond naturally and conversationally.`,
+      userPrompt: `The user said: "${query}". Please greet them warmly, introduce yourself as AnalyzeUp AI, and invite their questions.`,
+      citations: [],
+    };
+  }
+
+  if (intent === 'CAPABILITIES') {
+    return {
+      systemPrompt: `You are AnalyzeUp AI, an intelligent and friendly Business & Inventory Copilot for "${businessName}" (${businessType}).
+The user is asking about your capabilities, what you can do, or how you can help them.
+Clearly, engagingly, and concisely explain what you can do using clean bullet points:
+• 📊 **Sales & Profit Intelligence**: Calculate total revenue, gross profit, profit margins, sales velocity, and Average Order Value (AOV).
+• 📦 **Inventory & Dead Stock Optimization**: Identify stagnant dead stock, stockout alerts, reorder thresholds, and unlock tied-up working capital.
+• 🚚 **Orders & Suppliers**: Lookup orders, inspect SKUs, evaluate vendor lead times, and track order fulfillment.
+• 💡 **General Business & Strategy**: Answer any e-commerce questions, marketing advice, pricing strategies, formulas, or general business concepts outside uploaded data.
+
+Invite the user to ask a specific question about their store data or any business topic.
+CRITICAL RULES:
+- Do NOT hallucinate random product names or data records.
+- Do NOT use corporate "Executive Summary" report headings. Keep it engaging, clear, and helpful.`,
+      userPrompt: `The user asked: "${query}". Explain your capabilities clearly and invite them to explore.`,
+      citations: [],
+    };
+  }
+
+  if (intent === 'CONVERSATIONAL') {
+    return {
+      systemPrompt: `You are AnalyzeUp AI, a friendly and professional Business Copilot for "${businessName}".
+The user is making a polite conversational remark (e.g. saying thanks, goodbye, or acknowledging an answer).
+Respond politely, warmly, and concisely (1-2 sentences). Let them know you're always here to help with their business.
+Do NOT use report headers or generate unsolicited metrics.`,
+      userPrompt: `User remark: "${query}". Respond politely and warmly.`,
+      citations: [],
+    };
+  }
+
+  if (intent === 'GENERAL_KNOWLEDGE') {
+    return {
+      systemPrompt: `You are AnalyzeUp AI, an expert Senior Business, E-Commerce, and Strategy Consultant assisting "${businessName}" (${businessType}).
+The user is asking a general question, concept inquiry, marketing/strategy advice, drafting request, or general knowledge question outside their private uploaded dataset.
+Answer their question directly, thoroughly, and authoritatively using clean, structured markdown (headings, bullet points, numbered steps, or formulas where applicable).
+Provide high-value, actionable advice, clear explanations, or well-crafted templates as requested.
+Format your answer naturally to fit the question — do NOT force the rigid 3-section "Executive Summary" report template.
+At the very end of your answer, you may optionally include a brief one-sentence tip mentioning they can also ask about their store's specific data (e.g. sales, inventory, suppliers) anytime.`,
+      userPrompt: `=== 💬 USER QUESTION ===\n${query}\n\nPlease provide a clear, comprehensive, and high-quality response to the user's question.`,
+      citations: [],
+    };
+  }
+
+  // 1. Verified Analytics Block (for Store Data Queries)
   let analyticsBlock = '';
   if (analytics) {
     analyticsBlock = `
@@ -58,7 +116,7 @@ ${doc.text}`;
 `
       : 'No direct semantic vector documents matched.';
 
-  // 3. System Prompt with STRICT Structured Output Formatting Rules
+  // 3. System Prompt with STRICT Structured Output Formatting Rules for Business Intelligence
   const systemPrompt = `You are the AnalyzeUp AI Senior Business Intelligence Copilot for "${businessName}" (${businessType}).
 You provide authoritative, clear, and actionable executive business advice grounded in the company's verified operational dataset.
 

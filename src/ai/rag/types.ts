@@ -42,6 +42,10 @@ export interface Citation {
 }
 
 export type QueryIntent =
+  | 'GREETING'
+  | 'CAPABILITIES'
+  | 'CONVERSATIONAL'
+  | 'GENERAL_KNOWLEDGE'
   | 'PRODUCT_LOOKUP'
   | 'ORDER_LOOKUP'
   | 'INVENTORY'
