@@ -54,6 +54,7 @@ export interface Product {
   barcode?: string;
   imageUrl?: string;
   status?: string;
+  source?: 'CSV' | 'SHOPIFY' | 'GDRIVE' | 'MANUAL' | string;
   customAttributes?: Record<string, string>;
 }
 
@@ -117,6 +118,8 @@ export interface BusinessProfile {
   shopifyStoreUrl?: string;
   shopifyStoreName?: string;
   shopifyStatus?: string;
+  shopifyAccessToken?: string;
+  shopifyLastSyncedAt?: string;
   language?: string;
   logoUrl?: string;
   isOnboardingCompleted?: boolean;

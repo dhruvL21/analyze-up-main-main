@@ -86,3 +86,124 @@ export function parseShopifyOrders(shopifyOrders: any[]): ParsedTabularData {
     delimiter: ',',
   };
 }
+
+import type { Product, Transaction } from '@/lib/types';
+
+/**
+ * Converts Shopify raw products into AnalyzeUp canonical Product objects.
+ */
+export function convertShopifyToCanonicalProducts(shopifyProducts: any[]): Product[] {
+  const products: Product[] = [];
+
+  shopifyProducts.forEach((p) => {
+    const title = p.title || p.name || 'Untitled Product';
+    const category = p.product_type || p.category || 'General';
+    const vendor = p.vendor || p.supplier || 'Shopify Vendor';
+
+    const variants =
+      p.variants && p.variants.length > 0
+        ? p.variants
+        : [
+            {
+              id: p.id,
+              price: p.price || 0,
+              sku: p.sku || `SKU-${p.id}`,
+              inventory_quantity: p.inventory_quantity || 0,
+            },
+          ];
+
+    variants.forEach((v: any) => {
+      const price = Number(v.price) || 0;
+      const costPrice = Number(v.cost) || Math.round(price * 0.6);
+      const stock = Math.max(0, Number(v.inventory_quantity !== undefined ? v.inventory_quantity : 0));
+      const sku = String(v.sku || (v.barcode ? v.barcode : `SKU-${p.id}-${v.id || '0'}`));
+      const name = variants.length > 1 && v.title ? `${title} (${v.title})` : title;
+
+      products.push({
+        id: `shopify_${p.id}_${v.id || 'default'}`,
+        name,
+        sku,
+        category,
+        price,
+        costPrice,
+        stock,
+        reorderPoint: Math.max(5, Math.round(stock * 0.2)),
+        supplier: vendor,
+        source: 'SHOPIFY',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    });
+  });
+
+  return products;
+}
+
+/**
+ * Converts Shopify raw orders into AnalyzeUp canonical Transaction objects.
+ */
+export function convertShopifyToCanonicalTransactions(shopifyOrders: any[]): Transaction[] {
+  const transactions: Transaction[] = [];
+
+  shopifyOrders.forEach((order) => {
+    const orderId = String(order.name || order.order_number || `ORD-${order.id}`);
+    const dateStr = order.created_at
+      ? order.created_at.split('T')[0]
+      : new Date().toISOString().split('T')[0];
+
+    const customer = order.customer
+      ? `${order.customer.first_name || ''} ${order.customer.last_name || ''}`.trim() || 'Online Customer'
+      : 'Retail Customer';
+
+    const paymentMethod =
+      order.gateway ||
+      (order.payment_gateway_names && order.payment_gateway_names.length > 0
+        ? order.payment_gateway_names[0]
+        : 'Shopify Payments');
+
+    const lineItems =
+      order.line_items && order.line_items.length > 0
+        ? order.line_items
+        : [
+            {
+              id: order.id,
+              title: 'Order Item',
+              quantity: 1,
+              price: order.total_price || 0,
+              sku: '',
+            },
+          ];
+
+    lineItems.forEach((item: any, idx: number) => {
+      const qty = Math.max(1, Number(item.quantity || 1));
+      const unitPrice = Number(item.price || 0);
+      const totalRevenue = unitPrice * qty;
+      const costPerUnit = Math.round(unitPrice * 0.6);
+      const totalCost = costPerUnit * qty;
+
+      transactions.push({
+        id: `tx_shopify_${order.id}_${item.id || idx}`,
+        productId: String(item.product_id || item.id || `shopify_prod_${idx}`),
+        orderNumber: orderId,
+        transactionDate: dateStr,
+        productName: item.title || item.name || 'Order Item',
+        sku: item.sku || '',
+        type: 'Sale',
+        quantity: qty,
+        price: unitPrice,
+        unitPrice,
+        totalRevenue,
+        costPrice: costPerUnit,
+        costPerUnit,
+        totalCost,
+        customerName: customer,
+        paymentMethod,
+        source: 'SHOPIFY',
+        createdAt: dateStr,
+        updatedAt: dateStr,
+      });
+    });
+  });
+
+  return transactions;
+}

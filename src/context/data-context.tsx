@@ -1257,6 +1257,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         shopifyStoreUrl: '',
         shopifyStoreName: '',
         shopifyStatus: 'Disconnected',
+        shopifyAccessToken: '',
+        shopifyLastSyncedAt: '',
         isOnboardingCompleted: false,
         updatedAt: new Date().toISOString(),
       };
@@ -1271,6 +1273,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
           shopifyStoreUrl: profileReset.shopifyStoreUrl,
           shopifyStoreName: profileReset.shopifyStoreName,
           shopifyStatus: profileReset.shopifyStatus,
+          shopifyAccessToken: undefined,
+          shopifyLastSyncedAt: undefined,
           isOnboardingCompleted: profileReset.isOnboardingCompleted,
           updatedAt: profileReset.updatedAt,
         };

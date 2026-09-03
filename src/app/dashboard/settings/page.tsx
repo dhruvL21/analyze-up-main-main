@@ -48,6 +48,7 @@ import { useUser, useAuth } from "@/firebase";
 import { signOut, updateUserPassword } from "@/firebase/auth/auth-service";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
+import { cn } from "@/lib/utils";
 
 export default function SettingsPage() {
   const { toast } = useToast();
@@ -149,12 +150,14 @@ export default function SettingsPage() {
   const [resetConfirmInput, setResetConfirmInput] = useState("");
   const [isResetting, setIsResetting] = useState(false);
 
+  const isConfirmationMatched = resetConfirmInput.trim() === "RESET DATA";
+
   const handleResetWorkspace = async () => {
-    if (resetConfirmInput.trim() !== "RESET DATA") {
+    if (!isConfirmationMatched) {
       toast({
         variant: "destructive",
         title: "Confirmation Mismatch",
-        description: 'Please type "RESET DATA" in exact capital letters to confirm workspace reset.',
+        description: 'Please type "RESET DATA" to confirm workspace reset.',
       });
       return;
     }
@@ -613,27 +616,16 @@ export default function SettingsPage() {
                   </DialogHeader>
 
                   <div className="space-y-3 py-2">
-                    <div className="rounded-2xl bg-rose-500/10 border border-rose-500/25 p-3.5 space-y-1.5">
-                      <div className="text-xs font-semibold text-rose-400">
-                        Type confirmation text:
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-sm font-extrabold text-rose-400 bg-rose-500/20 px-3 py-1 rounded-xl border border-rose-500/40 select-all tracking-wider">
-                          RESET DATA
-                        </span>
-                        <span className="text-[11px] text-muted-foreground">(type in CAPITAL letters only)</span>
-                      </div>
-                    </div>
+                    <p className="text-sm font-medium text-foreground">
+                      To confirm, type <span className="font-semibold text-foreground select-all">&quot;RESET DATA&quot;</span> in the box below
+                    </p>
 
-                    <div className="space-y-1.5">
-                      <Input
-                        value={resetConfirmInput}
-                        onChange={(e) => setResetConfirmInput(e.target.value)}
-                        placeholder="Type RESET DATA in CAPITAL letters"
-                        className="rounded-xl text-sm font-medium border-rose-500/40 focus-visible:ring-rose-500/40 bg-secondary/60 h-11 px-3.5"
-                        autoFocus
-                      />
-                    </div>
+                    <Input
+                      value={resetConfirmInput}
+                      onChange={(e) => setResetConfirmInput(e.target.value)}
+                      className="rounded-xl text-sm font-medium border-rose-500/60 focus-visible:ring-rose-500/40 focus-visible:border-rose-500 bg-secondary/50 dark:bg-zinc-900/60 h-11 px-3.5"
+                      autoFocus
+                    />
                   </div>
 
                   <DialogFooter className="flex flex-row items-center justify-end gap-2">
@@ -651,8 +643,13 @@ export default function SettingsPage() {
                     <Button
                       variant="destructive"
                       onClick={handleResetWorkspace}
-                      disabled={resetConfirmInput.trim() !== "RESET DATA" || isResetting}
-                      className="rounded-xl text-xs bg-rose-600 hover:bg-rose-700 font-bold gap-1.5 disabled:opacity-50"
+                      disabled={!isConfirmationMatched || isResetting}
+                      className={cn(
+                        "rounded-xl text-xs font-bold gap-1.5 transition-all",
+                        !isConfirmationMatched
+                          ? "bg-rose-500/10 text-rose-400/50 border border-rose-500/20 hover:bg-rose-500/10 cursor-not-allowed opacity-60"
+                          : "bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/25"
+                      )}
                     >
                       {isResetting ? (
                         <>
