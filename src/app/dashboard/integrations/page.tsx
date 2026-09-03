@@ -32,6 +32,7 @@ import {
   isAutoSyncDue,
   formatTime12h,
   formatLastSyncTime,
+  autoDetectMapping,
 } from '@/lib/drive-helper';
 import { ImportDialog } from '@/components/import-dialog';
 import { findMatchingImportProfile } from '@/lib/import-profile-store';
@@ -169,12 +170,14 @@ export default function IntegrationsPage() {
     updateBusinessProfile,
     setShowShopifyModal,
     products,
+    transactions,
     categories,
     suppliers,
     addCategory,
     addSupplier,
     bulkAddProducts,
     bulkAddTransactions,
+    vectorizeAndSyncAiChatbot,
     subscribeGoogleDriveConnection,
     getGoogleDriveFiles,
     getSyncHistory,
@@ -607,57 +610,7 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
     }
   };
 
-  // Universal Heuristic Auto-Detection for spreadsheet columns
-  const autoDetectMapping = (headers: string[]): { fileType: string; mapping: Record<string, string> } | null => {
-    const lower = headers.map(h => h.toLowerCase().trim());
 
-    const hasOrder = lower.some(h => h.includes('order') || h.includes('invoice') || h.includes('bill') || h.includes('trans'));
-    const hasCust = lower.some(h => h.includes('cust') || h.includes('client') || h.includes('buyer'));
-    const hasQty = lower.some(h => h.includes('qty') || h.includes('quantity') || h.includes('units') || h.includes('count'));
-    const hasPrice = lower.some(h => h.includes('price') || h.includes('amount') || h.includes('rate') || h.includes('total') || h.includes('revenue') || h.includes('mrp'));
-    const hasProd = lower.some(h => h.includes('product') || h.includes('item') || h.includes('name') || h.includes('title') || h.includes('desc'));
-
-    if ((hasOrder || hasCust) && (hasProd || hasQty || hasPrice)) {
-      const mapping: Record<string, string> = {};
-      headers.forEach(h => {
-        const l = h.toLowerCase().trim();
-        if (l.includes('order') || l.includes('invoice') || l.includes('bill')) mapping[h] = 'orderNumber';
-        else if (l.includes('date') || l.includes('time')) mapping[h] = 'orderDate';
-        else if (l.includes('cust') || l.includes('client') || l.includes('buyer')) mapping[h] = 'customerName';
-        else if (l.includes('city') || l.includes('loc') || l.includes('state')) mapping[h] = 'city';
-        else if (l.includes('product') || l.includes('item') || l.includes('name') || l.includes('title')) mapping[h] = 'productName';
-        else if (l.includes('qty') || l.includes('quantity') || l.includes('units')) mapping[h] = 'quantity';
-        else if (l.includes('cost')) mapping[h] = 'costPrice';
-        else if (l.includes('price') || l.includes('amount') || l.includes('rate') || l.includes('mrp')) mapping[h] = 'sellingPrice';
-        else if (l.includes('payment') || l.includes('mode') || l.includes('pay')) mapping[h] = 'paymentMode';
-        else if (l.includes('status')) mapping[h] = 'status';
-        else if (l.includes('sku') || l.includes('code')) mapping[h] = 'sku';
-        else if (l.includes('cat')) mapping[h] = 'category';
-        else mapping[h] = 'skip';
-      });
-      return { fileType: 'SALES_REPORT', mapping };
-    }
-
-    if (hasProd && (hasPrice || hasQty || lower.some(h => h.includes('stock')))) {
-      const mapping: Record<string, string> = {};
-      headers.forEach(h => {
-        const l = h.toLowerCase().trim();
-        if (l.includes('product') || l.includes('item') || l.includes('name') || l.includes('title')) mapping[h] = 'name';
-        else if (l.includes('cost')) mapping[h] = 'costPrice';
-        else if (l.includes('price') || l.includes('rate') || l.includes('mrp') || l.includes('selling')) mapping[h] = 'price';
-        else if (l.includes('stock') || l.includes('qty') || l.includes('quantity') || l.includes('units') || l.includes('avail')) mapping[h] = 'stock';
-        else if (l.includes('sku') || l.includes('code')) mapping[h] = 'sku';
-        else if (l.includes('cat')) mapping[h] = 'category';
-        else if (l.includes('supp') || l.includes('vendor')) mapping[h] = 'supplier';
-        else if (l.includes('unit')) mapping[h] = 'unit';
-        else if (l.includes('desc')) mapping[h] = 'description';
-        else mapping[h] = 'skip';
-      });
-      return { fileType: 'INVENTORY_MASTER', mapping };
-    }
-
-    return null;
-  };
 
   // 8. Client-side silent normalization & ingestion
   const runSilentIngestion = useCallback(async (
@@ -722,7 +675,7 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
           const price = parseFloat((obj.sellingPrice || obj.price || '0').replace(/[^0-9.]/g, '')) || 0;
           const costPrice = parseFloat((obj.costPrice || '0').replace(/[^0-9.]/g, '')) || 0;
           const qty = parseInt((obj.quantity || obj.stock || '1').replace(/[^0-9]/g, ''), 10) || 1;
-          const orderNo = obj.orderNumber || `INV-${1000 + idx}`;
+          const orderNo = obj.orderNumber || obj.orderId || (obj.sku ? `ORD-${obj.sku}-${idx + 1}` : `INV-${1000 + idx}`);
           const customer = obj.customerName || 'Retail Customer';
           const city = obj.city || '';
           const status = obj.status || 'Completed';
@@ -749,6 +702,9 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
             sku: obj.sku || `SKU-${idx + 1}`,
             category: obj.category || 'General',
             supplier: obj.supplier || 'Google Drive Vendor',
+            stock: obj.stock !== undefined ? parseInt((obj.stock || '25').replace(/[^0-9]/g, ''), 10) : undefined,
+            minStock: obj.minStock !== undefined ? parseInt((obj.minStock || '5').replace(/[^0-9]/g, ''), 10) : 5,
+            leadTimeDays: obj.leadTimeDays !== undefined ? parseInt((obj.leadTimeDays || '7').replace(/[^0-9]/g, ''), 10) : 7,
           };
         } else if (fileType === 'INVENTORY_MASTER' || fileType === 'WAREHOUSE_STOCK') {
           const name = obj.name || obj.productName || '';
@@ -816,9 +772,14 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
       }
 
       // Group unique products by SKU / Name to avoid writing thousands of redundant duplicate product documents
+      // 1. Identify which products already exist in Firestore
+      const existingProductSkuMap = new Map(products.map(p => [(p.sku || '').trim().toUpperCase(), p]));
+      const existingProductNameMap = new Map(products.map(p => [(p.name || '').trim().toLowerCase(), p]));
+
+      // Group unique products by SKU / Name to avoid writing redundant duplicate product documents
       const uniqueProductsMap = new Map<string, any>();
       validRows.forEach(r => {
-        const skuKey = (r.parsed.sku || r.parsed.name || '').toUpperCase();
+        const skuKey = (r.parsed.sku || r.parsed.name || '').trim().toUpperCase();
         if (!uniqueProductsMap.has(skuKey)) {
           uniqueProductsMap.set(skuKey, {
             name: r.parsed.name,
@@ -831,57 +792,118 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
             price: r.parsed.price || 499,
             costPrice: r.parsed.costPrice && r.parsed.costPrice > 0 ? r.parsed.costPrice : Math.round((r.parsed.price || 499) * 0.6),
             stock: r.parsed.stock !== undefined && r.parsed.stock > 0 ? r.parsed.stock : 25,
-            minStock: 5,
+            minStock: r.parsed.minStock !== undefined ? r.parsed.minStock : 5,
             maxStock: Math.max(100, (r.parsed.stock || 25) * 2),
             unit: r.parsed.unit || 'Piece',
             status: 'Active' as const,
             averageDailySales: 1.5,
-            leadTimeDays: 7,
+            leadTimeDays: r.parsed.leadTimeDays || 7,
           });
         }
       });
       const productsToImport = Array.from(uniqueProductsMap.values());
 
+      // Filter truly new products that do not exist yet in Firestore
+      const trulyNewProducts = productsToImport.filter(p => {
+        const sUpper = (p.sku || '').trim().toUpperCase();
+        const nLower = (p.name || '').trim().toLowerCase();
+        return !(sUpper && existingProductSkuMap.has(sUpper)) && !(nLower && existingProductNameMap.has(nLower));
+      });
+      const skippedExistingProductCount = productsToImport.length - trulyNewProducts.length;
+
       setSyncProgress({
-        stage: `Saving ${productsToImport.length} catalog items and ${validRows.length} transactions...`,
+        stage: `Saving catalog: ${trulyNewProducts.length} new items (${skippedExistingProductCount} already present skipped)...`,
         percent: 75,
         fileName,
-        recordsCount: validRows.length,
+        recordsCount: trulyNewProducts.length || productsToImport.length,
       });
 
       await bulkAddProducts(productsToImport, true); // overwriteStock = true
 
-      const transactionsToImport = validRows.map((r, idx) => {
-        const d = new Date();
-        d.setDate(d.getDate() - (idx % 28));
+      if (fileType === 'SALES_REPORT' || validRows.some(r => r.parsed.orderNo)) {
+        // Build set of existing order numbers and composite fingerprints
+        const existingOrderNos = new Set(transactions.map(t => (t.orderNumber || '').trim().toUpperCase()).filter(Boolean));
+        const existingTxFingerprints = new Set(transactions.map(t => {
+          const prod = (t.productName || t.productId || '').trim().toLowerCase();
+          const date = typeof t.transactionDate === 'string' ? t.transactionDate.trim() : '';
+          const qty = Number(t.quantity || 1);
+          const rev = Number(t.totalRevenue || t.price || 0);
+          const cust = (t.customerName || '').trim().toLowerCase();
+          return `${prod}|${date}|${qty}|${rev}|${cust}`;
+        }));
 
-        return {
-          type: 'Sale' as const,
-          productId: `prod-${r.parsed.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
-          productName: r.parsed.name,
-          quantity: r.parsed.qty || 1,
-          price: r.parsed.price || 499,
-          totalRevenue: (r.parsed.price || 499) * (r.parsed.qty || 1),
-          costPerUnit: r.parsed.costPrice && r.parsed.costPrice > 0 ? r.parsed.costPrice : Math.round((r.parsed.price || 499) * 0.6),
-          totalCost: (r.parsed.costPrice && r.parsed.costPrice > 0 ? r.parsed.costPrice : Math.round((r.parsed.price || 499) * 0.6)) * (r.parsed.qty || 1),
-          customerName: r.parsed.customer || 'Retail Customer',
-          customerCity: r.parsed.city || '',
-          transactionDate: r.parsed.date || d.toISOString().split('T')[0],
-          status: r.parsed.status || 'Completed',
-          paymentMethod: r.parsed.paymentMode || 'UPI',
-          notes: r.parsed.remarks || 'Synced from Google Drive',
-          orderNumber: r.parsed.orderNo,
-        };
+        const seenOrderNosInBatch = new Set<string>();
+        const seenFpInBatch = new Set<string>();
+        const transactionsToImport: any[] = [];
+
+        validRows.forEach((r, idx) => {
+          const skuUpper = (r.parsed.sku || '').trim().toUpperCase();
+          const nameLower = (r.parsed.name || '').trim().toLowerCase();
+          const isExistingProduct = (skuUpper && existingProductSkuMap.has(skuUpper)) || (nameLower && existingProductNameMap.has(nameLower));
+
+          // If product was already added from earlier file, do NOT duplicate historical transactions!
+          if (isExistingProduct) {
+            return;
+          }
+
+          const orderNo = r.parsed.orderNo || `INV-${(r.parsed.sku || r.parsed.name || 'ITEM').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8)}-${idx + 1}`;
+          const orderNoUpper = orderNo.trim().toUpperCase();
+
+          if (existingOrderNos.has(orderNoUpper) || seenOrderNosInBatch.has(orderNoUpper)) {
+            return;
+          }
+
+          const fp = `${(r.parsed.name || '').trim().toLowerCase()}|${(r.parsed.date || '').trim()}|${Number(r.parsed.qty || 1)}|${(r.parsed.price || 499) * (r.parsed.qty || 1)}|${(r.parsed.customer || '').trim().toLowerCase()}`;
+          if (existingTxFingerprints.has(fp) || seenFpInBatch.has(fp)) {
+            return;
+          }
+
+          seenOrderNosInBatch.add(orderNoUpper);
+          seenFpInBatch.add(fp);
+
+          transactionsToImport.push({
+            type: 'Sale' as const,
+            productId: `prod-${(r.parsed.sku || r.parsed.name).toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+            productName: r.parsed.name,
+            sku: r.parsed.sku,
+            quantity: r.parsed.qty || 1,
+            price: r.parsed.price || 499,
+            totalRevenue: (r.parsed.price || 499) * (r.parsed.qty || 1),
+            costPerUnit: r.parsed.costPrice && r.parsed.costPrice > 0 ? r.parsed.costPrice : Math.round((r.parsed.price || 499) * 0.6),
+            totalCost: (r.parsed.costPrice && r.parsed.costPrice > 0 ? r.parsed.costPrice : Math.round((r.parsed.price || 499) * 0.6)) * (r.parsed.qty || 1),
+            customerName: r.parsed.customer || 'Retail Customer',
+            customerCity: r.parsed.city || '',
+            transactionDate: r.parsed.date || new Date().toISOString().split('T')[0],
+            status: r.parsed.status || 'Completed',
+            paymentMethod: r.parsed.paymentMode || 'UPI',
+            notes: r.parsed.remarks || 'Synced from Google Drive',
+            orderNumber: orderNo,
+          });
+        });
+
+        if (transactionsToImport.length > 0) {
+          await bulkAddTransactions(transactionsToImport);
+        }
+      }
+
+      setSyncProgress({
+        stage: 'Vectorizing business data for AI Copilot...',
+        percent: 92,
+        fileName,
+        recordsCount: trulyNewProducts.length || validRows.length,
       });
 
-      await bulkAddTransactions(transactionsToImport);
+      // Incrementally vectorize workspace data into RAG knowledge store for AI Copilot
+      await vectorizeAndSyncAiChatbot().catch(console.warn);
 
       setSyncProgress({
         stage: 'Updating business intelligence and health score...',
-        percent: 92,
+        percent: 97,
         fileName,
-        recordsCount: validRows.length,
+        recordsCount: trulyNewProducts.length || validRows.length,
       });
+
+      const effectiveNewCount = trulyNewProducts.length;
 
       // Track Google Drive file and sync history via DataContext
       await recordSyncSuccess(
@@ -891,14 +913,14 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
           fileName,
           status: 'Synced',
           lastProcessedAt: new Date().toISOString(),
-          validRows: validRows.length,
+          validRows: effectiveNewCount || validRows.length,
           size: csvContent.length,
           modifiedTime: new Date().toISOString(),
         },
         {
           syncedAt: new Date().toISOString(),
           filesCount: 1,
-          rowsCount: validRows.length,
+          rowsCount: effectiveNewCount || validRows.length,
           status: 'Completed',
           files: [fileName],
         }
@@ -908,14 +930,14 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
         title: 'Google Drive Data Synced',
         productName: fileName,
         actionType: 'audit',
-        changeDetails: `Synced ${validRows.length} ${fileType === 'SALES_REPORT' ? 'sales transaction' : 'inventory'} records from Google Drive. Recalculated AI health score, forecasting, and demand velocity.`,
-        impactValue: `${validRows.length} Records`,
+        changeDetails: `Synced ${effectiveNewCount} new records from Google Drive. ${skippedExistingProductCount > 0 ? `${skippedExistingProductCount} previously imported products and their transactions skipped to avoid duplicates.` : ''}`,
+        impactValue: `+${effectiveNewCount} New Records`,
       });
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('analyzeup_audit_logged'));
         window.dispatchEvent(new CustomEvent('analyzeup_tasks_updated'));
-        window.dispatchEvent(new CustomEvent('analyzeup_drive_synced', { detail: { fileName, rowsCount: validRows.length } }));
+        window.dispatchEvent(new CustomEvent('analyzeup_drive_synced', { detail: { fileName, rowsCount: effectiveNewCount || validRows.length } }));
         localStorage.removeItem('analyzeup_completed_tasks');
       }
 
@@ -929,7 +951,7 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
       if (showNotification) {
         toast({
           title: 'Google Drive Synced Successfully ✨',
-          description: `Imported ${validRows.length} records from "${fileName}". All dashboard metrics, stock levels, and AI recommendations recalculated.`,
+          description: `Processed "${fileName}". Firestore updated with new/changed records, and AI Copilot vectorized.`,
         });
       }
 
@@ -946,7 +968,7 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
         });
       }
     }
-  }, [user, products, categories, suppliers, addCategory, addSupplier, bulkAddProducts, bulkAddTransactions, recordSyncSuccess, toast, scanDriveFolder]);
+  }, [user, products, transactions, categories, suppliers, addCategory, addSupplier, bulkAddProducts, bulkAddTransactions, vectorizeAndSyncAiChatbot, recordSyncSuccess, toast, scanDriveFolder]);
 
   // 9. Silent Sync or Manual Mapping Ingestion Flow
   const syncFile = useCallback(async (file: any, isBackground = false) => {
@@ -1533,6 +1555,8 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
                           if (transactions.length > 0) {
                             await bulkAddTransactions(transactions);
                           }
+
+                          await vectorizeAndSyncAiChatbot().catch(console.warn);
 
                           await updateBusinessProfile({
                             shopifyLastSyncedAt: new Date().toISOString(),

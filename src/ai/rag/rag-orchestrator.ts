@@ -153,7 +153,9 @@ export async function executeRAGQuery(
     // For app / store data related queries:
     // Ensure Knowledge Base is indexed
     const currentStats = await vectorStore.getStats(businessId);
-    if (currentStats.totalVectors === 0 && (products.length > 0 || transactions.length > 0)) {
+    const cachedStats = indexingStatusMap.get(businessId);
+    const totalRecords = products.length + transactions.length + suppliers.length + orders.length + returns.length;
+    if ((currentStats.totalVectors === 0 || cachedStats?.processedRecords !== totalRecords) && totalRecords > 0) {
       await buildBusinessKnowledgeBase(
         businessId,
         products,

@@ -1,7 +1,7 @@
 'use server';
 
 import type { Product, Transaction, Supplier, PurchaseOrder, ProductReturn, BusinessProfile } from '@/lib/types';
-import { executeRAGQuery } from '@/ai/rag/rag-orchestrator';
+import { executeRAGQuery, buildBusinessKnowledgeBase } from '@/ai/rag/rag-orchestrator';
 import type { RAGResponse } from '@/ai/rag/types';
 
 export interface ChatMessage {
@@ -78,6 +78,47 @@ export async function askAnalyzeUpRAGChat(
     console.error('[askAnalyzeUpRAGChat] Error executing RAG orchestrator:', error);
     return {
       text: 'I encountered an error analyzing your workspace data. Please check your data connection and try again.',
+    };
+  }
+}
+
+/**
+ * Server Action to incrementally vectorize business catalog, sales, suppliers, and financials
+ * and immediately populate the AI Copilot knowledge base after sync.
+ */
+export async function vectorizeWorkspaceData(
+  products: Product[] = [],
+  transactions: Transaction[] = [],
+  suppliers: Supplier[] = [],
+  orders: PurchaseOrder[] = [],
+  returns: ProductReturn[] = [],
+  businessProfile?: BusinessProfile | null
+): Promise<{ success: boolean; totalVectors: number; status: string }> {
+  const businessId = businessProfile?.businessName
+    ? `biz_${businessProfile.businessName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`
+    : 'default_workspace';
+
+  try {
+    const stats = await buildBusinessKnowledgeBase(
+      businessId,
+      products,
+      transactions,
+      suppliers,
+      orders,
+      returns,
+      businessProfile
+    );
+    return {
+      success: stats.status === 'COMPLETED',
+      totalVectors: stats.totalVectors,
+      status: stats.status,
+    };
+  } catch (err: any) {
+    console.error('[vectorizeWorkspaceData] Error indexing knowledge base:', err);
+    return {
+      success: false,
+      totalVectors: 0,
+      status: 'FAILED',
     };
   }
 }

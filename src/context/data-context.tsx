@@ -19,6 +19,7 @@ import {
   recalculateAndSaveAnalyticsSummary,
 } from '@/lib/analytics-aggregator';
 import { generateProductDocId, generateTransactionDocId } from '@/lib/import-job-service';
+import { sanitizePlainData } from '@/lib/utils';
 
 interface DataContextProps {
   products: Product[];
@@ -59,6 +60,7 @@ interface DataContextProps {
   bulkUpdateProducts: (updates: (Partial<Product> & { id: string })[]) => Promise<void>;
   bulkDeleteProducts: (productIds: string[]) => Promise<void>;
   bulkAddTransactions: (transactions: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>[]) => Promise<void>;
+  vectorizeAndSyncAiChatbot: () => Promise<any>;
   clearAllData: () => Promise<void>;
   // Google Drive & Integration Helpers
   driveConnection: any;
@@ -530,54 +532,104 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const bulkAddProducts = useCallback(async (productsData: Omit<Product, 'id' | 'createdAt' | 'updatedAt' | 'userId'>[], overwriteStock = false) => {
     if (!firestore || !user || !productsRef || !transactionsRef) return;
 
-    const existingProductSkuMap = new Map(products.map(p => [(p.sku || '').toUpperCase(), p]));
+    const existingProductSkuMap = new Map(products.map(p => [(p.sku || '').trim().toUpperCase(), p]));
+    const existingProductNameMap = new Map(products.map(p => [(p.name || '').trim().toLowerCase(), p]));
     let newCount = 0;
     let updateCount = 0;
+    let skippedCount = 0;
 
-    // Split products into safe chunks of 200 items (each product produces 1-2 Firestore operations, safely under 500 limit)
-    const CHUNK_SIZE = 200;
-    for (let i = 0; i < productsData.length; i += CHUNK_SIZE) {
-      const chunk = productsData.slice(i, i + CHUNK_SIZE);
-      const batch = writeBatch(firestore);
+    const operations: Array<
+      | { type: 'create'; data: any }
+      | { type: 'update'; id: string; data: any }
+    > = [];
 
-      chunk.forEach(productData => {
-        const skuUpper = (productData.sku || '').toUpperCase();
-        const existingProduct = skuUpper ? existingProductSkuMap.get(skuUpper) : null;
+    productsData.forEach(productData => {
+      const skuUpper = (productData.sku || '').trim().toUpperCase();
+      const nameLower = (productData.name || '').trim().toLowerCase();
+      const existingProduct = skuUpper ? existingProductSkuMap.get(skuUpper) : (nameLower ? existingProductNameMap.get(nameLower) : null);
 
-        if (existingProduct) {
-          // Update existing product stock & price safely
-          const productRef = doc(productsRef, existingProduct.id);
-          batch.update(productRef, cleanObject({
-            price: productData.price || existingProduct.price,
-            costPrice: productData.costPrice || existingProduct.costPrice,
-            stock: overwriteStock ? productData.stock : (existingProduct.stock || 0) + (productData.stock || 0),
-            supplier: productData.supplier || existingProduct.supplier,
-            supplierId: productData.supplierId || existingProduct.supplierId,
+      if (existingProduct) {
+        const incomingPrice = productData.price !== undefined && !isNaN(Number(productData.price)) ? Number(productData.price) : existingProduct.price;
+        const incomingCost = productData.costPrice !== undefined && !isNaN(Number(productData.costPrice)) ? Number(productData.costPrice) : existingProduct.costPrice;
+        const incomingStock = productData.stock !== undefined && !isNaN(Number(productData.stock)) ? Number(productData.stock) : undefined;
+
+        const finalStock = overwriteStock
+          ? (incomingStock !== undefined ? incomingStock : existingProduct.stock)
+          : (existingProduct.stock || 0) + (incomingStock || 0);
+
+        const priceChanged = incomingPrice !== existingProduct.price;
+        const costChanged = incomingCost !== existingProduct.costPrice;
+        const stockChanged = incomingStock !== undefined && finalStock !== existingProduct.stock;
+        const supplierChanged = Boolean(productData.supplier && productData.supplier !== existingProduct.supplier);
+        const categoryChanged = Boolean(productData.category && productData.category !== existingProduct.category);
+
+        const hasUpdate = priceChanged || costChanged || stockChanged || supplierChanged || categoryChanged;
+
+        if (!hasUpdate) {
+          skippedCount++;
+          return;
+        }
+
+        operations.push({
+          type: 'update',
+          id: existingProduct.id,
+          data: cleanObject({
+            ...(priceChanged ? { price: incomingPrice } : {}),
+            ...(costChanged ? { costPrice: incomingCost } : {}),
+            ...(stockChanged ? { stock: finalStock } : {}),
+            ...(supplierChanged ? { supplier: productData.supplier, supplierId: productData.supplierId || existingProduct.supplierId } : {}),
+            ...(categoryChanged ? { category: productData.category, categoryId: productData.categoryId || existingProduct.categoryId } : {}),
             updatedAt: serverTimestamp(),
-          }));
-          updateCount++;
-        } else {
-          // Create new product
-          const newProductRef = doc(productsRef);
-          const newProduct: any = cleanObject({
+          }),
+        });
+        updateCount++;
+      } else {
+        operations.push({
+          type: 'create',
+          data: cleanObject({
             ...productData,
             userId: user.uid,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
             averageDailySales: productData.averageDailySales || (Math.floor(Math.random() * 5) + 1),
             leadTimeDays: productData.leadTimeDays || (Math.floor(Math.random() * 7) + 5),
-          });
-          batch.set(newProductRef, newProduct);
-          newCount++;
+          }),
+        });
+        newCount++;
+      }
+    });
 
-          if (newProduct.stock > 0) {
+    if (operations.length === 0) {
+      if (skippedCount > 0) {
+        toast({
+          title: 'Catalog Up to Date ✨',
+          description: `All ${skippedCount} products are already present in your database. No duplicate records imported.`,
+        });
+      }
+      return;
+    }
+
+    const CHUNK_SIZE = 200;
+    for (let i = 0; i < operations.length; i += CHUNK_SIZE) {
+      const chunk = operations.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(firestore);
+
+      chunk.forEach(op => {
+        if (op.type === 'update') {
+          const productRef = doc(productsRef, op.id);
+          batch.update(productRef, op.data);
+        } else {
+          const newProductRef = doc(productsRef);
+          batch.set(newProductRef, op.data);
+
+          if (op.data.stock > 0) {
             const transRef = doc(transactionsRef);
             batch.set(transRef, cleanObject({
               userId: user.uid,
               productId: newProductRef.id,
               locationId: 'MAIN-WAREHOUSE',
               type: 'Purchase',
-              quantity: newProduct.stock,
+              quantity: op.data.stock,
               transactionDate: serverTimestamp(),
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
@@ -599,12 +651,12 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('analyzeup_audit_logged'));
       window.dispatchEvent(new CustomEvent('analyzeup_tasks_updated'));
-      window.dispatchEvent(new CustomEvent('analyzeup_drive_synced', { detail: { newCount, updateCount } }));
+      window.dispatchEvent(new CustomEvent('analyzeup_drive_synced', { detail: { newCount, updateCount, skippedCount } }));
     }
 
     toast({
       title: 'Catalog Data Synced ✨',
-      description: `${newCount} new products added, ${updateCount} existing products updated. AI metrics & insights recalculated.`,
+      description: `${newCount} new products added, ${updateCount} updated (${skippedCount} already present skipped).`,
     });
   }, [firestore, user, productsRef, transactionsRef, products, toast]);
 
@@ -670,31 +722,100 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const bulkAddTransactions = useCallback(async (transactionsData: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>[]) => {
     if (!firestore || !user || !transactionsRef) return;
 
-    // Deduplicate against existing transactions in memory
-    const existingOrderNos = new Set(transactions.map(t => t.orderNumber).filter(Boolean));
-    const uniqueTransactions = transactionsData.filter(t => !t.orderNumber || !existingOrderNos.has(t.orderNumber));
+    const getTxFingerprint = (t: any) => {
+      const prod = (t.productName || t.productId || '').trim().toLowerCase();
+      const date = (t.transactionDate || '').trim();
+      const qty = Number(t.quantity || 1);
+      const rev = Number(t.totalRevenue || t.price || 0);
+      const cust = (t.customerName || '').trim().toLowerCase();
+      return `${prod}|${date}|${qty}|${rev}|${cust}`;
+    };
 
-    if (uniqueTransactions.length === 0) {
-      toast({ title: 'No New Transactions', description: 'All records in this batch already exist in the database.' });
+    const existingMapByOrderNo = new Map<string, Transaction>();
+    const existingMapByFingerprint = new Map<string, Transaction>();
+
+    transactions.forEach(t => {
+      if (t.orderNumber?.trim()) {
+        existingMapByOrderNo.set(t.orderNumber.trim().toUpperCase(), t);
+      }
+      existingMapByFingerprint.set(getTxFingerprint(t), t);
+    });
+
+    let newCount = 0;
+    let updateCount = 0;
+    let skippedCount = 0;
+
+    const operations: Array<
+      | { type: 'create'; data: any }
+      | { type: 'update'; id: string; data: any }
+    > = [];
+
+    transactionsData.forEach(t => {
+      const orderNoUpper = t.orderNumber?.trim().toUpperCase();
+      const fingerprint = getTxFingerprint(t);
+      const existing = (orderNoUpper ? existingMapByOrderNo.get(orderNoUpper) : null) || existingMapByFingerprint.get(fingerprint);
+
+      if (existing) {
+        const isStatusChanged = t.status && t.status !== existing.status;
+        const isPaymentChanged = t.paymentMethod && t.paymentMethod !== existing.paymentMethod;
+
+        if (!isStatusChanged && !isPaymentChanged) {
+          skippedCount++;
+          return;
+        }
+
+        operations.push({
+          type: 'update',
+          id: existing.id,
+          data: cleanObject({
+            ...(isStatusChanged ? { status: t.status } : {}),
+            ...(isPaymentChanged ? { paymentMethod: t.paymentMethod } : {}),
+            updatedAt: serverTimestamp(),
+          }),
+        });
+        updateCount++;
+      } else {
+        if (orderNoUpper) existingMapByOrderNo.set(orderNoUpper, t as any);
+        existingMapByFingerprint.set(fingerprint, t as any);
+
+        operations.push({
+          type: 'create',
+          data: cleanObject({
+            ...t,
+            orderNumber: t.orderNumber || `ORD-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+            source: (t as any).source || 'Sync',
+            tenantId: user.uid,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          }),
+        });
+        newCount++;
+      }
+    });
+
+    if (operations.length === 0) {
+      if (skippedCount > 0) {
+        toast({
+          title: 'Transactions Up to Date ✨',
+          description: `All ${skippedCount} transactions are already present in your database. No duplicates added.`,
+        });
+      }
       return;
     }
 
-    // Chunk transactions into batches of 450 (Firestore hard limit is 500 operations per batch)
-    const CHUNK_SIZE = 450;
-    for (let i = 0; i < uniqueTransactions.length; i += CHUNK_SIZE) {
-      const chunk = uniqueTransactions.slice(i, i + CHUNK_SIZE);
+    const CHUNK_SIZE = 400;
+    for (let i = 0; i < operations.length; i += CHUNK_SIZE) {
+      const chunk = operations.slice(i, i + CHUNK_SIZE);
       const batch = writeBatch(firestore);
 
-      chunk.forEach(transactionData => {
-        const newTransactionRef = doc(transactionsRef);
-        const newTransaction = cleanObject({
-          ...transactionData,
-          source: (transactionData as any).source || 'CSV',
-          tenantId: user.uid,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-        batch.set(newTransactionRef, newTransaction);
+      chunk.forEach(op => {
+        if (op.type === 'update') {
+          const transDocRef = doc(transactionsRef, op.id);
+          batch.update(transDocRef, op.data);
+        } else {
+          const newTransDocRef = doc(transactionsRef);
+          batch.set(newTransDocRef, op.data);
+        }
       });
 
       await batch.commit().catch((_serverError) => {
@@ -710,14 +831,35 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('analyzeup_audit_logged'));
       window.dispatchEvent(new CustomEvent('analyzeup_tasks_updated'));
-      window.dispatchEvent(new CustomEvent('analyzeup_drive_synced', { detail: { count: uniqueTransactions.length } }));
+      window.dispatchEvent(new CustomEvent('analyzeup_drive_synced', { detail: { newCount, updateCount, skippedCount } }));
     }
 
     toast({
       title: 'Sales Transactions Synced ✨',
-      description: `Added ${uniqueTransactions.length} new transaction(s). AI revenue, velocity & profit models updated.`,
+      description: `${newCount} new transaction(s) added, ${updateCount} updated (${skippedCount} already present skipped).`,
     });
   }, [firestore, user, transactionsRef, transactions, toast]);
+
+  const vectorizeAndSyncAiChatbot = useCallback(async () => {
+    try {
+      const { vectorizeWorkspaceData } = await import('@/ai/flows/chat');
+      const stats = await vectorizeWorkspaceData(
+        sanitizePlainData(products),
+        sanitizePlainData(transactions),
+        sanitizePlainData(suppliers),
+        sanitizePlainData(orders),
+        sanitizePlainData(returns),
+        sanitizePlainData(businessProfile)
+      );
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('analyzeup_vectors_updated', { detail: stats }));
+      }
+      return stats;
+    } catch (err) {
+      console.warn('[DataContext] Vectorization after sync notice:', err);
+      return { success: false, totalVectors: 0, status: 'FAILED' };
+    }
+  }, [products, transactions, suppliers, orders, returns, businessProfile]);
 
   const updateProduct = useCallback(async (updatedProduct: Product) => {
     if (!firestore || !user) return;
@@ -1674,30 +1816,41 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
               await bulkAddProducts(productsToImport, true);
 
               // 4. ALWAYS populate sales transactions to drive charts & revenue analytics
-              const transactionsToImport = validRows.map((r, idx) => {
-                const d = new Date();
-                d.setDate(d.getDate() - (idx % 28));
+              // Skip rows belonging to products already in the database to prevent repeating historical transactions
+              const existingSkuSet = new Set(products.map(p => (p.sku || '').trim().toUpperCase()).filter(Boolean));
+              const existingNameSet = new Set(products.map(p => (p.name || '').trim().toLowerCase()).filter(Boolean));
 
-                return {
-                  type: 'Sale' as const,
-                  productId: `prod-${r.parsed.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
-                  productName: r.parsed.name,
-                  quantity: r.parsed.qty || 1,
-                  price: r.parsed.price,
-                  sellingPrice: r.parsed.price,
-                  costPrice: r.parsed.costPrice,
-                  totalRevenue: (r.parsed.price || 0) * (r.parsed.qty || 1),
-                  totalCost: (r.parsed.costPrice || 0) * (r.parsed.qty || 1),
-                  orderNumber: r.parsed.orderNo,
-                  customerName: r.parsed.customer,
-                  supplier: r.parsed.supplier,
-                  transactionDate: r.parsed.date || d.toISOString().split('T')[0],
-                  paymentMethod: 'UPI',
-                  status: 'Completed' as const,
-                };
-              });
+              const transactionsToImport = validRows
+                .filter(r => {
+                  const sUpper = (r.parsed.sku || '').trim().toUpperCase();
+                  const nLower = (r.parsed.name || '').trim().toLowerCase();
+                  const isExisting = (sUpper && existingSkuSet.has(sUpper)) || (nLower && existingNameSet.has(nLower));
+                  return !isExisting;
+                })
+                .map((r, idx) => {
+                  return {
+                    type: 'Sale' as const,
+                    productId: `prod-${(r.parsed.sku || r.parsed.name).toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+                    productName: r.parsed.name,
+                    sku: r.parsed.sku,
+                    quantity: r.parsed.qty || 1,
+                    price: r.parsed.price,
+                    sellingPrice: r.parsed.price,
+                    costPrice: r.parsed.costPrice,
+                    totalRevenue: (r.parsed.price || 0) * (r.parsed.qty || 1),
+                    totalCost: (r.parsed.costPrice || 0) * (r.parsed.qty || 1),
+                    orderNumber: r.parsed.orderNo,
+                    customerName: r.parsed.customer,
+                    supplier: r.parsed.supplier,
+                    transactionDate: r.parsed.date || new Date().toISOString().split('T')[0],
+                    paymentMethod: 'UPI',
+                    status: 'Completed' as const,
+                  };
+                });
 
-              await bulkAddTransactions(transactionsToImport);
+              if (transactionsToImport.length > 0) {
+                await bulkAddTransactions(transactionsToImport);
+              }
 
               const nowIso = new Date().toISOString();
               await recordSyncSuccess(
@@ -1746,7 +1899,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         updatedAt: nowIso,
       });
 
-      setDriveConnection((prev: any) => prev ? { ...prev, lastSyncAt: nowIso, lastSyncStatus: 'Success' } : prev);
+      // Vectorize latest business data so AI Copilot immediately has new/updated context
+      await vectorizeAndSyncAiChatbot().catch(console.warn);
 
       // Emit global custom event for open views to refresh immediately
       if (typeof window !== 'undefined') {
@@ -1757,7 +1911,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         toast({
           title: 'Google Drive Synchronized 🚀',
           description: ingestedCount > 0
-            ? `Automatically ingested ${ingestedCount} spreadsheet(s) from Drive.`
+            ? `Automatically ingested ${ingestedCount} spreadsheet(s) from Drive & updated AI Copilot vector store.`
             : `Folder checked. All spreadsheets are up to date (${formatLastSyncTime(nowIso)}).`,
         });
       }
@@ -1766,7 +1920,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       isSyncingRef.current = false;
     }
-  }, [user, firestore, driveConnection, getMappingProfiles, bulkAddProducts, bulkAddTransactions, recordSyncSuccess, saveMappingProfile, toast]);
+  }, [user, firestore, driveConnection, getMappingProfiles, bulkAddProducts, bulkAddTransactions, recordSyncSuccess, saveMappingProfile, vectorizeAndSyncAiChatbot, toast]);
 
   // Global background auto-sync runner (runs on scheduled interval ONLY if autoSync is explicitly enabled)
   useEffect(() => {
@@ -1833,6 +1987,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     bulkUpdateProducts,
     bulkDeleteProducts,
     bulkAddTransactions,
+    vectorizeAndSyncAiChatbot,
     clearAllData,
     driveConnection,
     autoSyncGoogleDriveNow,
@@ -1898,6 +2053,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     bulkUpdateProducts,
     bulkDeleteProducts,
     bulkAddTransactions,
+    vectorizeAndSyncAiChatbot,
     clearAllData,
     driveConnection,
     autoSyncGoogleDriveNow,
