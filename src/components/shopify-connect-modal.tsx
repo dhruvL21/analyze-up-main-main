@@ -31,7 +31,14 @@ import {
   Unlink,
   ExternalLink,
   ShieldCheck,
+  Sliders,
+  Clock,
 } from 'lucide-react';
+import { ShopifyScheduleModal } from '@/components/shopify-schedule-modal';
+import {
+  formatShopifyScheduleSummary,
+  getNextShopifySyncDisplay,
+} from '@/lib/shopify-sync-helper';
 
 export function ShopifyConnectModal() {
   const {
@@ -41,6 +48,7 @@ export function ShopifyConnectModal() {
     updateBusinessProfile,
     bulkAddProducts,
     bulkAddTransactions,
+    bulkAddReturns,
   } = useData();
   const { user } = useUser();
   const firestore = useFirestore();
@@ -55,6 +63,11 @@ export function ShopifyConnectModal() {
   const [accessToken, setAccessToken] = useState(businessProfile?.shopifyAccessToken || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [isCheckingScopes, setIsCheckingScopes] = useState(false);
+  const [scopeCheckResult, setScopeCheckResult] = useState<any>(null);
+  const [isEditingToken, setIsEditingToken] = useState(false);
+  const [newTokenInput, setNewTokenInput] = useState('');
 
   const cleanShopDomain = (input: string): string => {
     let clean = input.trim().toLowerCase();
@@ -143,6 +156,22 @@ export function ShopifyConnectModal() {
           },
           { merge: true }
         );
+
+        // Store lookup index for instant real-time webhook routing
+        const storeLookupRef = doc(firestore, 'shopify_stores', shop);
+        await setDoc(storeLookupRef, {
+          userId: user.uid,
+          shopDomain: shop,
+          storeName,
+          updatedAt: new Date().toISOString(),
+        }, { merge: true }).catch(console.warn);
+
+        // Auto-register real-time webhooks with Shopify Admin API
+        fetch('/api/shopify/webhooks/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ shop, accessToken: accessToken.trim() }),
+        }).catch(console.warn);
       }
 
       // Update business profile state
@@ -204,14 +233,17 @@ export function ShopifyConnectModal() {
         throw new Error(data.error || 'Failed to sync with Shopify.');
       }
 
-      const { products = [], transactions = [], stats } = data;
+      const { products = [], transactions = [], returns = [], stats } = data;
 
-      // Ingest canonical products and transactions into DataContext
+      // Ingest canonical products, transactions, and returns into DataContext
       if (products.length > 0) {
         await bulkAddProducts(products, true);
       }
       if (transactions.length > 0) {
         await bulkAddTransactions(transactions);
+      }
+      if (returns.length > 0) {
+        await bulkAddReturns(returns);
       }
 
       await updateBusinessProfile({
@@ -219,9 +251,12 @@ export function ShopifyConnectModal() {
         shopifyStatus: 'Connected',
       });
 
+      const returnMsg = (stats?.canonicalReturnsCount || returns.length) > 0
+        ? `, and ${stats?.canonicalReturnsCount || returns.length} returns/refunds`
+        : '';
       toast({
         title: 'Shopify Sync Complete! 🎉',
-        description: `Synchronized ${stats?.canonicalProductsCount || products.length} products and ${stats?.canonicalTransactionsCount || transactions.length} orders into your workspace.`,
+        description: `Synchronized ${stats?.canonicalProductsCount || products.length} products, ${stats?.canonicalTransactionsCount || transactions.length} orders${returnMsg} into your workspace.`,
       });
     } catch (err: any) {
       console.error('[Shopify Sync Error]:', err);
@@ -276,6 +311,69 @@ export function ShopifyConnectModal() {
         title: 'Disconnect Error',
         description: err?.message || 'Failed to disconnect Shopify.',
       });
+    }
+  };
+
+  const handleCheckScopes = async () => {
+    const shop = businessProfile?.shopifyStoreUrl;
+    const token = businessProfile?.shopifyAccessToken;
+    if (!shop || !token) {
+      toast({ variant: 'destructive', title: 'Missing credentials', description: 'Please connect your store first.' });
+      return;
+    }
+
+    setIsCheckingScopes(true);
+    try {
+      const res = await fetch('/api/shopify/scopes/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shop, accessToken: token }),
+      });
+      const data = await res.json();
+      setScopeCheckResult(data);
+      if (data.success && data.permissions?.hasWriteProducts) {
+        toast({
+          title: 'Permissions Verified! ⚡',
+          description: 'write_products is ACTIVE on your token! Price syncing to Shopify is ready.',
+        });
+      } else if (data.success && !data.permissions?.hasWriteProducts) {
+        toast({
+          variant: 'destructive',
+          title: 'Action Needed: Reinstall App',
+          description: 'write_products is not active on your current token. Click "Reinstall app" in Shopify Admin.',
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Permission Check Notice',
+          description: data.error || 'Could not verify scopes.',
+        });
+      }
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Inspection Failed', description: err.message });
+    } finally {
+      setIsCheckingScopes(false);
+    }
+  };
+
+  const handleSaveUpdatedToken = async () => {
+    if (!newTokenInput.trim()) {
+      toast({ variant: 'destructive', title: 'Token Required', description: 'Please enter your Admin API token.' });
+      return;
+    }
+    const token = newTokenInput.trim();
+    setIsSubmitting(true);
+    try {
+      await updateBusinessProfile({ shopifyAccessToken: token });
+      setAccessToken(token);
+      setIsEditingToken(false);
+      setNewTokenInput('');
+      toast({ title: 'Token Updated 🔑', description: 'Updated access token saved. Verifying permissions...' });
+      handleCheckScopes();
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Update Failed', description: err.message });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -335,17 +433,161 @@ export function ShopifyConnectModal() {
               </div>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-secondary/30 border border-border/40 text-xs space-y-2">
-              <div className="flex items-center gap-2 font-semibold text-foreground">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                <span>Integrated Permissions</span>
+            {/* Live Token Permissions & Reinstall Card */}
+            <div className="p-3.5 rounded-2xl bg-secondary/30 border border-border/40 text-xs space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-semibold text-foreground">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <span>API Scopes & Permissions</span>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isCheckingScopes}
+                  onClick={handleCheckScopes}
+                  className="rounded-xl text-[11px] gap-1.5 h-7 px-2.5 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 cursor-pointer"
+                >
+                  <RefreshCw className={`w-3 h-3 ${isCheckingScopes ? 'animate-spin' : ''}`} />
+                  {isCheckingScopes ? 'Verifying...' : 'Verify Scopes'}
+                </Button>
               </div>
-              <ul className="text-muted-foreground text-[11px] grid grid-cols-2 gap-1 list-disc pl-4">
-                <li>Catalog & Product Variants</li>
-                <li>Live Inventory Counts</li>
-                <li>Customer Sales Orders</li>
-                <li>Dead-Stock Recalculation</li>
-              </ul>
+
+              {scopeCheckResult ? (
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between text-[11px] p-2 rounded-xl bg-background/50 border border-border/30">
+                    <span className="font-medium text-foreground">Product Price Sync (write_products):</span>
+                    {scopeCheckResult.permissions?.hasWriteProducts ? (
+                      <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[10px] gap-1 py-0 font-semibold">
+                        <CheckCircle2 className="w-3 h-3" /> Active & Ready
+                      </Badge>
+                    ) : (
+                      <Badge className="bg-rose-500/20 text-rose-400 border-rose-500/30 text-[10px] gap-1 py-0 font-semibold">
+                        <AlertCircle className="w-3 h-3" /> Not Active on Token
+                      </Badge>
+                    )}
+                  </div>
+
+                  {!scopeCheckResult.permissions?.hasWriteProducts && (
+                    <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300 space-y-1">
+                      <p className="font-bold flex items-center gap-1 text-amber-400">
+                        <AlertCircle className="w-3.5 h-3.5" /> Action Required in Shopify:
+                      </p>
+                      <p className="text-[10.5px] leading-relaxed text-amber-200/90">
+                        You added <code>write_products</code>, but Shopify requires clicking <strong>"Reinstall app"</strong> (in Shopify Admin → Apps and sales channels → Develop apps → Click app → <strong>API credentials</strong> tab) to grant it to your token.
+                      </p>
+                    </div>
+                  )}
+
+                  {scopeCheckResult.scopes && scopeCheckResult.scopes.length > 0 && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-muted-foreground block font-medium">Active Token Scopes:</span>
+                      <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+                        {scopeCheckResult.scopes.map((s: string) => (
+                          <span
+                            key={s}
+                            className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono ${
+                              s === 'write_products'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold'
+                                : 'bg-secondary/60 text-muted-foreground border border-border/40'
+                            }`}
+                          >
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center justify-between text-muted-foreground text-[11px]">
+                  <span>Catalog & variants, orders, returns, and inventory</span>
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    onClick={handleCheckScopes}
+                    className="text-emerald-400 hover:text-emerald-300 text-[11px] p-0 h-auto cursor-pointer"
+                  >
+                    Check Active Scopes →
+                  </Button>
+                </div>
+              )}
+
+              {/* Token update toggle */}
+              <div className="pt-1.5 border-t border-border/30">
+                {!isEditingToken ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsEditingToken(true)}
+                    className="text-[11px] text-muted-foreground hover:text-foreground p-0 h-6 gap-1 cursor-pointer"
+                  >
+                    <Key className="w-3 h-3 text-amber-400" />
+                    <span>Need to update Admin API Token? Click here</span>
+                  </Button>
+                ) : (
+                  <div className="space-y-2 pt-1">
+                    <Label htmlFor="edit-token" className="text-[11px] font-semibold text-foreground flex items-center justify-between">
+                      <span>New Admin API Access Token</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setIsEditingToken(false)}
+                        className="h-5 text-[10px] p-0 text-muted-foreground"
+                      >
+                        Cancel
+                      </Button>
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="edit-token"
+                        type="password"
+                        placeholder="shpat_xxxxxxxxxxxxxxxxxxxx"
+                        value={newTokenInput}
+                        onChange={(e) => setNewTokenInput(e.target.value)}
+                        className="h-8 text-xs rounded-xl bg-background/50 font-mono"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={isSubmitting || !newTokenInput.trim()}
+                        onClick={handleSaveUpdatedToken}
+                        className="h-8 rounded-xl text-xs font-semibold px-3 bg-emerald-600 hover:bg-emerald-500 text-white shrink-0"
+                      >
+                        {isSubmitting ? 'Saving...' : 'Save & Verify'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Automation & Real-Time Schedule Card */}
+            <div className="p-3.5 rounded-2xl bg-secondary/30 border border-border/40 text-xs flex items-center justify-between gap-3">
+              <div className="space-y-0.5 min-w-0">
+                <span className="text-[10px] uppercase font-bold text-muted-foreground block">
+                  Automation & Schedule
+                </span>
+                <span className="font-semibold text-emerald-400 truncate block">
+                  {formatShopifyScheduleSummary(businessProfile)}
+                </span>
+                <span className="text-[10px] text-muted-foreground truncate block">
+                  Next: {getNextShopifySyncDisplay(businessProfile)}
+                </span>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowScheduleModal(true)}
+                className="rounded-xl text-xs gap-1.5 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 h-8 shrink-0 cursor-pointer"
+              >
+                <Sliders className="w-3.5 h-3.5" />
+                Schedule
+              </Button>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-2 pt-2">
@@ -482,6 +724,19 @@ export function ShopifyConnectModal() {
                     </p>
                   </div>
 
+                  <div className="p-2.5 rounded-xl bg-secondary/30 border border-border/40 text-[11px] space-y-1 text-left">
+                    <div className="flex items-center justify-between font-semibold text-foreground">
+                      <span>Required Shopify App Scopes:</span>
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-primary/30 text-primary">Admin API</Badge>
+                    </div>
+                    <p className="text-muted-foreground text-[10.5px] leading-relaxed">
+                      • <strong>read_products</strong>, <span className="text-emerald-400 font-semibold">write_products</span> (price & catalog sync)<br />
+                      • <strong>read_orders</strong>, <strong>write_orders</strong>, <strong>read_all_orders</strong> (sales transactions)<br />
+                      • <span className="text-emerald-400 font-semibold">read_returns</span> (customer returns & refunds)<br />
+                      • <strong>read_inventory</strong> (stock tracking)
+                    </p>
+                  </div>
+
                   <Button
                     type="submit"
                     disabled={isSubmitting}
@@ -516,6 +771,12 @@ export function ShopifyConnectModal() {
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {/* Submodal for Schedule & Automation */}
+      <ShopifyScheduleModal
+        open={showScheduleModal}
+        onOpenChange={setShowScheduleModal}
+      />
     </Dialog>
   );
 }

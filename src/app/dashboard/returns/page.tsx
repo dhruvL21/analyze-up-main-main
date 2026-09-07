@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { PlusCircle, MoreHorizontal, AlertCircle, Search, RotateCcw, Calendar, DollarSign, ClipboardList, Activity, ShieldAlert, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { PlusCircle, MoreHorizontal, AlertCircle, Search, RotateCcw, Calendar, DollarSign, ClipboardList, Activity, ShieldAlert, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -55,8 +55,32 @@ import { useToast } from '@/hooks/use-toast';
 import { OperationsSubNav } from '@/components/operations-sub-nav';
 
 export default function ReturnsPage() {
-  const { returns, products, transactions, addReturn, deleteReturn, updateReturnStatus, isLoading } = useData();
+  const {
+    returns,
+    products,
+    transactions,
+    addReturn,
+    deleteReturn,
+    updateReturnStatus,
+    isLoading,
+    autoSyncShopifyNow,
+    isShopifySyncing,
+    businessProfile,
+  } = useData();
   const { toast } = useToast();
+
+  const isShopifyConnected = Boolean(
+    businessProfile?.shopifyConnected ||
+    businessProfile?.shopifyStatus === 'Connected' ||
+    businessProfile?.shopifyStoreUrl
+  );
+
+  // Automatically check for fresh Shopify returns when navigating to Returns page
+  useEffect(() => {
+    if (isShopifyConnected) {
+      autoSyncShopifyNow(false);
+    }
+  }, [isShopifyConnected, autoSyncShopifyNow]);
   
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -274,10 +298,24 @@ export default function ReturnsPage() {
               Process customer returns, adjust stocks automatically, track refunds, and monitor product quality.
             </p>
           </div>
-          <Button size="sm" onClick={() => setIsDialogOpen(true)} className="sm:self-center self-start gap-1.5 shadow-sm">
-            <PlusCircle className="h-4 w-4" />
-            Log Returned Order
-          </Button>
+          <div className="flex items-center gap-2 sm:self-center self-start flex-wrap">
+            {isShopifyConnected && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => autoSyncShopifyNow(true)}
+                disabled={isShopifySyncing}
+                className="gap-2 border-emerald-500/30 hover:bg-emerald-500/10 text-emerald-400 shadow-sm"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isShopifySyncing ? 'animate-spin text-emerald-400' : ''}`} />
+                {isShopifySyncing ? 'Syncing Shopify...' : 'Sync from Shopify'}
+              </Button>
+            )}
+            <Button size="sm" onClick={() => setIsDialogOpen(true)} className="gap-1.5 shadow-sm">
+              <PlusCircle className="h-4 w-4" />
+              Log Returned Order
+            </Button>
+          </div>
         </div>
 
         {/* Stats Grid */}
@@ -455,8 +493,28 @@ export default function ReturnsPage() {
                     <TableBody>
                       {paginatedReturns.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={7} className="h-36 text-center text-muted-foreground select-none">
-                            No returns matching filters found.
+                          <TableCell colSpan={7} className="h-44 text-center text-muted-foreground select-none">
+                            <div className="flex flex-col items-center justify-center gap-2 py-4">
+                              <RotateCcw className="h-8 w-8 text-muted-foreground/30 mb-1" />
+                              <p className="font-medium text-sm text-foreground">No customer returns logged yet</p>
+                              <p className="text-xs text-muted-foreground max-w-sm">
+                                {isShopifyConnected
+                                  ? 'If you recently processed a return or refund in Shopify, click below to sync it to your workspace.'
+                                  : 'Process customer returns manually or connect your Shopify store to sync returns automatically.'}
+                              </p>
+                              {isShopifyConnected && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => autoSyncShopifyNow(true)}
+                                  disabled={isShopifySyncing}
+                                  className="mt-2 gap-2 border-emerald-500/30 hover:bg-emerald-500/10 text-emerald-400 text-xs"
+                                >
+                                  <RefreshCw className={`h-3.5 w-3.5 ${isShopifySyncing ? 'animate-spin' : ''}`} />
+                                  {isShopifySyncing ? 'Syncing...' : 'Sync from Shopify Now'}
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       ) : (
@@ -464,19 +522,40 @@ export default function ReturnsPage() {
                           <TableRow key={item.id} className="hover:bg-secondary/30 transition-colors">
                             <TableCell className="font-medium">
                               <div>
-                                <p className="text-sm font-semibold">{item.customerName}</p>
-                                <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
-                                  <Calendar className="h-3 w-3" />
-                                  {new Date(item.returnDate).toLocaleDateString()}
-                                </p>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <p className="text-sm font-semibold">{item.customerName}</p>
+                                  {item.source === 'SHOPIFY' && (
+                                    <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 border-emerald-500/30 text-emerald-400 bg-emerald-500/10">
+                                      Shopify
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
+                                  <span className="flex items-center gap-1">
+                                    <Calendar className="h-3 w-3" />
+                                    {new Date(item.returnDate).toLocaleDateString()}
+                                  </span>
+                                  {item.orderNumber && (
+                                    <span className="text-[10px] bg-secondary/60 px-1.5 py-0.5 rounded text-muted-foreground font-mono">
+                                      {item.orderNumber}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </TableCell>
                             <TableCell>
                               <div>
                                 <p className="text-sm font-medium">{item.productName}</p>
-                                <span className="text-[10px] text-muted-foreground bg-secondary/50 px-1.5 py-0.5 rounded-md">
-                                  {item.reason}
-                                </span>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  <span className="text-[10px] text-muted-foreground bg-secondary/50 px-1.5 py-0.5 rounded-md">
+                                    {item.reason}
+                                  </span>
+                                  {item.sku && (
+                                    <span className="text-[10px] font-mono text-muted-foreground/70">
+                                      {item.sku}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </TableCell>
                             <TableCell className="text-center font-bold text-sm">

@@ -258,7 +258,7 @@ export async function executeRAGQuery(
       finalAnswer = `You're very welcome! Feel free to ask anytime you need insights into your store data or business strategy.`;
     } else if (intent === 'GENERAL_KNOWLEDGE') {
       finalAnswer =
-        `I am ready to help answer your e-commerce and business questions! (Please ensure your OpenAI API connection is active for open-ended knowledge queries).\n\n` +
+        `I am ready to help answer your e-commerce and business questions!\n\n` +
         `You can also ask about your store's specific data (e.g. *"What is our gross profit?"*, *"Which products are dead stock?"*).`;
     } else if (analytics) {
       finalAnswer =

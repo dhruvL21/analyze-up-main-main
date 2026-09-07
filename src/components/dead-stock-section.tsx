@@ -18,6 +18,7 @@ import {
   Sparkles,
   TrendingDown,
   Coins,
+  RefreshCw,
 } from 'lucide-react';
 import {
   Dialog,
@@ -90,11 +91,15 @@ export function DeadStockSection() {
     const { product, prediction } = confirmItem;
 
     try {
-      await updateProduct({
-        ...product,
-        price: prediction.newPrice,
-        updatedAt: new Date().toISOString(),
-      });
+      await updateProduct(
+        {
+          ...product,
+          price: prediction.newPrice,
+          compareAtPrice: prediction.oldPrice,
+          updatedAt: new Date().toISOString(),
+        },
+        { silentToast: true, forceShopifySync: true }
+      );
 
       logBusinessAction({
         title: `Clearance Applied (-${prediction.discountPercent}%)`,
@@ -195,10 +200,42 @@ export function DeadStockSection() {
                 Dynamic elasticity clearance promos have been activated for all dormant stock items.
               </p>
               {resolvedItems.length > 0 && (
-                <div className="pt-2">
-                  <Badge variant="outline" className="text-emerald-400 border-emerald-500/30 text-xs px-3 py-1 font-semibold">
-                    {resolvedItems.length} Clearance Promos Live in Catalog
-                  </Badge>
+                <div className="pt-3 space-y-2 text-left max-w-xl mx-auto">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+                    <span className="font-semibold text-emerald-400 flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5" /> Active Clearance Promos ({resolvedItems.length})
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">Shopify Push Available</span>
+                  </div>
+                  <div className="divide-y divide-border/30 rounded-2xl border border-emerald-500/20 bg-background/50 overflow-hidden">
+                    {resolvedItems.map((item) => (
+                      <div key={item.id} className="p-3 flex items-center justify-between gap-3 text-xs">
+                        <div className="min-w-0">
+                          <p className="font-bold text-foreground truncate">{item.name}</p>
+                          <p className="text-[11px] text-muted-foreground font-mono">
+                            Price: {currencySymbol}{item.price?.toLocaleString('en-IN')}
+                            {item.compareAtPrice ? (
+                              <span className="line-through ml-1.5 text-muted-foreground/70">
+                                {currencySymbol}{item.compareAtPrice.toLocaleString('en-IN')}
+                              </span>
+                            ) : null}
+                            {' '}• SKU: {item.sku || 'N/A'}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            updateProduct(item, { forceShopifySync: true, silentToast: false });
+                          }}
+                          className="rounded-xl text-[11px] h-7 px-3 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 gap-1.5 shrink-0 font-semibold cursor-pointer"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          Push to Shopify
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

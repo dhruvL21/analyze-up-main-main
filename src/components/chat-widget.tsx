@@ -31,7 +31,7 @@ export function ChatWidget() {
     {
       role: 'assistant',
       content: hasData
-        ? "Hello! I am your AnalyzeUp AI Business Copilot powered by RAG Vector Intelligence & OpenAI. Ask me questions like 'What is our gross profit?', 'Which products are dead stock?', 'What was total revenue?', or lookup any specific SKU or order."
+        ? "Hello! I am your AnalyzeUp AI Business Copilot. Ask me questions like 'What is our gross profit?', 'Which products are dead stock?', 'What was total revenue?', or lookup any specific SKU or order."
         : "Hello! I am your AI Business Copilot. Ask me questions about uploading your business data, our 22-column CSV template, or click any of the quick questions below to get started!",
     },
   ]);
@@ -177,7 +177,7 @@ export function ChatWidget() {
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <Database className="w-3 h-3 text-muted-foreground/70" />
                       <span className="text-[10.5px] text-muted-foreground font-medium">
-                        {totalIndexedRecords.toLocaleString()} records vectorized
+                        {totalIndexedRecords.toLocaleString()} records connected
                       </span>
                     </div>
                   </div>

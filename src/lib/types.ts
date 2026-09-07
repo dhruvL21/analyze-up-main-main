@@ -55,6 +55,9 @@ export interface Product {
   imageUrl?: string;
   status?: string;
   source?: 'CSV' | 'SHOPIFY' | 'GDRIVE' | 'MANUAL' | string;
+  shopifyProductId?: string;
+  shopifyVariantId?: string;
+  compareAtPrice?: number;
   customAttributes?: Record<string, string>;
 }
 
@@ -120,6 +123,13 @@ export interface BusinessProfile {
   shopifyStatus?: string;
   shopifyAccessToken?: string;
   shopifyLastSyncedAt?: string;
+  shopifyAutoSyncEnabled?: boolean;
+  shopifyRealtimeSyncEnabled?: boolean;
+  shopifySyncFrequency?: 'realtime' | '1_min' | '5_mins' | '15_mins' | '30_mins' | '1_hour' | '6_hours' | '12_hours' | 'daily' | 'weekly' | 'custom_datetime';
+  shopifySyncTime?: string;
+  shopifySyncDay?: string;
+  shopifyScheduledDateTime?: string;
+  shopifyWebhooksActive?: boolean;
   language?: string;
   logoUrl?: string;
   isOnboardingCompleted?: boolean;
@@ -203,6 +213,8 @@ export interface ProductReturn {
   id: string;
   productId: string;
   productName: string;
+  sku?: string;
+  orderNumber?: string;
   quantity: number;
   customerName: string;
   reason: 'Defective' | 'Wrong Item' | 'Unopened / Buyer Remorse' | 'Damaged in Transit' | 'Other';
@@ -211,6 +223,7 @@ export interface ProductReturn {
   refundAmount: number;
   returnDate: string;
   notes?: string;
+  source?: string;
   userId?: string;
   createdAt: string | FieldValue;
   updatedAt: string | FieldValue;

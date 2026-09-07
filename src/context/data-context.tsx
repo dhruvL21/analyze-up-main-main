@@ -11,6 +11,7 @@ import { FirestorePermissionError } from '@/firebase/errors';
 import { generateDemoBusinessData } from '@/lib/demo-data';
 import Papa from 'papaparse';
 import { getClientDriveToken, isAutoSyncDue, autoDetectMapping, formatLastSyncTime } from '@/lib/drive-helper';
+import { isShopifyAutoSyncDue } from '@/lib/shopify-sync-helper';
 import { findMatchingImportProfile } from '@/lib/import-profile-store';
 import { logBusinessAction } from '@/lib/audit-store';
 import {
@@ -30,7 +31,7 @@ interface DataContextProps {
   returns: ProductReturn[];
   customAttributes: CustomAttribute[];
   businessProfile: BusinessProfile | null;
-  updateBusinessProfile: (profile: Partial<BusinessProfile>) => Promise<void>;
+  updateBusinessProfile: (profile: Partial<BusinessProfile>, silent?: boolean) => Promise<void>;
   loadDemoBusiness: (businessType?: BusinessType) => Promise<void>;
   clearDemoBusiness: () => Promise<void>;
   hasDemoData: boolean;
@@ -42,7 +43,7 @@ interface DataContextProps {
   setShowShopifyModal: (show: boolean) => void;
   addProduct: (product: Omit<Product, 'id' | 'createdAt' | 'updatedAt' | 'userId'>) => Promise<void>;
   addCustomAttribute: (attribute: Omit<CustomAttribute, 'id'>) => Promise<void>;
-  updateProduct: (product: Product) => Promise<void>;
+  updateProduct: (product: Product, options?: { silentToast?: boolean; forceShopifySync?: boolean }) => Promise<void>;
   deleteProduct: (productId: string) => Promise<void>;
   addOrder: (order: Omit<PurchaseOrder, 'id' | 'createdAt' | 'updatedAt' | 'userId'>) => Promise<void>;
   deleteOrder: (orderId: string) => Promise<void>;
@@ -56,10 +57,11 @@ interface DataContextProps {
   addReturn: (returnData: Omit<ProductReturn, 'id' | 'createdAt' | 'updatedAt' | 'userId'>) => Promise<void>;
   deleteReturn: (returnId: string) => Promise<void>;
   updateReturnStatus: (returnId: string, refundStatus: string) => Promise<void>;
-  bulkAddProducts: (products: Omit<Product, 'id' | 'createdAt' | 'updatedAt' | 'userId'>[], overwriteStock?: boolean) => Promise<void>;
+  bulkAddProducts: (products: Omit<Product, 'id' | 'createdAt' | 'updatedAt' | 'userId'>[], overwriteStock?: boolean, silent?: boolean) => Promise<any>;
   bulkUpdateProducts: (updates: (Partial<Product> & { id: string })[]) => Promise<void>;
   bulkDeleteProducts: (productIds: string[]) => Promise<void>;
-  bulkAddTransactions: (transactions: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>[]) => Promise<void>;
+  bulkAddTransactions: (transactions: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>[], silent?: boolean) => Promise<any>;
+  bulkAddReturns: (returnsData: (Omit<ProductReturn, 'createdAt' | 'updatedAt' | 'userId'> & { id?: string })[], silent?: boolean) => Promise<any>;
   vectorizeAndSyncAiChatbot: () => Promise<any>;
   clearAllData: () => Promise<void>;
   // Google Drive & Integration Helpers
@@ -87,6 +89,17 @@ interface DataContextProps {
   handleUpgrade: (planId: string, amount: number, planName: string) => Promise<void>;
   analyticsSummary: AnalyticsSummary;
   refreshAnalytics: () => Promise<void>;
+  // Shopify Real-Time & Auto-Sync
+  isShopifySyncing: boolean;
+  autoSyncShopifyNow: (showToast?: boolean) => Promise<void>;
+  updateShopifyScheduleSettings: (settings: {
+    shopifyAutoSyncEnabled?: boolean;
+    shopifyRealtimeSyncEnabled?: boolean;
+    shopifySyncFrequency?: 'realtime' | '1_min' | '5_mins' | '15_mins' | '30_mins' | '1_hour' | '6_hours' | '12_hours' | 'daily' | 'weekly' | 'custom_datetime';
+    shopifySyncTime?: string;
+    shopifySyncDay?: string;
+    shopifyScheduledDateTime?: string;
+  }) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextProps | undefined>(undefined);
@@ -210,7 +223,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user]);
 
-  const updateBusinessProfile = useCallback(async (updates: Partial<BusinessProfile>) => {
+  const updateBusinessProfile = useCallback(async (updates: Partial<BusinessProfile>, silent: boolean = false) => {
     if (!user) return;
     const updatedProfile: BusinessProfile = {
       businessName: 'My Business',
@@ -234,7 +247,9 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       const profileRef = doc(firestore, 'users', user.uid, 'settings', 'business_profile');
       await setDoc(profileRef, cleanObject(updatedProfile), { merge: true }).catch(console.error);
     }
-    toast({ title: 'Business Profile Updated', description: 'Your business preferences have been saved.' });
+    if (!silent) {
+      toast({ title: 'Business Profile Updated', description: 'Your business preferences have been saved.' });
+    }
   }, [user, firestore, businessProfile, toast]);
 
   const loadDemoBusiness = useCallback(async (customType?: BusinessType) => {
@@ -529,8 +544,12 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [firestore, user, transactionsRef, toast]);
 
-  const bulkAddProducts = useCallback(async (productsData: Omit<Product, 'id' | 'createdAt' | 'updatedAt' | 'userId'>[], overwriteStock = false) => {
-    if (!firestore || !user || !productsRef || !transactionsRef) return;
+  const bulkAddProducts = useCallback(async (
+    productsData: Omit<Product, 'id' | 'createdAt' | 'updatedAt' | 'userId'>[],
+    overwriteStock = false,
+    silent = false
+  ) => {
+    if (!firestore || !user || !productsRef || !transactionsRef) return { newCount: 0, updateCount: 0, skippedCount: 0 };
 
     const existingProductSkuMap = new Map(products.map(p => [(p.sku || '').trim().toUpperCase(), p]));
     const existingProductNameMap = new Map(products.map(p => [(p.name || '').trim().toLowerCase(), p]));
@@ -600,13 +619,13 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     });
 
     if (operations.length === 0) {
-      if (skippedCount > 0) {
+      if (skippedCount > 0 && !silent) {
         toast({
           title: 'Catalog Up to Date ✨',
           description: `All ${skippedCount} products are already present in your database. No duplicate records imported.`,
         });
       }
-      return;
+      return { newCount: 0, updateCount: 0, skippedCount };
     }
 
     const CHUNK_SIZE = 200;
@@ -654,10 +673,13 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       window.dispatchEvent(new CustomEvent('analyzeup_drive_synced', { detail: { newCount, updateCount, skippedCount } }));
     }
 
-    toast({
-      title: 'Catalog Data Synced ✨',
-      description: `${newCount} new products added, ${updateCount} updated (${skippedCount} already present skipped).`,
-    });
+    if (!silent) {
+      toast({
+        title: 'Catalog Data Synced ✨',
+        description: `${newCount} new products added, ${updateCount} updated (${skippedCount} already present skipped).`,
+      });
+    }
+    return { newCount, updateCount, skippedCount };
   }, [firestore, user, productsRef, transactionsRef, products, toast]);
 
   const bulkUpdateProducts = useCallback(async (updates: (Partial<Product> & { id: string })[]) => {
@@ -719,8 +741,11 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     });
   }, [firestore, user, toast]);
 
-  const bulkAddTransactions = useCallback(async (transactionsData: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>[]) => {
-    if (!firestore || !user || !transactionsRef) return;
+  const bulkAddTransactions = useCallback(async (
+    transactionsData: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>[],
+    silent = false
+  ) => {
+    if (!firestore || !user || !transactionsRef) return { newCount: 0, updateCount: 0, skippedCount: 0 };
 
     const getTxFingerprint = (t: any) => {
       const prod = (t.productName || t.productId || '').trim().toLowerCase();
@@ -794,13 +819,13 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     });
 
     if (operations.length === 0) {
-      if (skippedCount > 0) {
+      if (skippedCount > 0 && !silent) {
         toast({
           title: 'Transactions Up to Date ✨',
           description: `All ${skippedCount} transactions are already present in your database. No duplicates added.`,
         });
       }
-      return;
+      return { newCount: 0, updateCount: 0, skippedCount };
     }
 
     const CHUNK_SIZE = 400;
@@ -834,11 +859,186 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       window.dispatchEvent(new CustomEvent('analyzeup_drive_synced', { detail: { newCount, updateCount, skippedCount } }));
     }
 
-    toast({
-      title: 'Sales Transactions Synced ✨',
-      description: `${newCount} new transaction(s) added, ${updateCount} updated (${skippedCount} already present skipped).`,
-    });
+    if (!silent) {
+      toast({
+        title: 'Sales Transactions Synced ✨',
+        description: `${newCount} new transaction(s) added, ${updateCount} updated (${skippedCount} already present skipped).`,
+      });
+    }
+    return { newCount, updateCount, skippedCount };
   }, [firestore, user, transactionsRef, transactions, toast]);
+
+  const bulkAddReturns = useCallback(async (
+    returnsData: (Omit<ProductReturn, 'createdAt' | 'updatedAt' | 'userId'> & { id?: string })[],
+    silent = false
+  ) => {
+    if (!firestore || !user || !returnsRef || !transactionsRef) return { newCount: 0, updateCount: 0, skippedCount: 0 };
+
+    const existingMapById = new Map<string, ProductReturn>();
+    const existingMapByFingerprint = new Map<string, ProductReturn>();
+
+    const getReturnFingerprint = (r: any) => {
+      const ord = (r.orderNumber || '').trim().toUpperCase();
+      const prod = (r.productId || r.productName || '').trim().toLowerCase();
+      const qty = Number(r.quantity || 1);
+      const amt = Number(r.refundAmount || 0);
+      const d = (r.returnDate || '').trim();
+      return `${ord}|${prod}|${qty}|${amt}|${d}`;
+    };
+
+    returns.forEach(r => {
+      if (r.id) existingMapById.set(r.id, r);
+      existingMapByFingerprint.set(getReturnFingerprint(r), r);
+    });
+
+    let newCount = 0;
+    let updateCount = 0;
+    let skippedCount = 0;
+
+    const operations: Array<
+      | { type: 'create'; id: string; data: any; rawReturn: any }
+      | { type: 'update'; id: string; data: any; rawReturn: any }
+    > = [];
+
+    returnsData.forEach(r => {
+      const fingerprint = getReturnFingerprint(r);
+      const existing = (r.id ? existingMapById.get(r.id) : null) || existingMapByFingerprint.get(fingerprint);
+
+      if (existing) {
+        const isStatusChanged = r.refundStatus && r.refundStatus !== existing.refundStatus;
+        const isActionChanged = r.actionTaken && r.actionTaken !== existing.actionTaken;
+        const isAmountChanged = r.refundAmount !== undefined && r.refundAmount !== existing.refundAmount;
+
+        if (!isStatusChanged && !isActionChanged && !isAmountChanged) {
+          skippedCount++;
+          return;
+        }
+
+        operations.push({
+          type: 'update',
+          id: existing.id,
+          data: cleanObject({
+            ...(isStatusChanged ? { refundStatus: r.refundStatus } : {}),
+            ...(isActionChanged ? { actionTaken: r.actionTaken } : {}),
+            ...(isAmountChanged ? { refundAmount: r.refundAmount } : {}),
+            updatedAt: serverTimestamp(),
+          }),
+          rawReturn: { ...existing, ...r },
+        });
+        updateCount++;
+      } else {
+        const returnId = r.id || `ret_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`;
+        if (r.id) existingMapById.set(r.id, { ...r, id: returnId } as any);
+        existingMapByFingerprint.set(fingerprint, { ...r, id: returnId } as any);
+
+        operations.push({
+          type: 'create',
+          id: returnId,
+          data: cleanObject({
+            ...r,
+            id: returnId,
+            userId: user.uid,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          }),
+          rawReturn: { ...r, id: returnId },
+        });
+        newCount++;
+      }
+    });
+
+    if (operations.length === 0) {
+      if (skippedCount > 0 && !silent) {
+        toast({
+          title: 'Returns Up to Date ✨',
+          description: `All ${skippedCount} returns/refunds are already recorded. No duplicates created.`,
+        });
+      }
+      return { newCount: 0, updateCount: 0, skippedCount };
+    }
+
+    const CHUNK_SIZE = 250;
+    for (let i = 0; i < operations.length; i += CHUNK_SIZE) {
+      const chunk = operations.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(firestore);
+
+      chunk.forEach(op => {
+        const returnDocRef = doc(returnsRef, op.id);
+        if (op.type === 'update') {
+          batch.update(returnDocRef, op.data);
+        } else {
+          batch.set(returnDocRef, op.data);
+
+          // If restocked, update product stock in Firestore
+          if (op.rawReturn.actionTaken === 'Restocked' && op.rawReturn.productId) {
+            const product = products.find(p => p.id === op.rawReturn.productId || (op.rawReturn.sku && p.sku === op.rawReturn.sku));
+            if (product) {
+              const productRef = doc(firestore, 'users', user.uid, 'products', product.id);
+              batch.update(productRef, {
+                stock: product.stock + Math.abs(op.rawReturn.quantity || 1),
+                updatedAt: serverTimestamp(),
+              });
+            }
+          }
+
+          // If refunded, record deterministic Sale adjustment transaction (negative sales!)
+          if (op.rawReturn.refundStatus === 'Refunded' || op.rawReturn.refundStatus === 'Store Credit') {
+            const product = products.find(p => p.id === op.rawReturn.productId || (op.rawReturn.sku && p.sku === op.rawReturn.sku));
+            const refundTxId = `tx_refund_${op.id}`;
+            const transRef = doc(transactionsRef, refundTxId);
+            batch.set(transRef, cleanObject({
+              id: refundTxId,
+              tenantId: user.uid,
+              userId: user.uid,
+              productId: product?.id || op.rawReturn.productId || 'REFUNDED-ITEM',
+              productName: op.rawReturn.productName || product?.name || 'Returned Item',
+              sku: product?.sku || op.rawReturn.sku || 'N/A',
+              category: product?.category || product?.categoryId || 'Returns',
+              locationId: 'MAIN-WAREHOUSE',
+              type: 'Sale',
+              quantity: -Math.abs(op.rawReturn.quantity || 1),
+              price: product?.price || (op.rawReturn.quantity > 0 ? op.rawReturn.refundAmount / op.rawReturn.quantity : op.rawReturn.refundAmount),
+              unitPrice: product?.price || (op.rawReturn.quantity > 0 ? op.rawReturn.refundAmount / op.rawReturn.quantity : op.rawReturn.refundAmount),
+              totalRevenue: -Math.abs(op.rawReturn.refundAmount || 0),
+              costPrice: product?.costPrice || (product?.price ? Math.round(product.price * 0.6) : 0),
+              costPerUnit: product?.costPrice || 0,
+              totalCost: product?.costPrice ? -(product.costPrice * Math.abs(op.rawReturn.quantity || 1)) : 0,
+              customerName: op.rawReturn.customerName || 'Online Customer',
+              orderNumber: op.rawReturn.orderNumber || `RET-${op.id}`,
+              transactionDate: op.rawReturn.returnDate || new Date().toISOString().split('T')[0],
+              source: op.rawReturn.source || 'SHOPIFY',
+              status: 'Completed',
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            }), { merge: true });
+          }
+        }
+      });
+
+      await batch.commit().catch((_serverError) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+          path: returnsRef.path,
+          operation: 'create',
+          requestResourceData: 'Bulk Return Add',
+        }));
+      });
+      await new Promise(r => setTimeout(r, 10));
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('analyzeup_audit_logged'));
+      window.dispatchEvent(new CustomEvent('analyzeup_tasks_updated'));
+      window.dispatchEvent(new CustomEvent('analyzeup_returns_synced', { detail: { newCount, updateCount, skippedCount } }));
+    }
+
+    if (!silent) {
+      toast({
+        title: 'Returns & Refunds Synced ✨',
+        description: `${newCount} new return(s) logged, ${updateCount} updated (${skippedCount} already present skipped).`,
+      });
+    }
+    return { newCount, updateCount, skippedCount };
+  }, [firestore, user, returnsRef, transactionsRef, returns, products, toast]);
 
   const vectorizeAndSyncAiChatbot = useCallback(async () => {
     try {
@@ -861,11 +1061,13 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [products, transactions, suppliers, orders, returns, businessProfile]);
 
-  const updateProduct = useCallback(async (updatedProduct: Product) => {
+  const updateProduct = useCallback(async (updatedProduct: Product, options?: { silentToast?: boolean; forceShopifySync?: boolean }) => {
     if (!firestore || !user) return;
+    const existingProduct = products.find(p => p.id === updatedProduct.id);
     const productRef = doc(firestore, 'users', user.uid, 'products', updatedProduct.id);
     const { id, ...updateData } = updatedProduct;
     const dataToUpdate = cleanObject({ ...updateData, updatedAt: serverTimestamp() });
+
     updateDoc(productRef, dataToUpdate).catch((_serverError) => {
       errorEmitter.emit('permission-error', new FirestorePermissionError({
         path: productRef.path,
@@ -873,8 +1075,85 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         requestResourceData: dataToUpdate,
       }));
     });
-    toast({ title: 'Product Updated', description: `${updatedProduct.name} has been updated.` });
-  }, [firestore, user, toast]);
+
+    const isPriceChanged = Boolean(existingProduct && existingProduct.price !== updatedProduct.price);
+    const shop = businessProfile?.shopifyStoreUrl;
+    const token = businessProfile?.shopifyAccessToken;
+    const shouldSyncShopify = Boolean(
+      (isPriceChanged || options?.forceShopifySync) &&
+      shop &&
+      token &&
+      (existingProduct || updatedProduct)
+    );
+
+    // Automatically synchronize discounted price with Shopify store
+    if (shouldSyncShopify) {
+      const oldPrice =
+        updatedProduct.compareAtPrice !== undefined
+          ? updatedProduct.compareAtPrice
+          : existingProduct && existingProduct.price !== updatedProduct.price
+          ? existingProduct.price
+          : existingProduct?.compareAtPrice || updatedProduct.price;
+      const newPrice = updatedProduct.price;
+      const compareAtPrice =
+        updatedProduct.compareAtPrice !== undefined
+          ? updatedProduct.compareAtPrice
+          : oldPrice > newPrice
+          ? oldPrice
+          : undefined;
+
+      fetch('/api/shopify/price/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shop,
+          accessToken: token,
+          productId: updatedProduct.id,
+          shopifyProductId: updatedProduct.shopifyProductId,
+          shopifyVariantId: updatedProduct.shopifyVariantId,
+          sku: updatedProduct.sku,
+          productName: updatedProduct.name,
+          newPrice,
+          oldPrice,
+          compareAtPrice,
+        }),
+      })
+        .then(async res => {
+          const data = await res.json();
+          if (res.ok && data.success) {
+            const discountPct = oldPrice > newPrice ? Math.round(((oldPrice - newPrice) / oldPrice) * 100) : 0;
+            const discountTag = discountPct > 0 ? ` (-${discountPct}% Off)` : '';
+            const countMsg = data.updatedVariantsCount && data.updatedVariantsCount > 1
+              ? ` across all ${data.updatedVariantsCount} variants`
+              : '';
+            toast({
+              title: 'Shopify Price Updated ⚡',
+              description: `"${updatedProduct.name}" price updated to ₹${newPrice.toLocaleString('en-IN')}${discountTag}${countMsg} on your Shopify store.`,
+            });
+          } else if (data.reinstallRequired || data.scopeMissing === 'write_products') {
+            toast({
+              variant: 'destructive',
+              title: 'Shopify: Click "Reinstall App"',
+              description: 'You added write_products in Shopify, but Shopify requires clicking "Reinstall app" (in Shopify Admin > Develop apps > API credentials) to activate it for your token.',
+            });
+          } else {
+            console.warn('[Shopify Price Sync Notice]:', data.error);
+            toast({
+              variant: 'destructive',
+              title: 'Shopify Price Sync Notice',
+              description: data.error || 'Could not update price in Shopify.',
+            });
+          }
+        })
+        .catch(err => {
+          console.warn('[Shopify Price Sync Network Error]:', err);
+        });
+    }
+
+    if (!options?.silentToast) {
+      toast({ title: 'Product Updated', description: `${updatedProduct.name} has been updated.` });
+    }
+  }, [firestore, user, products, businessProfile, toast]);
 
   const deleteProduct = useCallback(async (productId: string) => {
     if (!firestore || !user) return;
@@ -1911,7 +2190,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         toast({
           title: 'Google Drive Synchronized 🚀',
           description: ingestedCount > 0
-            ? `Automatically ingested ${ingestedCount} spreadsheet(s) from Drive & updated AI Copilot vector store.`
+            ? `Automatically ingested ${ingestedCount} spreadsheet(s) from Drive & updated AI Copilot.`
             : `Folder checked. All spreadsheets are up to date (${formatLastSyncTime(nowIso)}).`,
         });
       }
@@ -1946,6 +2225,178 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     const intervalId = setInterval(checkAutoSync, 120 * 1000);
     return () => clearInterval(intervalId);
   }, [user, firestore, driveConnection, autoSyncGoogleDriveNow]);
+
+  // Shopify Auto-Sync & Real-Time Sync State & Execution
+  const isShopifySyncingRef = useRef(false);
+  const [isShopifySyncing, setIsShopifySyncing] = useState(false);
+
+  const autoSyncShopifyNow = useCallback(async (showToast: boolean = true) => {
+    const shop = businessProfile?.shopifyStoreUrl;
+    const token = businessProfile?.shopifyAccessToken;
+
+    if (!shop || !token) {
+      if (showToast) {
+        toast({
+          variant: 'destructive',
+          title: 'Shopify Not Connected',
+          description: 'Store domain or access token missing. Please connect your store first.',
+        });
+      }
+      return;
+    }
+
+    if (isShopifySyncingRef.current) return;
+    isShopifySyncingRef.current = true;
+    if (showToast) {
+      setIsShopifySyncing(true);
+    }
+
+    if (showToast) {
+      toast({
+        title: 'Syncing Shopify Store...',
+        description: 'Fetching products, inventory levels, and customer orders.',
+      });
+    }
+
+    try {
+      const res = await fetch('/api/shopify/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shop, accessToken: token }),
+        signal: AbortSignal.timeout(25000),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to sync with Shopify.');
+      }
+
+      const { products: shopifyProds = [], transactions: shopifyTxs = [], returns: shopifyReturns = [], stats } = data;
+
+      let prodChanges = 0;
+      let txChanges = 0;
+      let returnChanges = 0;
+
+      if (shopifyProds.length > 0) {
+        const pRes = await bulkAddProducts(shopifyProds, true, !showToast);
+        if (pRes) {
+          prodChanges = (pRes.newCount || 0) + (pRes.updateCount || 0);
+        }
+      }
+      if (shopifyTxs.length > 0) {
+        const tRes = await bulkAddTransactions(shopifyTxs, !showToast);
+        if (tRes) {
+          txChanges = (tRes.newCount || 0) + (tRes.updateCount || 0);
+        }
+      }
+      if (shopifyReturns.length > 0) {
+        const rRes = await bulkAddReturns(shopifyReturns, !showToast);
+        if (rRes) {
+          returnChanges = (rRes.newCount || 0) + (rRes.updateCount || 0);
+        }
+      }
+
+      // Populate AI Copilot knowledge in background without blocking UI completion
+      vectorizeAndSyncAiChatbot().catch(console.warn);
+
+      const nowIso = new Date().toISOString();
+      await updateBusinessProfile({
+        shopifyLastSyncedAt: nowIso,
+        shopifyStatus: 'Connected',
+      }, true);
+
+      if (showToast) {
+        const returnMsg = (stats?.canonicalReturnsCount || shopifyReturns.length) > 0
+          ? `, and ${stats?.canonicalReturnsCount || shopifyReturns.length} returns/refunds`
+          : '';
+        toast({
+          title: 'Shopify Sync Complete! 🎉',
+          description: `Synchronized ${stats?.canonicalProductsCount || shopifyProds.length} products, ${stats?.canonicalTransactionsCount || shopifyTxs.length} orders${returnMsg}. Insights & predictions updated.`,
+        });
+      } else if (prodChanges > 0 || txChanges > 0 || returnChanges > 0) {
+        toast({
+          title: 'Shopify Auto-Synced ⚡',
+          description: `Auto-sync pulled new updates from Shopify (${prodChanges} product changes, ${txChanges} new orders, ${returnChanges} returns/refunds). Insights refreshed.`,
+        });
+      }
+    } catch (err: any) {
+      console.error('[Shopify AutoSync Error]:', err);
+      const isTimeout = err?.name === 'TimeoutError' || err?.name === 'AbortError';
+      if (showToast) {
+        toast({
+          variant: 'destructive',
+          title: 'Shopify Sync Failed',
+          description: isTimeout
+            ? 'Shopify sync request timed out (25s). Please check your internet connection and try again.'
+            : (err?.message || 'Could not fetch data from Shopify.'),
+        });
+      }
+    } finally {
+      isShopifySyncingRef.current = false;
+      setIsShopifySyncing(false);
+    }
+  }, [businessProfile, bulkAddProducts, bulkAddTransactions, bulkAddReturns, vectorizeAndSyncAiChatbot, updateBusinessProfile, toast]);
+
+  const updateShopifyScheduleSettings = useCallback(async (settings: {
+    shopifyAutoSyncEnabled?: boolean;
+    shopifyRealtimeSyncEnabled?: boolean;
+    shopifySyncFrequency?: 'realtime' | '1_min' | '5_mins' | '15_mins' | '30_mins' | '1_hour' | '6_hours' | '12_hours' | 'daily' | 'weekly' | 'custom_datetime';
+    shopifySyncTime?: string;
+    shopifySyncDay?: string;
+    shopifyScheduledDateTime?: string;
+  }) => {
+    const cleanedSettings = cleanObject({
+      ...settings,
+      shopifyScheduledDateTime: settings.shopifyScheduledDateTime ?? '',
+      shopifyStatus: 'Connected',
+      updatedAt: new Date().toISOString(),
+    });
+
+    await updateBusinessProfile(cleanedSettings, true);
+
+    if (user && firestore) {
+      const connRef = doc(firestore, 'users', user.uid, 'integrations', 'shopify');
+      await setDoc(connRef, cleanedSettings, { merge: true }).catch(console.warn);
+    }
+
+    toast({
+      title: 'Shopify Sync Settings Saved 🛍️',
+      description: settings.shopifyRealtimeSyncEnabled
+        ? 'Real-Time Sync is active. Instant updates enabled via webhooks & scheduled sync.'
+        : settings.shopifyAutoSyncEnabled
+        ? `Scheduled auto-sync is active (${settings.shopifySyncFrequency || 'daily'}).`
+        : 'Auto-sync is paused. Manual sync is still available.',
+    });
+  }, [user, firestore, updateBusinessProfile, toast]);
+
+  // Global background runner for Shopify (Scheduled Interval Auto-Sync)
+  useEffect(() => {
+    if (
+      !businessProfile?.shopifyConnected ||
+      !businessProfile?.shopifyStoreUrl ||
+      !businessProfile?.shopifyAccessToken ||
+      businessProfile?.shopifyAutoSyncEnabled === false
+    ) {
+      return;
+    }
+
+    const checkShopifyBackgroundSync = () => {
+      if (isShopifySyncingRef.current) return;
+
+      // Check if scheduled recurring interval or date/time is due
+      if (isShopifyAutoSyncDue(businessProfile)) {
+        console.log('[Shopify Scheduled AutoSync] Schedule is due. Triggering automatic background sync...');
+        autoSyncShopifyNow(false);
+      }
+    };
+
+    // Evaluate schedule every 60 seconds
+    const intervalId = setInterval(checkShopifyBackgroundSync, 60 * 1000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [businessProfile, autoSyncShopifyNow]);
 
 
   const value = useMemo(() => ({
@@ -1987,6 +2438,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     bulkUpdateProducts,
     bulkDeleteProducts,
     bulkAddTransactions,
+    bulkAddReturns,
     vectorizeAndSyncAiChatbot,
     clearAllData,
     driveConnection,
@@ -2013,6 +2465,9 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     handleUpgrade,
     analyticsSummary,
     refreshAnalytics,
+    isShopifySyncing,
+    autoSyncShopifyNow,
+    updateShopifyScheduleSettings,
   }), [
     products,
     orders,
@@ -2053,6 +2508,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     bulkUpdateProducts,
     bulkDeleteProducts,
     bulkAddTransactions,
+    bulkAddReturns,
     vectorizeAndSyncAiChatbot,
     clearAllData,
     driveConnection,
@@ -2078,6 +2534,9 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     handleUpgrade,
     analyticsSummary,
     refreshAnalytics,
+    isShopifySyncing,
+    autoSyncShopifyNow,
+    updateShopifyScheduleSettings,
   ]);
 
   return (

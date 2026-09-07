@@ -34,6 +34,12 @@ import {
   formatLastSyncTime,
   autoDetectMapping,
 } from '@/lib/drive-helper';
+import { ShopifyScheduleModal } from '@/components/shopify-schedule-modal';
+import {
+  formatShopifyScheduleSummary,
+  getNextShopifySyncDisplay,
+  formatShopifyLastSync,
+} from '@/lib/shopify-sync-helper';
 import { ImportDialog } from '@/components/import-dialog';
 import { findMatchingImportProfile } from '@/lib/import-profile-store';
 import { logBusinessAction } from '@/lib/audit-store';
@@ -69,6 +75,7 @@ import {
   Download,
   UploadCloud,
   Table,
+  Sliders,
 } from 'lucide-react';
 import {
   Dialog,
@@ -169,6 +176,9 @@ export default function IntegrationsPage() {
     businessProfile,
     updateBusinessProfile,
     setShowShopifyModal,
+    autoSyncShopifyNow,
+    isShopifySyncing,
+    updateShopifyScheduleSettings,
     products,
     transactions,
     categories,
@@ -198,7 +208,7 @@ export default function IntegrationsPage() {
   const isShopifyConnected = Boolean(
     businessProfile?.shopifyConnected || businessProfile?.shopifyStatus === 'Connected'
   );
-  const [isShopifySyncing, setIsShopifySyncing] = useState(false);
+  const [showShopifyScheduleModal, setShowShopifyScheduleModal] = useState(false);
 
   // Real Google Drive integration states
   const [driveConnection, setDriveConnection] = useState<any>(null);
@@ -415,6 +425,25 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
             },
             { merge: true }
           );
+
+          // Save store lookup index for instant real-time webhook routing
+          const storeLookupRef = doc(firestore, 'shopify_stores', shopifyData.shopDomain);
+          await setDoc(storeLookupRef, {
+            userId: user.uid,
+            shopDomain: shopifyData.shopDomain,
+            storeName: shopifyData.storeName,
+            updatedAt: new Date().toISOString(),
+          }, { merge: true }).catch(console.warn);
+
+          // Register real-time webhooks with Shopify Admin API
+          fetch('/api/shopify/webhooks/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              shop: shopifyData.shopDomain,
+              accessToken: shopifyData.accessToken,
+            }),
+          }).catch(console.warn);
 
           await updateBusinessProfile({
             shopifyConnected: true,
@@ -951,7 +980,7 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
       if (showNotification) {
         toast({
           title: 'Google Drive Synced Successfully ✨',
-          description: `Processed "${fileName}". Firestore updated with new/changed records, and AI Copilot vectorized.`,
+          description: `Processed "${fileName}". Firestore updated with new/changed records, and AI Copilot updated.`,
         });
       }
 
@@ -1488,22 +1517,60 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
                   </p>
 
                   {isShopifyConnected ? (
-                    <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs space-y-2">
+                    <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs space-y-2.5">
                       <div className="flex items-center justify-between text-emerald-400 font-semibold">
                         <span className="truncate">Store: {businessProfile?.shopifyStoreName}</span>
                         <span className="font-mono text-[11px] text-muted-foreground truncate">{businessProfile?.shopifyStoreUrl}</span>
                       </div>
-                      <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 border-t border-emerald-500/15">
-                        <span className="flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                          Live synchronization active
-                        </span>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] text-muted-foreground pt-1 border-t border-emerald-500/15">
+                        <button
+                          type="button"
+                          onClick={() => setShowShopifyScheduleModal(true)}
+                          className="flex items-center gap-1.5 text-emerald-400 hover:text-emerald-300 font-semibold transition-colors group text-left cursor-pointer"
+                        >
+                          <span className={cn(
+                            "w-2 h-2 rounded-full shrink-0",
+                            (businessProfile?.shopifyRealtimeSyncEnabled !== false) ? "bg-emerald-400 animate-pulse" : "bg-muted-foreground/60"
+                          )} />
+                          <span className="truncate">{formatShopifyScheduleSummary(businessProfile)}</span>
+                          <Pencil className="w-3 h-3 opacity-60 group-hover:opacity-100 shrink-0" />
+                        </button>
                         <span>
-                          {businessProfile?.shopifyLastSyncedAt
-                            ? `Synced: ${new Date(businessProfile.shopifyLastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                            : 'Ready to sync'}
+                          {formatShopifyLastSync(businessProfile?.shopifyLastSyncedAt)}
                         </span>
                       </div>
+                      <div className="text-[10px] text-muted-foreground font-mono flex items-center justify-between pt-0.5">
+                        <span>Next: {getNextShopifySyncDisplay(businessProfile)}</span>
+                        <button
+                          type="button"
+                          onClick={() => setShowShopifyScheduleModal(true)}
+                          className="text-emerald-400 hover:underline font-sans cursor-pointer font-medium"
+                        >
+                          Set Schedule →
+                        </button>
+                      </div>
+
+                      {businessProfile?.shopifyRealtimeSyncEnabled === false && (
+                        <div className="pt-2 border-t border-emerald-500/20 flex items-center justify-between gap-2">
+                          <span className="text-[11px] text-amber-300/90 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                            <span>Real-Time Sync is paused</span>
+                          </span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={async () => {
+                              await updateShopifyScheduleSettings({
+                                shopifyRealtimeSyncEnabled: true,
+                                shopifyAutoSyncEnabled: true,
+                              });
+                            }}
+                            className="h-6 px-2.5 text-[10px] rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold cursor-pointer"
+                          >
+                            ⚡ Enable Real-Time
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="grid grid-cols-2 gap-2.5 text-xs">
@@ -1521,74 +1588,31 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
 
                 <div className="flex gap-2 mt-auto pt-2">
                   {isShopifyConnected && (
-                    <Button
-                      onClick={async () => {
-                        const shop = businessProfile?.shopifyStoreUrl;
-                        const token = businessProfile?.shopifyAccessToken;
-                        if (!shop || !token) {
-                          setShowShopifyModal(true);
-                          return;
-                        }
-
-                        setIsShopifySyncing(true);
-                        toast({
-                          title: 'Syncing Shopify Data...',
-                          description: 'Fetching products and customer orders from store.',
-                        });
-
-                        try {
-                          const res = await fetch('/api/shopify/sync', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ shop, accessToken: token }),
-                          });
-
-                          const data = await res.json();
-                          if (!res.ok || !data.success) {
-                            throw new Error(data.error || 'Failed to sync with Shopify.');
-                          }
-
-                          const { products = [], transactions = [], stats } = data;
-                          if (products.length > 0) {
-                            await bulkAddProducts(products, true);
-                          }
-                          if (transactions.length > 0) {
-                            await bulkAddTransactions(transactions);
-                          }
-
-                          await vectorizeAndSyncAiChatbot().catch(console.warn);
-
-                          await updateBusinessProfile({
-                            shopifyLastSyncedAt: new Date().toISOString(),
-                            shopifyStatus: 'Connected',
-                          });
-
-                          toast({
-                            title: 'Shopify Sync Complete! 🎉',
-                            description: `Updated ${stats?.canonicalProductsCount || products.length} products and ${stats?.canonicalTransactionsCount || transactions.length} orders.`,
-                          });
-                        } catch (err: any) {
-                          toast({
-                            variant: 'destructive',
-                            title: 'Sync Failed',
-                            description: err?.message || 'Could not fetch data from Shopify.',
-                          });
-                        } finally {
-                          setIsShopifySyncing(false);
-                        }
-                      }}
-                      disabled={isShopifySyncing}
-                      className="flex-1 rounded-2xl text-xs font-bold gap-2 bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20 h-10"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${isShopifySyncing ? 'animate-spin' : ''}`} />
-                      {isShopifySyncing ? 'Syncing...' : 'Sync Now'}
-                    </Button>
+                    <>
+                      <Button
+                        onClick={() => autoSyncShopifyNow(true)}
+                        disabled={isShopifySyncing}
+                        className="flex-1 rounded-2xl text-xs font-bold gap-2 bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20 h-10 cursor-pointer"
+                      >
+                        <RefreshCw className={cn("w-3.5 h-3.5", isShopifySyncing && "animate-spin")} />
+                        {isShopifySyncing ? 'Syncing...' : 'Sync Now'}
+                      </Button>
+                      <Button
+                        onClick={() => setShowShopifyScheduleModal(true)}
+                        variant="outline"
+                        title="Configure Auto-Sync Schedule & Real-Time Sync"
+                        className="rounded-2xl text-xs font-bold gap-1.5 h-10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 px-3 cursor-pointer"
+                      >
+                        <Clock className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Schedule</span>
+                      </Button>
+                    </>
                   )}
                   <Button
                     onClick={() => setShowShopifyModal(true)}
                     variant={isShopifyConnected ? 'outline' : 'default'}
                     className={cn(
-                      "rounded-2xl text-xs font-bold gap-2 h-10",
+                      "rounded-2xl text-xs font-bold gap-2 h-10 cursor-pointer",
                       isShopifyConnected
                         ? "border-border/60 hover:bg-secondary px-3"
                         : "w-full bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20"
@@ -2564,6 +2588,12 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
         onOpenChange={setIsImportDialogOpen}
         presetFile={presetFile}
         onImportComplete={handleImportComplete}
+      />
+
+      {/* Shopify Schedule & Real-Time Sync Automation Modal */}
+      <ShopifyScheduleModal
+        open={showShopifyScheduleModal}
+        onOpenChange={setShowShopifyScheduleModal}
       />
     </div>
   );

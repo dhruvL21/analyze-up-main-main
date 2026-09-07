@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
   }
 
   const redirectUri = getOAuthRedirectUri(req);
-  const scopes = process.env.SHOPIFY_SCOPES || 'read_all_orders,read_customers,read_inventory,read_products';
+  const scopes = process.env.SHOPIFY_SCOPES || 'read_all_orders,read_customers,read_inventory,read_products,write_products,read_orders,write_orders,read_returns';
 
   // State encodes userId and shop
   const statePayload = {

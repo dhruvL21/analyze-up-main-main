@@ -43,7 +43,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Check, Loader2, X, Sparkles, Building2, Zap, Trash2, RefreshCw, LogOut, Sun, Moon, KeyRound, Lock, Eye, EyeOff, ShieldCheck, AlertTriangle } from "lucide-react";
+import { Check, Loader2, X, Sparkles, Building2, Zap, Trash2, RefreshCw, LogOut, Sun, Moon, KeyRound, Lock, Eye, EyeOff, ShieldCheck, AlertTriangle, Download } from "lucide-react";
 import { useUser, useAuth } from "@/firebase";
 import { signOut, updateUserPassword } from "@/firebase/auth/auth-service";
 import { useRouter } from "next/navigation";
@@ -369,98 +369,103 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Workspace Data Export Card */}
-        <Card className="ios-glass rounded-2xl border-border/50">
-          <CardHeader>
-            <CardTitle className="text-base font-bold flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-primary" />
-              SaaS Workspace Data Export
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Export all workspace inventory, supplier, transaction, and report records in structured JSON or CSV format for SaaS data portability.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-secondary/40 border border-border/40 text-xs">
-              <div>
-                <h4 className="font-semibold text-foreground text-xs">Complete Workspace Archive (JSON)</h4>
-                <p className="text-muted-foreground text-[11px]">
-                  Includes products, suppliers, orders, returns, and executive reports.
-                </p>
+        {/* Compact 2-Column Grid: Appearance & Data Export */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Appearance & Theme Preferences Card */}
+          <Card className="ios-glass rounded-2xl border-border/50 flex flex-col justify-between">
+            <CardHeader className="p-4 pb-2">
+              <CardTitle className="text-sm font-bold flex items-center gap-2">
+                <Moon className="w-4 h-4 text-primary" />
+                Appearance & Theme
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Toggle light, dark, or follow system default theme.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 pt-1">
+              <div className="grid grid-cols-3 gap-2">
+                <Button
+                  variant={theme === 'light' ? 'default' : 'outline'}
+                  onClick={() => setTheme('light')}
+                  className="flex items-center justify-center gap-1.5 h-9 rounded-xl px-2 text-xs font-semibold transition-all cursor-pointer"
+                >
+                  <Sun className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  <span>Light</span>
+                </Button>
+                <Button
+                  variant={theme === 'dark' ? 'default' : 'outline'}
+                  onClick={() => setTheme('dark')}
+                  className="flex items-center justify-center gap-1.5 h-9 rounded-xl px-2 text-xs font-semibold transition-all cursor-pointer"
+                >
+                  <Moon className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                  <span>Dark</span>
+                </Button>
+                <Button
+                  variant={theme === 'system' ? 'default' : 'outline'}
+                  onClick={() => setTheme('system')}
+                  className="flex items-center justify-center gap-1.5 h-9 rounded-xl px-2 text-xs font-semibold transition-all cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>System</span>
+                </Button>
               </div>
-              <Button
-                onClick={() => {
-                  const dump = JSON.stringify({ businessProfile, products, transactions, suppliers, returns }, null, 2);
-                  const blob = new Blob([dump], { type: 'application/json' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `AnalyzeUp_Workspace_Export_${Date.now()}.json`;
-                  a.click();
-                  toast({ title: 'Workspace Exported', description: 'JSON archive downloaded.' });
-                }}
-                variant="outline"
-                className="rounded-xl text-xs gap-1.5 border-border/40 shrink-0"
-              >
-                Download JSON Archive
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        {/* Appearance & Styling Card */}
-        <Card className="ios-glass rounded-2xl border-border/50">
-          <CardHeader>
-            <CardTitle className="text-base font-bold flex items-center gap-2">
-              <Moon className="w-5 h-5 text-primary" />
-              Appearance & Theme Preferences
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Toggle between light mode, dark mode, or follow your system settings.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-3 gap-3">
-              <Button
-                variant={theme === 'light' ? 'default' : 'outline'}
-                onClick={() => setTheme('light')}
-                className="flex flex-col items-center justify-center gap-2 h-20 rounded-2xl p-3 border-border/40 transition-all hover:bg-secondary/40"
-              >
-                <Sun className="w-5 h-5 text-amber-500" />
-                <span className="text-[11px] font-bold">Light Mode</span>
-              </Button>
-              <Button
-                variant={theme === 'dark' ? 'default' : 'outline'}
-                onClick={() => setTheme('dark')}
-                className="flex flex-col items-center justify-center gap-2 h-20 rounded-2xl p-3 border-border/40 transition-all hover:bg-secondary/40"
-              >
-                <Moon className="w-5 h-5 text-blue-400" />
-                <span className="text-[11px] font-bold">Dark Mode</span>
-              </Button>
-              <Button
-                variant={theme === 'system' ? 'default' : 'outline'}
-                onClick={() => setTheme('system')}
-                className="flex flex-col items-center justify-center gap-2 h-20 rounded-2xl p-3 border-border/40 transition-all hover:bg-secondary/40"
-              >
-                <RefreshCw className="w-5 h-5 text-emerald-400" />
-                <span className="text-[11px] font-bold">System Default</span>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+          {/* SaaS Workspace Data Export Card */}
+          <Card className="ios-glass rounded-2xl border-border/50 flex flex-col justify-between">
+            <CardHeader className="p-4 pb-2">
+              <CardTitle className="text-sm font-bold flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-primary" />
+                SaaS Data Export
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Export workspace inventory, suppliers, orders & reports.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 pt-1">
+              <div className="flex items-center justify-between gap-3 p-2.5 rounded-xl bg-secondary/30 border border-border/30 text-xs">
+                <div className="min-w-0">
+                  <h4 className="font-semibold text-foreground text-xs truncate">Workspace Archive (JSON)</h4>
+                  <p className="text-muted-foreground text-[10.5px] truncate">
+                    Structured records for SaaS data portability
+                  </p>
+                </div>
+                <Button
+                  onClick={() => {
+                    const dump = JSON.stringify({ businessProfile, products, transactions, suppliers, returns }, null, 2);
+                    const blob = new Blob([dump], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `AnalyzeUp_Workspace_Export_${Date.now()}.json`;
+                    a.click();
+                    toast({ title: 'Workspace Exported', description: 'JSON archive downloaded.' });
+                  }}
+                  variant="outline"
+                  size="sm"
+                  className="rounded-xl text-xs gap-1.5 border-border/40 shrink-0 h-9 px-3 cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Download
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Security & Password Management Card */}
         <Card className="ios-glass rounded-2xl border-border/50">
-          <CardHeader>
-            <CardTitle className="text-base font-bold flex items-center gap-2">
-              <KeyRound className="w-5 h-5 text-primary" />
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="text-sm font-bold flex items-center gap-2">
+              <KeyRound className="w-4 h-4 text-primary" />
               Security & Password Management
             </CardTitle>
             <CardDescription className="text-xs">
               Update your account password or change your login credentials securely.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="p-4 pt-1">
             <form onSubmit={handleUpdatePassword} className="space-y-4 max-w-xl">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
@@ -522,153 +527,158 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Account & Session Card */}
-        <Card className="ios-glass rounded-2xl border-border/50">
-          <CardHeader>
-            <CardTitle className="text-base font-bold flex items-center gap-2">
-              <LogOut className="w-5 h-5 text-rose-500" />
-              Account & Session Management
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Manage your active session or securely log out of your AnalyzeUp account.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-secondary/40 border border-border/40 text-xs">
-              <div>
-                <h4 className="font-semibold text-foreground text-xs">Active Login Account</h4>
-                <p className="text-muted-foreground text-[11px] mt-0.5">
-                  Logged in as <span className="text-primary font-mono">{user?.email || 'founder@business.com'}</span>
-                </p>
+        {/* Compact 2-Column Grid: Account & Demo Data */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Account & Session Card */}
+          <Card className="ios-glass rounded-2xl border-border/50 flex flex-col justify-between">
+            <CardHeader className="p-4 pb-2">
+              <CardTitle className="text-sm font-bold flex items-center gap-2">
+                <LogOut className="w-4 h-4 text-rose-500" />
+                Account & Session
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Manage your active session or log out safely.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 pt-1">
+              <div className="flex items-center justify-between gap-3 p-2.5 rounded-xl bg-secondary/30 border border-border/30 text-xs">
+                <div className="min-w-0">
+                  <h4 className="font-semibold text-foreground text-xs truncate">Active Login</h4>
+                  <p className="text-muted-foreground text-[10.5px] truncate mt-0.5">
+                    Logged in as <span className="text-primary font-mono font-medium">{user?.email || 'founder@business.com'}</span>
+                  </p>
+                </div>
+                <Button
+                  onClick={handleLogout}
+                  variant="destructive"
+                  size="sm"
+                  className="rounded-xl text-xs gap-1.5 shrink-0 bg-rose-600 hover:bg-rose-500 text-white font-bold h-9 px-3 cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  Log Out
+                </Button>
               </div>
-              <Button
-                onClick={handleLogout}
-                variant="destructive"
-                className="rounded-xl text-xs gap-1.5 shrink-0 bg-rose-600 hover:bg-rose-500 text-white shadow-md font-bold"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                Log Out of Account
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        {/* Demo Business & Workspace Reset Card */}
-        <Card className="ios-glass rounded-2xl border-border/50">
-          <CardHeader>
-            <CardTitle className="text-base font-bold flex items-center gap-2">
-              <Zap className="w-5 h-5 text-amber-500" />
-              Demo Data & Workspace Management
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Load demo products & orders to test AI features or clear data to start fresh.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-secondary/40 border border-border/40">
-              <div>
-                <h4 className="text-sm font-semibold flex items-center gap-1.5">
-                  Explore Demo Business
-                  {hasDemoData && <Badge className="bg-emerald-500/20 text-emerald-500 text-[10px]">Loaded</Badge>}
-                </h4>
-                <p className="text-xs text-muted-foreground">
-                  Populate 200+ products, 15+ suppliers & 500+ sales transactions.
-                </p>
-              </div>
-              <Button
-                onClick={() => loadDemoBusiness(bizType)}
-                className="rounded-xl text-xs gap-1.5 bg-amber-600 hover:bg-amber-500 text-white shrink-0"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                {hasDemoData ? 'Reload Demo Data' : 'Load Demo Business'}
-              </Button>
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-rose-500/5 border border-rose-500/20">
-              <div>
-                <h4 className="text-sm font-semibold text-rose-500">Reset Workspace Data</h4>
-                <p className="text-xs text-muted-foreground">
-                  Permanently delete all products, transactions, insights, demographs, forecasts, and history.
-                </p>
+          {/* Demo Business & Workspace Reset Card */}
+          <Card className="ios-glass rounded-2xl border-border/50 flex flex-col justify-between">
+            <CardHeader className="p-4 pb-2">
+              <CardTitle className="text-sm font-bold flex items-center gap-2">
+                <Zap className="w-4 h-4 text-amber-500" />
+                Demo Data & Workspace Maintenance
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Load sample demo business or clear all records.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 pt-1 space-y-2">
+              <div className="flex items-center justify-between gap-3 p-2 rounded-xl bg-secondary/30 border border-border/30 text-xs">
+                <div className="min-w-0">
+                  <h4 className="text-xs font-semibold flex items-center gap-1.5 truncate">
+                    Explore Demo Business
+                    {hasDemoData && <Badge className="bg-emerald-500/20 text-emerald-500 text-[9px] py-0 px-1.5">Loaded</Badge>}
+                  </h4>
+                  <p className="text-[10.5px] text-muted-foreground truncate">
+                    200+ products, 15+ suppliers & 500+ orders
+                  </p>
+                </div>
+                <Button
+                  onClick={() => loadDemoBusiness(bizType)}
+                  size="sm"
+                  className="rounded-xl text-xs gap-1.5 bg-amber-600 hover:bg-amber-500 text-white shrink-0 h-8 px-2.5 cursor-pointer"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  {hasDemoData ? 'Reload' : 'Load Demo'}
+                </Button>
               </div>
 
-              <Dialog open={resetDialogOpen} onOpenChange={(open) => {
-                setResetDialogOpen(open);
-                if (!open) setResetConfirmInput("");
-              }}>
-                <DialogTrigger asChild>
-                  <Button variant="destructive" className="rounded-xl text-xs gap-1.5 shrink-0">
-                    <Trash2 className="w-3.5 h-3.5" />
-                    Reset Workspace
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="rounded-3xl max-w-md bg-card dark:bg-zinc-950 border border-rose-500/30 p-6 shadow-2xl">
-                  <DialogHeader className="space-y-2">
-                    <div className="w-10 h-10 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 flex items-center justify-center">
-                      <AlertTriangle className="w-5 h-5" />
+              <div className="flex items-center justify-between gap-3 p-2 rounded-xl bg-rose-500/5 border border-rose-500/20 text-xs">
+                <div className="min-w-0">
+                  <h4 className="text-xs font-semibold text-rose-500 truncate">Reset Workspace Data</h4>
+                  <p className="text-[10.5px] text-muted-foreground truncate">
+                    Permanently delete all workspace records
+                  </p>
+                </div>
+
+                <Dialog open={resetDialogOpen} onOpenChange={(open) => {
+                  setResetDialogOpen(open);
+                  if (!open) setResetConfirmInput("");
+                }}>
+                  <DialogTrigger asChild>
+                    <Button variant="destructive" size="sm" className="rounded-xl text-xs gap-1.5 shrink-0 h-8 px-2.5 cursor-pointer">
+                      <Trash2 className="w-3 h-3" />
+                      Reset
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="rounded-3xl max-w-md bg-card dark:bg-zinc-950 border border-rose-500/30 p-6 shadow-2xl">
+                    <DialogHeader className="space-y-2">
+                      <div className="w-10 h-10 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 flex items-center justify-center">
+                        <AlertTriangle className="w-5 h-5" />
+                      </div>
+                      <DialogTitle className="text-lg font-bold text-foreground">
+                        Reset Entire Workspace?
+                      </DialogTitle>
+                      <DialogDescription className="text-xs text-muted-foreground leading-relaxed">
+                        This action will permanently wipe all products, sales transactions, purchase orders, customer insights, demographs, simulations, and audit history. Your account login credentials and business settings will remain intact as a brand-new clean workspace.
+                      </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-3 py-2">
+                      <p className="text-sm font-medium text-foreground">
+                        To confirm, type <span className="font-semibold text-foreground select-all">&quot;RESET DATA&quot;</span> in the box below
+                      </p>
+
+                      <Input
+                        value={resetConfirmInput}
+                        onChange={(e) => setResetConfirmInput(e.target.value)}
+                        className="rounded-xl text-sm font-medium border-rose-500/60 focus-visible:ring-rose-500/40 focus-visible:border-rose-500 bg-secondary/50 dark:bg-zinc-900/60 h-11 px-3.5"
+                        autoFocus
+                      />
                     </div>
-                    <DialogTitle className="text-lg font-bold text-foreground">
-                      Reset Entire Workspace?
-                    </DialogTitle>
-                    <DialogDescription className="text-xs text-muted-foreground leading-relaxed">
-                      This action will permanently wipe all products, sales transactions, purchase orders, customer insights, demographs, simulations, and audit history. Your account login credentials and business settings will remain intact as a brand-new clean workspace.
-                    </DialogDescription>
-                  </DialogHeader>
 
-                  <div className="space-y-3 py-2">
-                    <p className="text-sm font-medium text-foreground">
-                      To confirm, type <span className="font-semibold text-foreground select-all">&quot;RESET DATA&quot;</span> in the box below
-                    </p>
-
-                    <Input
-                      value={resetConfirmInput}
-                      onChange={(e) => setResetConfirmInput(e.target.value)}
-                      className="rounded-xl text-sm font-medium border-rose-500/60 focus-visible:ring-rose-500/40 focus-visible:border-rose-500 bg-secondary/50 dark:bg-zinc-900/60 h-11 px-3.5"
-                      autoFocus
-                    />
-                  </div>
-
-                  <DialogFooter className="flex flex-row items-center justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setResetDialogOpen(false);
-                        setResetConfirmInput("");
-                      }}
-                      className="rounded-xl text-xs"
-                      disabled={isResetting}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      onClick={handleResetWorkspace}
-                      disabled={!isConfirmationMatched || isResetting}
-                      className={cn(
-                        "rounded-xl text-xs font-bold gap-1.5 transition-all",
-                        !isConfirmationMatched
-                          ? "bg-rose-500/10 text-rose-400/50 border border-rose-500/20 hover:bg-rose-500/10 cursor-not-allowed opacity-60"
-                          : "bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/25"
-                      )}
-                    >
-                      {isResetting ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          Clearing Workspace...
-                        </>
-                      ) : (
-                        <>
-                          <Trash2 className="w-3.5 h-3.5" />
-                          Permanently Reset Workspace
-                        </>
-                      )}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </div>
-          </CardContent>
-        </Card>
+                    <DialogFooter className="flex flex-row items-center justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setResetDialogOpen(false);
+                          setResetConfirmInput("");
+                        }}
+                        className="rounded-xl text-xs"
+                        disabled={isResetting}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        onClick={handleResetWorkspace}
+                        disabled={!isConfirmationMatched || isResetting}
+                        className={cn(
+                          "rounded-xl text-xs font-bold gap-1.5 transition-all",
+                          !isConfirmationMatched
+                            ? "bg-rose-500/10 text-rose-400/50 border border-rose-500/20 hover:bg-rose-500/10 cursor-not-allowed opacity-60"
+                            : "bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/25"
+                        )}
+                      >
+                        {isResetting ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            Clearing Workspace...
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Permanently Reset Workspace
+                          </>
+                        )}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

@@ -34,11 +34,14 @@ export function DeadStockModal({ open, onOpenChange }: DeadStockModalProps) {
 
   const handleApplyDiscount = (product: any, percent: number) => {
     const newPrice = Math.round(product.price * (1 - percent / 100));
-    updateProduct({
-      ...product,
-      price: newPrice,
-      updatedAt: new Date().toISOString(),
-    });
+    updateProduct(
+      {
+        ...product,
+        price: newPrice,
+        updatedAt: new Date().toISOString(),
+      },
+      { silentToast: true }
+    );
     toast({
       title: 'Clearance Discount Applied!',
       description: `Reduced price of "${product.name}" by ${percent}% to ${currencySymbol}${newPrice}.`,
