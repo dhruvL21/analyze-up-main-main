@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sanitizeShopDomain, getShopifyScopes } from '@/lib/shopify/config';
+import { sanitizeShopDomain, getShopifyScopes, getMissingCoreScopes, hasCoreShopifyScopes } from '@/lib/shopify/config';
 import { getValidAccessToken, getShopifyGrantedScopes } from '@/lib/shopify/admin-api';
 import { getShopifyConnection, saveShopifyConnection } from '@/lib/shopify/connection-store';
 
@@ -68,12 +68,14 @@ export async function POST(req: NextRequest) {
     }
 
     const missingScopes = requiredScopes.filter((scope) => !grantedScopes.includes(scope));
+    const missingCoreScopes = getMissingCoreScopes(grantedScopes);
+    const hasCore = missingCoreScopes.length === 0;
     const isAuthorized = missingScopes.length === 0;
 
     // Update connection status in Firestore/store if installation was previously active
     const conn = await getShopifyConnection(shop);
     if (conn) {
-      const updatedStatus = isAuthorized ? (conn.status === 'PARTIAL' ? 'ACTIVE' : conn.status) : 'PARTIAL';
+      const updatedStatus = hasCore ? (conn.status === 'PARTIAL' ? 'ACTIVE' : conn.status) : 'PARTIAL';
       if (conn.status !== updatedStatus || JSON.stringify(conn.missingScopes) !== JSON.stringify(missingScopes)) {
         await saveShopifyConnection({
           ...conn,
@@ -98,6 +100,9 @@ export async function POST(req: NextRequest) {
       grantedScopes,
       missingScopes,
       isAuthorized,
+      hasCoreScopes: hasCore,
+      missingCoreScopes,
+      status: conn?.status || (hasCore ? 'ACTIVE' : 'PARTIAL'),
       permissions: {
         hasReadProducts,
         hasReadOrders,

@@ -15,6 +15,8 @@ import {
   getShopifyClientSecret,
   sanitizeShopDomain,
   getShopifyScopes,
+  hasCoreShopifyScopes,
+  getMissingCoreScopes,
 } from './config';
 import { decryptShopifyToken, encryptShopifyToken } from './crypto';
 import { getShopifyConnection, saveShopifyConnection } from './connection-store';
@@ -327,6 +329,8 @@ export async function getShopifyGrantedScopes(shop: string): Promise<{
   grantedScopes: string[];
   missingScopes: string[];
   isAuthorized: boolean;
+  hasCoreScopes: boolean;
+  missingCoreScopes: string[];
 }> {
   const requiredScopes = getShopifyScopes();
   let grantedScopes: string[] = [];
@@ -344,16 +348,21 @@ export async function getShopifyGrantedScopes(shop: string): Promise<{
 
   const missingScopes = requiredScopes.filter((scope) => !grantedScopes.includes(scope));
   const isAuthorized = missingScopes.length === 0;
+  const hasCoreScopes = hasCoreShopifyScopes(grantedScopes);
+  const missingCoreScopes = getMissingCoreScopes(grantedScopes);
 
   console.log(`[Shopify Scopes] Required: ${requiredScopes.join(',')}`);
   console.log(`[Shopify Scopes] Granted: ${grantedScopes.join(',')}`);
   console.log(`[Shopify Scopes] Missing: ${missingScopes.join(',') || 'none'}`);
+  console.log(`[Shopify Scopes] Missing Core: ${missingCoreScopes.join(',') || 'none'}`);
 
   return {
     requiredScopes,
     grantedScopes,
     missingScopes,
     isAuthorized,
+    hasCoreScopes,
+    missingCoreScopes,
   };
 }
 

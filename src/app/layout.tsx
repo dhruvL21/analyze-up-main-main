@@ -13,6 +13,9 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 export const metadata: Metadata = {
   title: 'AnalyzeUp',
   description: 'A modern inventory management platform for growing businesses.',
+  verification: {
+    google: 'Kme1cRKkJTNrqxNoLJLwMRA-33kdA1SSWhW8WcPuEwU',
+  },
 };
 
 export default function RootLayout({
@@ -22,6 +25,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full" suppressHydrationWarning>
+      <head>
+        <meta name="google-site-verification" content="Kme1cRKkJTNrqxNoLJLwMRA-33kdA1SSWhW8WcPuEwU" />
+      </head>
       <body className={`${inter.variable} font-sans antialiased h-full bg-background`} suppressHydrationWarning>
         <ThemeProvider
           attribute="class"

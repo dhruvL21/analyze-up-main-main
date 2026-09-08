@@ -405,22 +405,13 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
     const error = urlParams.get('error');
 
     const missingScopesParam = urlParams.get('missing_scopes');
-    const isPartial = status === 'partial' || urlParams.get('shopify_partial') === 'true' || Boolean(missingScopesParam);
+    const isPartial = (status === 'partial' || urlParams.get('shopify_partial') === 'true') && shopifyConnected !== 'true';
 
-    if (isPartial) {
-      const connectedShop = shopParam || 'Shopify Store';
-      const missingList = missingScopesParam ? missingScopesParam.split(',').join(', ') : 'read_locations, write_inventory';
-      toast({
-        variant: 'destructive',
-        title: 'Reauthorization Required ⚠️',
-        description: `Store "${connectedShop}" is missing permissions: ${missingList}. Please click Connect Shopify to grant these scopes.`,
-      });
-      window.history.replaceState({}, '', window.location.pathname);
-    } else if (shopifyConnected === 'true') {
+    if (shopifyConnected === 'true') {
       const connectedShop = shopParam || 'Shopify Store';
       toast({
         title: 'Shopify Connected! 🛍️',
-        description: `Successfully linked and authenticated "${connectedShop}". Live sync initialized.`,
+        description: `Successfully linked and authenticated "${connectedShop}". Live catalog and order sync initialized.`,
       });
 
       // Synchronize businessProfile state from Firestore
@@ -435,6 +426,15 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
           .catch(console.warn);
       }
 
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (isPartial) {
+      const connectedShop = shopParam || 'Shopify Store';
+      const missingList = missingScopesParam ? missingScopesParam.split(',').join(', ') : 'read_products, read_orders, read_inventory';
+      toast({
+        variant: 'destructive',
+        title: 'Reauthorization Required ⚠️',
+        description: `Store "${connectedShop}" is missing permissions: ${missingList}. Please click Connect Shopify to grant these scopes.`,
+      });
       window.history.replaceState({}, '', window.location.pathname);
     } else if (shopifyOauthRaw) {
       try {

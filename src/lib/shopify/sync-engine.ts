@@ -7,7 +7,7 @@
 import { getAdminFirestore, PersistenceError } from '@/lib/firebase/admin';
 import { executeShopifyGraphQL } from './admin-api';
 import { getShopifyConnection, updateConnectionSyncStatus } from './connection-store';
-import { getShopifyScopes, sanitizeShopDomain } from './config';
+import { getShopifyScopes, sanitizeShopDomain, getMissingCoreScopes } from './config';
 import type {
   ShopifySyncJob,
   ShopifyRefundRecord,
@@ -141,14 +141,13 @@ export async function runShopifySyncJob(
     return { success: false, jobId, errorCode: 'TENANT_MISMATCH', errorMessage: errorMsg, stats };
   }
 
-  // 2. Verify required scopes before running GraphQL queries
-  const requiredScopes = getShopifyScopes();
+  // 2. Verify core scopes before running GraphQL queries
   const granted = connection.grantedScopes || [];
-  const missing = requiredScopes.filter((s) => !granted.includes(s));
+  const missingCore = getMissingCoreScopes(granted);
 
-  if (missing.length > 0) {
-    const errorMsg = `The Shopify installation is missing required access scopes: ${missing.join(', ')}. Please reauthorize the application.`;
-    console.warn(`[Shopify Sync] Job ${jobId} failed: Missing scopes [${missing.join(', ')}]`);
+  if (missingCore.length > 0) {
+    const errorMsg = `The Shopify installation is missing required access scopes: ${missingCore.join(', ')}. Please reauthorize the application.`;
+    console.warn(`[Shopify Sync] Job ${jobId} failed: Missing core scopes [${missingCore.join(', ')}]`);
     await jobRef.set({
       status: 'FAILED',
       errorCode: 'SHOPIFY_MISSING_SCOPE',
@@ -174,6 +173,9 @@ export async function runShopifySyncJob(
     if (syncType === 'ALL' || syncType === 'PRODUCTS' || syncType === 'INVENTORY') {
       let hasNextPage = true;
       let productCursor = options?.cursor || null;
+
+      const hasReadLocations = (connection.grantedScopes || []).includes('read_locations');
+      const locationSubfields = hasReadLocations ? 'id\n                          name' : 'id';
 
       const productQuery = `
         query GetProductsPaginated($first: Int!, $after: String) {
@@ -209,8 +211,7 @@ export async function runShopifySyncJob(
                       nodes {
                         id
                         location {
-                          id
-                          name
+                          ${locationSubfields}
                         }
                         quantities(names: ["available"]) {
                           name
@@ -288,7 +289,8 @@ export async function runShopifySyncJob(
             // 2. Save per-location inventory records
             for (const level of v.inventoryItem?.inventoryLevels?.nodes || []) {
               const rawLocId = level.location?.id ? level.location.id.replace('gid://shopify/Location/', '') : 'default';
-              const locName = level.location?.name || 'Main Warehouse';
+              const defaultLocName = connection.storeName ? `${connection.storeName} Warehouse` : 'Main Warehouse';
+              const locName = level.location?.name || defaultLocName;
               const availableQty = level.quantities?.find((q: any) => q.name === 'available')?.quantity || 0;
               const inventoryDocId = `${rawInvItemId}_${rawLocId}`;
 
@@ -395,11 +397,13 @@ export async function runShopifySyncJob(
                   }
                 }
                 transactions(first: 10) {
-                  id
-                  kind
-                  status
-                  gateway
-                  amountSet { shopMoney { amount } }
+                  nodes {
+                    id
+                    kind
+                    status
+                    gateway
+                    amountSet { shopMoney { amount } }
+                  }
                 }
               }
             }
@@ -494,7 +498,7 @@ export async function runShopifySyncJob(
                 subtotal: Number(rli.subtotalSet?.shopMoney?.amount) || 0,
                 totalTax: Number(rli.totalTaxSet?.shopMoney?.amount) || 0,
               })),
-              refundTransactions: (ref.transactions || []).map((tx: any) => ({
+              refundTransactions: (ref.transactions?.nodes || ref.transactions || []).map((tx: any) => ({
                 id: tx.id,
                 amount: Number(tx.amountSet?.shopMoney?.amount) || 0,
                 currency: o.currencyCode || 'USD',

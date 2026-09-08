@@ -5,6 +5,8 @@ import {
   getShopifyScopes,
   getShopifyAppUrl,
   sanitizeShopDomain,
+  getMissingCoreScopes,
+  hasCoreShopifyScopes,
 } from '@/lib/shopify/config';
 import { verifyShopifyHmac, encryptShopifyToken } from '@/lib/shopify/crypto';
 import {
@@ -156,22 +158,24 @@ export async function GET(req: NextRequest) {
 
     // 8. Determine missing scopes dynamically
     const missingScopes = requestedScopes.filter((s) => !grantedScopes.includes(s));
-    const isPartiallyAuthorized = missingScopes.length > 0;
+    const missingCoreScopes = getMissingCoreScopes(grantedScopes);
+    const hasCore = missingCoreScopes.length === 0;
 
     console.log(`[Shopify Scopes] Required: ${requestedScopes.join(',')}`);
     console.log(`[Shopify Scopes] Granted: ${grantedScopes.join(',')}`);
     console.log(`[Shopify Scopes] Missing: ${missingScopes.join(',') || 'none'}`);
+    console.log(`[Shopify Scopes] Missing Core: ${missingCoreScopes.join(',') || 'none'}`);
 
-    // 9. If missing scopes exist -> Save PARTIAL connection, skip location & sync, redirect to reauth
-    if (isPartiallyAuthorized) {
+    // 9. If missing CORE scopes exist -> Save PARTIAL connection, skip location & sync, redirect to reauth
+    if (!hasCore) {
       console.warn(
-        `[Shopify OAuth] Shop ${shop} is missing required scopes: ${missingScopes.join(',')}. Halting sync initiation until reauthorized.`
+        `[Shopify OAuth] Shop ${shop} is missing core scopes: ${missingCoreScopes.join(',')}. Halting sync initiation until reauthorized.`
       );
 
       const partialConnection: ShopifyConnectionRecord = {
         ...initialConnection,
         grantedScopes,
-        missingScopes,
+        missingScopes: missingCoreScopes,
         status: 'PARTIAL',
         updatedAt: new Date().toISOString(),
       };
@@ -180,7 +184,7 @@ export async function GET(req: NextRequest) {
 
       const partialRedirectUrl = `${origin}/dashboard/integrations?shopify_connected=false&status=partial&shop=${encodeURIComponent(
         shop
-      )}&missing_scopes=${encodeURIComponent(missingScopes.join(','))}`;
+      )}&missing_scopes=${encodeURIComponent(missingCoreScopes.join(','))}`;
 
       return NextResponse.redirect(partialRedirectUrl);
     }
@@ -199,12 +203,13 @@ export async function GET(req: NextRequest) {
       console.warn('[Shopify OAuth] Could not query shop details via GraphQL:', shopErr);
     }
 
-    // 12. Query Shopify locations (guaranteed safe since read_locations is granted)
+    // 12. Query Shopify locations safely (adaptive)
     try {
       const locResult = await queryShopLocations(shop);
       primaryLocationId = locResult.primaryLocationId;
     } catch (locErr) {
-      console.warn('[Shopify OAuth] Could not query store locations via GraphQL:', locErr);
+      console.warn('[Shopify OAuth] Could not query store locations via GraphQL (using fallback):', locErr);
+      primaryLocationId = 'primary';
     }
 
     // 13. Persist Shopify connection in Firestore (status: ACTIVE)
@@ -215,7 +220,7 @@ export async function GET(req: NextRequest) {
       storeName,
       currency,
       grantedScopes,
-      missingScopes: [],
+      missingScopes,
       primaryLocationId,
       status: 'ACTIVE',
       updatedAt: new Date().toISOString(),

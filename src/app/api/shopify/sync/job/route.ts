@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runShopifySyncJob } from '@/lib/shopify/sync-engine';
-import { sanitizeShopDomain } from '@/lib/shopify/config';
+import { sanitizeShopDomain, getMissingCoreScopes } from '@/lib/shopify/config';
 import { getShopifyConnection } from '@/lib/shopify/connection-store';
 
 /**
@@ -44,16 +44,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3. Reject if connection is in PARTIAL status or missing required scopes
-    if (connection.status === 'PARTIAL' || (connection.missingScopes && connection.missingScopes.length > 0)) {
-      const missing = (connection.missingScopes || []).join(', ');
-      console.warn(`[Shopify Sync] Rejected sync for ${shop}: connection is PARTIAL (missing: ${missing})`);
+    // 3. Reject if connection is missing core scopes
+    const missingCore = getMissingCoreScopes(connection.grantedScopes || []);
+    if (connection.status === 'PARTIAL' && missingCore.length > 0) {
+      const missing = missingCore.join(', ');
+      console.warn(`[Shopify Sync] Rejected sync for ${shop}: connection is missing core scopes (${missing})`);
       return NextResponse.json(
         {
           success: false,
           errorCode: 'SHOPIFY_MISSING_SCOPE',
           error: `Shopify connection is partially authorized. Missing required scopes: ${missing}. Please reauthorize the store.`,
-          missingScopes: connection.missingScopes,
+          missingScopes: missingCore,
         },
         { status: 403 }
       );

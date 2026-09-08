@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { BotIcon, ZapIcon, BarChartIcon, TrendingUp, Package, Scale, RefreshCw } from 'lucide-react';
@@ -5,6 +6,14 @@ import { AnimatedHero } from '@/components/animated-hero';
 import { AnalyzeUpIcon } from '@/components/analyze-up-icon';
 import { RotatingText } from '@/components/rotating-text';
 import { Footer } from '@/components/footer';
+
+export const metadata: Metadata = {
+  title: 'AnalyzeUp - AI Copilot for Inventory & Demand Forecasting',
+  description: 'Predict demand, automate purchase orders, and uncover hidden margin drains with real-time inventory intelligence.',
+  verification: {
+    google: 'Kme1cRKkJTNrqxNoLJLwMRA-33kdA1SSWhW8WcPuEwU',
+  },
+};
 
 export default function LandingPage() {
   return (

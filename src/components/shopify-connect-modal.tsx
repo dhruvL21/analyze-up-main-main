@@ -358,16 +358,16 @@ export function ShopifyConnectModal() {
       });
       const data = await res.json();
       setScopeCheckResult(data);
-      if (data.success && data.permissions?.hasWriteProducts) {
+      if (data.success && data.hasCoreScopes) {
         toast({
           title: 'Permissions Verified! ⚡',
-          description: 'write_products is ACTIVE on your token! Price syncing to Shopify is ready.',
+          description: 'Catalog, inventory, and order syncing are fully active.',
         });
-      } else if (data.success && !data.permissions?.hasWriteProducts) {
+      } else if (data.success && !data.hasCoreScopes) {
         toast({
           variant: 'destructive',
-          title: 'Action Needed: Reinstall App',
-          description: 'write_products is not active on your current token. Click "Reinstall app" in Shopify Admin.',
+          title: 'Action Needed: Reconnect Store',
+          description: 'Core permissions (products, orders, inventory) are missing. Please reconnect your store.',
         });
       } else {
         toast({
