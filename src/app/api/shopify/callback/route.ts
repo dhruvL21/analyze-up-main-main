@@ -1,92 +1,87 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
+import {
+  getShopifyClientId,
+  getShopifyClientSecret,
+  getShopifyScopes,
+  getShopifyAppUrl,
+  sanitizeShopDomain,
+} from '@/lib/shopify/config';
+import { verifyShopifyHmac, encryptShopifyToken } from '@/lib/shopify/crypto';
+import {
+  consumeOAuthState,
+  saveShopifyConnection,
+} from '@/lib/shopify/connection-store';
+import {
+  queryGrantedScopes,
+  queryShopLocations,
+  queryShopDetails,
+} from '@/lib/shopify/admin-api';
+import { registerShopifyWebhooks } from '@/lib/shopify/webhook-manager';
+import { createSyncJob } from '@/lib/shopify/sync-engine';
+import type { ShopifyConnectionRecord } from '@/lib/shopify/types';
 
-function verifyShopifyHmac(searchParams: URLSearchParams, secret: string): boolean {
-  const hmac = searchParams.get('hmac');
-  if (!hmac) return false;
-
-  const params: [string, string][] = [];
-  searchParams.forEach((val, key) => {
-    if (key !== 'hmac' && key !== 'signature') {
-      params.push([key, val]);
-    }
-  });
-
-  // Sort lexicographically by key
-  params.sort(([a], [b]) => a.localeCompare(b));
-  const queryString = params.map(([key, val]) => `${key}=${val}`).join('&');
-
-  const generatedHmac = crypto
-    .createHmac('sha256', secret)
-    .update(queryString)
-    .digest('hex');
-
-  try {
-    return crypto.timingSafeEqual(
-      Buffer.from(generatedHmac, 'utf-8'),
-      Buffer.from(hmac, 'utf-8')
-    );
-  } catch {
-    return false;
-  }
-}
-
+/**
+ * GET /api/shopify/callback
+ * Implements the deterministic 17-step OAuth authorization lifecycle (Phase 13).
+ * Zero token exposure to URL, client-side storage, or logs.
+ */
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
-  const proto = req.headers.get('x-forwarded-proto') || (url.protocol.startsWith('https') ? 'https' : 'http');
-  const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || url.host;
-  const origin = `${proto}://${host}`;
+  const origin = getShopifyAppUrl(req.headers.get('host') || undefined);
 
   const { searchParams } = url;
   const code = searchParams.get('code');
-  const shop = searchParams.get('shop');
-  const stateRaw = searchParams.get('state');
+  const rawShop = searchParams.get('shop');
+  const stateNonce = searchParams.get('state');
   const errorParam = searchParams.get('error') || searchParams.get('error_description');
 
   if (errorParam) {
-    console.warn('[Shopify OAuth] Provider error:', errorParam);
+    console.warn('[Shopify OAuth] Provider returned error:', errorParam);
     return NextResponse.redirect(
-      `${origin}/dashboard/integrations?error=${encodeURIComponent(`Shopify error: ${errorParam}`)}`
+      `${origin}/dashboard/integrations?error=${encodeURIComponent(`Shopify authorization error: ${errorParam}`)}`
     );
   }
 
-  if (!code || !shop) {
+  // 1. Receive callback parameters
+  if (!code || !rawShop || !stateNonce) {
     return NextResponse.redirect(
-      `${origin}/dashboard/integrations?error=${encodeURIComponent('Missing authorization code or shop domain from Shopify.')}`
+      `${origin}/dashboard/integrations?error=${encodeURIComponent('Missing required authorization parameters from Shopify callback.')}`
     );
   }
 
-  const clientId = process.env.SHOPIFY_CLIENT_ID;
-  const clientSecret = process.env.SHOPIFY_CLIENT_SECRET;
-
-  if (!clientId || !clientSecret) {
+  // 2. Validate shop domain format
+  const shop = sanitizeShopDomain(rawShop);
+  if (!shop) {
     return NextResponse.redirect(
-      `${origin}/dashboard/integrations?error=${encodeURIComponent('Shopify client credentials missing in server configuration.')}`
+      `${origin}/dashboard/integrations?error=${encodeURIComponent('Invalid shop domain format from Shopify callback.')}`
     );
   }
 
-  // 1. Verify HMAC security signature
+  const clientSecret = getShopifyClientSecret();
+  const clientId = getShopifyClientId();
+
+  // 3. Validate and atomically consume one-time OAuth state record
+  const stateResult = await consumeOAuthState(stateNonce, shop);
+  if (!stateResult.valid || !stateResult.tenantId) {
+    console.error('[Shopify OAuth] State validation failed:', stateResult.error);
+    return NextResponse.redirect(
+      `${origin}/dashboard/integrations?error=${encodeURIComponent(stateResult.error || 'Invalid or expired OAuth state.')}`
+    );
+  }
+
+  const tenantId = stateResult.tenantId;
+
+  // 4. Validate HMAC cryptographic signature
   const isHmacValid = verifyShopifyHmac(searchParams, clientSecret);
   if (!isHmacValid) {
-    console.error('[Shopify OAuth] HMAC validation failed for shop:', shop);
+    console.error('[Shopify OAuth] Security check failed: Invalid HMAC signature for shop:', shop);
     return NextResponse.redirect(
       `${origin}/dashboard/integrations?error=${encodeURIComponent('Security check failed: Invalid HMAC signature from Shopify.')}`
     );
   }
 
-  let userId = 'default_user';
-  if (stateRaw) {
-    try {
-      const decodedState = JSON.parse(Buffer.from(stateRaw, 'base64').toString('utf-8'));
-      if (decodedState.userId) userId = decodedState.userId;
-    } catch {
-      // fallback to stateRaw string
-      userId = stateRaw;
-    }
-  }
-
   try {
-    // 2. Exchange authorization code for permanent offline access token
+    // 5. Exchange authorization code for expiring offline access token
     const tokenRes = await fetch(`https://${shop}/admin/oauth/access_token`, {
       method: 'POST',
       headers: {
@@ -96,6 +91,7 @@ export async function GET(req: NextRequest) {
         client_id: clientId,
         client_secret: clientSecret,
         code,
+        expiring: 1,
       }),
     });
 
@@ -110,57 +106,149 @@ export async function GET(req: NextRequest) {
 
     const tokenData = await tokenRes.json();
     const accessToken = tokenData.access_token;
-    const scope = tokenData.scope || '';
+    const refreshToken = tokenData.refresh_token || null;
+    const expiresInSec = tokenData.expires_in || null;
+    const refreshExpiresInSec = tokenData.refresh_token_expires_in || null;
 
-    // 3. Fetch Shopify store metadata
-    let storeName = shop.replace('.myshopify.com', '');
-    let currency = 'USD';
-    let storeEmail = '';
-    let shopId = '';
+    const now = Date.now();
+    const accessTokenExpiresAt = expiresInSec ? new Date(now + expiresInSec * 1000).toISOString() : null;
+    const refreshTokenExpiresAt = refreshExpiresInSec ? new Date(now + refreshExpiresInSec * 1000).toISOString() : null;
 
-    try {
-      const shopRes = await fetch(`https://${shop}/admin/api/2024-01/shop.json`, {
-        headers: {
-          'X-Shopify-Access-Token': accessToken,
-          'Content-Type': 'application/json',
-        },
-      });
+    // 6. Obtain access token and encrypt securely
+    const encryptedAccessToken = encryptShopifyToken(accessToken);
+    const encryptedRefreshToken = refreshToken ? encryptShopifyToken(refreshToken) : null;
 
-      if (shopRes.ok) {
-        const shopPayload = await shopRes.json();
-        if (shopPayload.shop) {
-          storeName = shopPayload.shop.name || storeName;
-          currency = shopPayload.shop.currency || currency;
-          storeEmail = shopPayload.shop.email || '';
-          shopId = String(shopPayload.shop.id || '');
-        }
-      }
-    } catch (e) {
-      console.warn('[Shopify OAuth] Could not fetch store profile metadata:', e);
-    }
-
-    // 4. Encode connection payload for dashboard integration
-    const oauthPayload = {
-      userId,
-      provider: 'shopify',
+    const requestedScopes = getShopifyScopes();
+    const initialConnection: ShopifyConnectionRecord = {
+      id: `conn_${tenantId}_${shop}`,
+      tenantId,
       shopDomain: shop,
-      storeName,
-      storeEmail,
-      shopId,
-      currency,
-      accessToken,
-      scope,
-      connectedAt: new Date().toISOString(),
+      encryptedAccessToken,
+      encryptedRefreshToken,
+      accessTokenExpiresAt,
+      refreshTokenExpiresAt,
+      lastTokenRefreshAt: new Date().toISOString(),
+      status: 'ACTIVE',
+      requestedScopes,
+      grantedScopes: [],
+      missingScopes: [],
+      storeName: shop.replace('.myshopify.com', ''),
+      currency: 'USD',
+      primaryLocationId: null,
+      installedAt: new Date().toISOString(),
+      uninstalledAt: null,
+      lastSyncAt: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
 
-    const encoded = Buffer.from(JSON.stringify(oauthPayload)).toString('base64');
-    return NextResponse.redirect(
-      `${origin}/dashboard/integrations?shopify_oauth=${encodeURIComponent(encoded)}`
-    );
+    // Save initial connection so Admin API client has valid token for introspection
+    await saveShopifyConnection(initialConnection);
+
+    // 7. Determine granted scopes via Shopify Admin API
+    let grantedScopes: string[] = [];
+    try {
+      grantedScopes = await queryGrantedScopes(shop);
+    } catch (scopeErr) {
+      console.warn('[Shopify OAuth] Could not query granted scopes via GraphQL:', scopeErr);
+      grantedScopes = (tokenData.scope || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+    }
+
+    // 8. Determine missing scopes dynamically
+    const missingScopes = requestedScopes.filter((s) => !grantedScopes.includes(s));
+    const isPartiallyAuthorized = missingScopes.length > 0;
+
+    console.log(`[Shopify Scopes] Required: ${requestedScopes.join(',')}`);
+    console.log(`[Shopify Scopes] Granted: ${grantedScopes.join(',')}`);
+    console.log(`[Shopify Scopes] Missing: ${missingScopes.join(',') || 'none'}`);
+
+    // 9. If missing scopes exist -> Save PARTIAL connection, skip location & sync, redirect to reauth
+    if (isPartiallyAuthorized) {
+      console.warn(
+        `[Shopify OAuth] Shop ${shop} is missing required scopes: ${missingScopes.join(',')}. Halting sync initiation until reauthorized.`
+      );
+
+      const partialConnection: ShopifyConnectionRecord = {
+        ...initialConnection,
+        grantedScopes,
+        missingScopes,
+        status: 'PARTIAL',
+        updatedAt: new Date().toISOString(),
+      };
+
+      await saveShopifyConnection(partialConnection);
+
+      const partialRedirectUrl = `${origin}/dashboard/integrations?shopify_connected=false&status=partial&shop=${encodeURIComponent(
+        shop
+      )}&missing_scopes=${encodeURIComponent(missingScopes.join(','))}`;
+
+      return NextResponse.redirect(partialRedirectUrl);
+    }
+
+    // 10. Normalize canonical shop domain & proceed with full activation
+    let storeName = shop.replace('.myshopify.com', '');
+    let currency = 'USD';
+    let primaryLocationId: string | null = null;
+
+    // 11. Query shop information
+    try {
+      const shopProfile = await queryShopDetails(shop);
+      if (shopProfile.name) storeName = shopProfile.name;
+      if (shopProfile.currencyCode) currency = shopProfile.currencyCode;
+    } catch (shopErr) {
+      console.warn('[Shopify OAuth] Could not query shop details via GraphQL:', shopErr);
+    }
+
+    // 12. Query Shopify locations (guaranteed safe since read_locations is granted)
+    try {
+      const locResult = await queryShopLocations(shop);
+      primaryLocationId = locResult.primaryLocationId;
+    } catch (locErr) {
+      console.warn('[Shopify OAuth] Could not query store locations via GraphQL:', locErr);
+    }
+
+    // 13. Persist Shopify connection in Firestore (status: ACTIVE)
+    // 14. Persist Shopify store index in Firestore
+    // 15. Persist business profile in Firestore
+    const finalConnection: ShopifyConnectionRecord = {
+      ...initialConnection,
+      storeName,
+      currency,
+      grantedScopes,
+      missingScopes: [],
+      primaryLocationId,
+      status: 'ACTIVE',
+      updatedAt: new Date().toISOString(),
+    };
+
+    await saveShopifyConnection(finalConnection);
+
+    // Register Webhooks Idempotently
+    registerShopifyWebhooks({ shop, appUrl: origin }).catch((whErr) => {
+      console.warn('[Shopify OAuth] Background webhook registration note:', whErr);
+    });
+
+    // 16. Create sync job & trigger initial background sync
+    const jobId = await createSyncJob(tenantId, shop, 'ALL');
+
+    fetch(`${origin}/api/shopify/sync/job`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobId, shop, tenantId, syncType: 'ALL' }),
+    }).catch((syncErr) => {
+      console.warn('[Shopify OAuth] Background initial sync enqueue notice:', syncErr);
+    });
+
+    // 17. Redirect to dashboard with active connection confirmation
+    const successUrl = `${origin}/dashboard/integrations?shopify_connected=true&shop=${encodeURIComponent(
+      shop
+    )}&job_id=${encodeURIComponent(jobId)}`;
+
+    return NextResponse.redirect(successUrl);
   } catch (err: any) {
-    console.error('[Shopify OAuth Callback Error]:', err);
+    console.error('[Shopify OAuth Callback Exception]:', err);
     return NextResponse.redirect(
-      `${origin}/dashboard/integrations?error=${encodeURIComponent(err?.message || 'Shopify connection failed')}`
+      `${origin}/dashboard/integrations?error=${encodeURIComponent(err?.message || 'Unexpected error during Shopify authorization.')}`
     );
   }
 }

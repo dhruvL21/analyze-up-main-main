@@ -115,11 +115,21 @@ export default function RegisterPage() {
               />
             </div>
           </CardContent>
-          <CardFooter className="flex flex-col gap-4">
+          <CardFooter className="flex flex-col gap-3">
             <Button className="w-full" type="submit" disabled={loading} size="lg">
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Create Account
             </Button>
+            <p className="text-[11px] text-center text-muted-foreground leading-relaxed">
+              By creating an account, you agree to our{' '}
+              <Link href="/terms" className="text-primary hover:underline font-medium">
+                Terms of Service
+              </Link>{' '}
+              and{' '}
+              <Link href="/privacy" className="text-primary hover:underline font-medium">
+                Privacy Policy
+              </Link>.
+            </p>
           </CardFooter>
         </form>
          <p className="mt-4 px-6 pb-6 text-center text-sm">

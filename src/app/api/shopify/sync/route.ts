@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getShopifyApiVersion, sanitizeShopDomain } from '@/lib/shopify/config';
+import { getValidAccessToken } from '@/lib/shopify/admin-api';
 import {
   convertShopifyToCanonicalProducts,
   convertShopifyToCanonicalTransactions,
@@ -7,25 +9,14 @@ import {
   mergeAndDeduplicateReturns,
 } from '@/lib/ingestion/shopify-adapter';
 
-function sanitizeShopDomain(rawShop: string): string | null {
-  if (!rawShop) return null;
-  let shop = rawShop.trim().toLowerCase();
-  shop = shop.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-  if (!shop.includes('.myshopify.com')) {
-    shop = `${shop}.myshopify.com`;
-  }
-  const validShopRegex = /^[a-zA-Z0-9][a-zA-Z0-9\-]*\.myshopify\.com$/;
-  return validShopRegex.test(shop) ? shop : null;
-}
-
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const { shop: rawShop, accessToken } = body;
 
-    if (!rawShop || !accessToken) {
+    if (!rawShop) {
       return NextResponse.json(
-        { success: false, error: 'Shop domain and access token are required for syncing.' },
+        { success: false, error: 'Shop domain is required for syncing.' },
         { status: 400 }
       );
     }
@@ -38,7 +29,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const token = accessToken.trim();
+    let token = accessToken ? String(accessToken).trim() : '';
+    if (!token) {
+      try {
+        token = await getValidAccessToken(shop);
+      } catch (err: any) {
+        console.warn(`[Shopify Sync] Could not resolve server access token for ${shop}:`, err?.message || err);
+        return NextResponse.json(
+          { success: false, error: `Could not resolve Shopify access token for store "${shop}". Please reconnect your store.` },
+          { status: 401 }
+        );
+      }
+    }
+
+    const apiVersion = getShopifyApiVersion();
     const headers = {
       'X-Shopify-Access-Token': token,
       'Content-Type': 'application/json',
@@ -48,7 +52,7 @@ export async function POST(req: NextRequest) {
     let rawProducts: any[] = [];
     try {
       const productsRes = await fetch(
-        `https://${shop}/admin/api/2024-01/products.json?limit=250`,
+        `https://${shop}/admin/api/${apiVersion}/products.json?limit=250`,
         { method: 'GET', headers, signal: AbortSignal.timeout(15000) }
       );
 
@@ -88,7 +92,7 @@ export async function POST(req: NextRequest) {
     let rawOrders: any[] = [];
     try {
       const ordersRes = await fetch(
-        `https://${shop}/admin/api/2024-01/orders.json?status=any&limit=250`,
+        `https://${shop}/admin/api/${apiVersion}/orders.json?status=any&limit=250`,
         { method: 'GET', headers, signal: AbortSignal.timeout(15000) }
       );
 
@@ -180,7 +184,7 @@ export async function POST(req: NextRequest) {
         }
       `;
 
-      const gqlRes = await fetch(`https://${shop}/admin/api/2024-01/graphql.json`, {
+      const gqlRes = await fetch(`https://${shop}/admin/api/${apiVersion}/graphql.json`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ query: gqlQuery }),

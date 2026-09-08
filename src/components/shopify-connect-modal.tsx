@@ -71,6 +71,10 @@ export function ShopifyConnectModal() {
 
   const cleanShopDomain = (input: string): string => {
     let clean = input.trim().toLowerCase();
+    const adminMatch = clean.match(/admin\.shopify\.com\/store\/([a-zA-Z0-9\-]+)/);
+    if (adminMatch && adminMatch[1]) {
+      return `${adminMatch[1]}.myshopify.com`;
+    }
     clean = clean.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
     if (!clean.includes('.myshopify.com')) {
       clean = `${clean}.myshopify.com`;
@@ -78,8 +82,8 @@ export function ShopifyConnectModal() {
     return clean;
   };
 
-  // 1. Initiate One-Click OAuth Flow
-  const handleOAuthConnect = (e: React.FormEvent) => {
+  // 1. Initiate One-Click OAuth Flow (Zero-trust server-resolved session)
+  const handleOAuthConnect = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!storeUrl.trim()) {
       toast({
@@ -93,8 +97,31 @@ export function ShopifyConnectModal() {
     const shop = cleanShopDomain(storeUrl);
     setIsSubmitting(true);
 
-    const userId = user?.uid || 'default_user';
-    window.location.href = `/api/shopify/auth?shop=${encodeURIComponent(shop)}&userId=${encodeURIComponent(userId)}`;
+    try {
+      const idToken = await user?.getIdToken();
+      const res = await fetch('/api/shopify/auth', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+        },
+        body: JSON.stringify({ shop }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.authUrl) {
+        throw new Error(data.error || 'Failed to initiate Shopify authorization.');
+      }
+
+      window.location.href = data.authUrl;
+    } catch (err: any) {
+      setIsSubmitting(false);
+      toast({
+        variant: 'destructive',
+        title: 'Connection Error',
+        description: err.message || 'Could not reach Shopify authorization server.',
+      });
+    }
   };
 
   // 2. Direct Admin API Token Verification & Connection
@@ -206,11 +233,11 @@ export function ShopifyConnectModal() {
     const shop = shopOverride || businessProfile?.shopifyStoreUrl;
     const token = tokenOverride || businessProfile?.shopifyAccessToken;
 
-    if (!shop || !token) {
+    if (!shop) {
       toast({
         variant: 'destructive',
-        title: 'Missing Credentials',
-        description: 'Store URL or access token is missing. Please reconnect your store.',
+        title: 'Missing Store URL',
+        description: 'Store URL is missing. Please connect your store first.',
       });
       return;
     }
@@ -225,7 +252,7 @@ export function ShopifyConnectModal() {
       const res = await fetch('/api/shopify/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shop, accessToken: token }),
+        body: JSON.stringify({ shop, ...(token ? { accessToken: token } : {}) }),
       });
 
       const data = await res.json();
@@ -317,8 +344,8 @@ export function ShopifyConnectModal() {
   const handleCheckScopes = async () => {
     const shop = businessProfile?.shopifyStoreUrl;
     const token = businessProfile?.shopifyAccessToken;
-    if (!shop || !token) {
-      toast({ variant: 'destructive', title: 'Missing credentials', description: 'Please connect your store first.' });
+    if (!shop) {
+      toast({ variant: 'destructive', title: 'Missing store URL', description: 'Please connect your store first.' });
       return;
     }
 
@@ -327,7 +354,7 @@ export function ShopifyConnectModal() {
       const res = await fetch('/api/shopify/scopes/check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shop, accessToken: token }),
+        body: JSON.stringify({ shop, ...(token ? { accessToken: token } : {}) }),
       });
       const data = await res.json();
       setScopeCheckResult(data);
@@ -641,7 +668,7 @@ export function ShopifyConnectModal() {
                     <div className="relative">
                       <Input
                         id="oauth-store-url"
-                        placeholder="your-store-name.myshopify.com"
+                        placeholder="your-store-handle or store.myshopify.com"
                         value={storeUrl}
                         onChange={(e) => setStoreUrl(e.target.value)}
                         className="pl-9 text-xs rounded-xl h-10 bg-secondary/30 border-border/50 focus:border-primary/50"
@@ -650,7 +677,7 @@ export function ShopifyConnectModal() {
                       <Store className="w-4 h-4 text-muted-foreground absolute left-3 top-3" />
                     </div>
                     <p className="text-[11px] text-muted-foreground">
-                      Enter your store name (e.g. <code>gullycart</code> or <code>gullycart.myshopify.com</code>).
+                      Enter your store name, handle, or admin URL (e.g. <code>snkhed</code>, <code>14aj1c-0a</code>, or <code>admin.shopify.com/store/14aj1c-0a</code>).
                     </p>
                   </div>
 

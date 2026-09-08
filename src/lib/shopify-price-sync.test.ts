@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { updateShopifyVariantPrice } from './shopify-price-sync';
+import { getShopifyApiVersion } from './shopify/config';
 
 describe('Shopify Price & Discount Sync Engine', () => {
   const originalFetch = global.fetch;
@@ -55,8 +56,9 @@ describe('Shopify Price & Discount Sync Engine', () => {
     expect(res.price).toBe(3999);
     expect(res.compareAtPrice).toBe(4999);
 
+    const apiVersion = getShopifyApiVersion();
     expect(global.fetch).toHaveBeenCalledWith(
-      'https://mystore.myshopify.com/admin/api/2024-01/variants/9001.json',
+      `https://mystore.myshopify.com/admin/api/${apiVersion}/variants/9001.json`,
       expect.objectContaining({
         method: 'PUT',
         body: JSON.stringify({
@@ -155,12 +157,13 @@ describe('Shopify Price & Discount Sync Engine', () => {
 
     expect(res.success).toBe(true);
     expect(res.updatedVariantsCount).toBe(2);
+    const apiVersion = getShopifyApiVersion();
     expect(global.fetch).toHaveBeenCalledWith(
-      'https://mystore.myshopify.com/admin/api/2024-01/variants/701.json',
+      `https://mystore.myshopify.com/admin/api/${apiVersion}/variants/701.json`,
       expect.anything()
     );
     expect(global.fetch).toHaveBeenCalledWith(
-      'https://mystore.myshopify.com/admin/api/2024-01/variants/702.json',
+      `https://mystore.myshopify.com/admin/api/${apiVersion}/variants/702.json`,
       expect.anything()
     );
   });

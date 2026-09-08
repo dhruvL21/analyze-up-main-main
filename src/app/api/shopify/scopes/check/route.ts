@@ -1,76 +1,110 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { sanitizeShopDomain, getShopifyScopes } from '@/lib/shopify/config';
+import { getValidAccessToken, getShopifyGrantedScopes } from '@/lib/shopify/admin-api';
+import { getShopifyConnection, saveShopifyConnection } from '@/lib/shopify/connection-store';
 
-function sanitizeShopDomain(rawShop: string): string | null {
-  if (!rawShop) return null;
-  let shop = rawShop.trim().toLowerCase();
-  shop = shop.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-  if (!shop.includes('.myshopify.com')) {
-    shop = `${shop}.myshopify.com`;
-  }
-  const validShopRegex = /^[a-zA-Z0-9][a-zA-Z0-9\-]*\.myshopify\.com$/;
-  return validShopRegex.test(shop) ? shop : null;
-}
-
+/**
+ * POST /api/shopify/scopes/check
+ * Inspects granted access scopes for an active installation against the 5 required scopes (Phase 4 & 5).
+ * Dynamically detects missing scopes (e.g. read_locations, write_inventory) and updates connection record status.
+ */
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const { shop: rawShop, accessToken } = body;
 
-    const shop = sanitizeShopDomain(rawShop);
-    if (!shop || !accessToken) {
+    if (!rawShop) {
       return NextResponse.json(
-        { success: false, error: 'Shop domain and access token are required.' },
+        { success: false, error: 'Shop domain is required.' },
         { status: 400 }
       );
     }
 
-    const res = await fetch(`https://${shop}/admin/oauth/access_scopes.json`, {
-      method: 'GET',
-      headers: {
-        'X-Shopify-Access-Token': accessToken.trim(),
-        'Content-Type': 'application/json',
-      },
-      signal: AbortSignal.timeout(10000),
-    });
-
-    if (res.status === 401) {
-      return NextResponse.json({
-        success: false,
-        error: 'Shopify token invalid or expired (401).',
-      }, { status: 401 });
+    const shop = sanitizeShopDomain(rawShop);
+    if (!shop) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid Shopify store domain.' },
+        { status: 400 }
+      );
     }
 
-    if (!res.ok) {
-      return NextResponse.json({
-        success: false,
-        error: `Failed to fetch access scopes from Shopify (${res.status}).`,
-      }, { status: res.status });
+    // Resolve or verify access token exists
+    let token = accessToken ? String(accessToken).trim() : '';
+    if (!token) {
+      try {
+        token = await getValidAccessToken(shop);
+      } catch (err: any) {
+        return NextResponse.json(
+          { success: false, error: `Could not resolve Shopify access token for ${shop}: ${err?.message || err}` },
+          { status: 401 }
+        );
+      }
     }
 
-    const data = await res.json();
-    const scopes: string[] = (data.access_scopes || []).map((s: any) => s.handle);
+    // Dynamic scope inspection using Shopify GraphQL / REST Admin API
+    const scopeCheck = await getShopifyGrantedScopes(shop);
+    const requiredScopes = scopeCheck.requiredScopes;
+    let grantedScopes = scopeCheck.grantedScopes;
 
-    const hasWriteProducts = scopes.includes('write_products');
-    const hasReadProducts = scopes.includes('read_products');
-    const hasReadOrders = scopes.includes('read_orders') || scopes.includes('read_all_orders');
-    const hasWriteOrders = scopes.includes('write_orders');
-    const hasReadReturns = scopes.includes('read_returns');
-    const hasReadInventory = scopes.includes('read_inventory');
+    // Fallback inspection via REST oauth/access_scopes.json if GraphQL had empty scopes
+    if (!grantedScopes || grantedScopes.length === 0) {
+      try {
+        const res = await fetch(`https://${shop}/admin/oauth/access_scopes.json`, {
+          method: 'GET',
+          headers: {
+            'X-Shopify-Access-Token': token,
+            'Content-Type': 'application/json',
+          },
+          signal: AbortSignal.timeout(10000),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          grantedScopes = (data.access_scopes || []).map((s: any) => s.handle);
+        }
+      } catch (restErr) {
+        console.warn(`[Shopify Scopes Check] REST endpoint notice for ${shop}:`, restErr);
+      }
+    }
+
+    const missingScopes = requiredScopes.filter((scope) => !grantedScopes.includes(scope));
+    const isAuthorized = missingScopes.length === 0;
+
+    // Update connection status in Firestore/store if installation was previously active
+    const conn = await getShopifyConnection(shop);
+    if (conn) {
+      const updatedStatus = isAuthorized ? (conn.status === 'PARTIAL' ? 'ACTIVE' : conn.status) : 'PARTIAL';
+      if (conn.status !== updatedStatus || JSON.stringify(conn.missingScopes) !== JSON.stringify(missingScopes)) {
+        await saveShopifyConnection({
+          ...conn,
+          grantedScopes,
+          missingScopes,
+          status: updatedStatus,
+          updatedAt: new Date().toISOString(),
+        }).catch((e) => console.warn('[Shopify Scopes Check] Connection update note:', e));
+      }
+    }
+
+    const hasReadProducts = grantedScopes.includes('read_products');
+    const hasReadOrders = grantedScopes.includes('read_orders') || grantedScopes.includes('read_all_orders');
+    const hasReadInventory = grantedScopes.includes('read_inventory');
+    const hasReadLocations = grantedScopes.includes('read_locations');
+    const hasWriteInventory = grantedScopes.includes('write_inventory');
 
     return NextResponse.json({
       success: true,
       shop,
-      scopes,
+      requiredScopes,
+      grantedScopes,
+      missingScopes,
+      isAuthorized,
       permissions: {
-        hasWriteProducts,
         hasReadProducts,
         hasReadOrders,
-        hasWriteOrders,
-        hasReadReturns,
         hasReadInventory,
-        canSyncPricesToShopify: hasWriteProducts,
+        hasReadLocations,
+        hasWriteInventory,
       },
-      missingForPriceSync: hasWriteProducts ? [] : ['write_products'],
     });
   } catch (err: any) {
     console.error('[Shopify Scope Check Error]:', err);

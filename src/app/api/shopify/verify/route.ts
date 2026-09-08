@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getShopifyApiVersion } from '@/lib/shopify/config';
 
 function sanitizeShopDomain(rawShop: string): string | null {
   if (!rawShop) return null;
@@ -31,7 +32,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const shopRes = await fetch(`https://${shop}/admin/api/2024-01/shop.json`, {
+    const apiVersion = getShopifyApiVersion();
+    const shopRes = await fetch(`https://${shop}/admin/api/${apiVersion}/shop.json`, {
       method: 'GET',
       headers: {
         'X-Shopify-Access-Token': accessToken.trim(),

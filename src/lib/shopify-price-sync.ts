@@ -1,8 +1,4 @@
-/**
- * Shopify Price Sync Helper
- * Updates product and variant prices directly in Shopify via Admin REST API.
- * Sets the new discounted selling price and optionally marks compare_at_price for strikethrough sale display.
- */
+import { getShopifyApiVersion } from './shopify/config';
 
 export interface UpdateShopifyPriceParams {
   shop: string;
@@ -48,6 +44,7 @@ function sanitizeShopDomain(rawShop: string): string | null {
 export async function updateShopifyVariantPrice(
   params: UpdateShopifyPriceParams
 ): Promise<UpdateShopifyPriceResult> {
+  const apiVersion = getShopifyApiVersion();
   const {
     shop: rawShop,
     accessToken,
@@ -103,7 +100,7 @@ export async function updateShopifyVariantPrice(
   if (resolvedProdId && !isNaN(Number(resolvedProdId))) {
     try {
       const prodRes = await fetch(
-        `https://${shop}/admin/api/2024-01/products/${resolvedProdId}.json`,
+        `https://${shop}/admin/api/${apiVersion}/products/${resolvedProdId}.json`,
         { method: 'GET', headers, signal: AbortSignal.timeout(12000) }
       );
       if (prodRes.ok) {
@@ -131,7 +128,7 @@ export async function updateShopifyVariantPrice(
   if (!targetVariantId && sku && sku.trim()) {
     try {
       const skuSearchRes = await fetch(
-        `https://${shop}/admin/api/2024-01/products.json?limit=250&fields=id,title,variants`,
+        `https://${shop}/admin/api/${apiVersion}/products.json?limit=250&fields=id,title,variants`,
         { method: 'GET', headers, signal: AbortSignal.timeout(15000) }
       );
       if (skuSearchRes.ok) {
@@ -180,10 +177,10 @@ export async function updateShopifyVariantPrice(
       updatePayload.compare_at_price = finalCompareAtPrice.toFixed(2);
     }
 
-    console.log(`[Shopify Price Sync] Sending PUT to https://${shop}/admin/api/2024-01/variants/${targetVariantId}.json`, updatePayload);
+    console.log(`[Shopify Price Sync] Sending PUT to https://${shop}/admin/api/${apiVersion}/variants/${targetVariantId}.json`, updatePayload);
 
     const putRes = await fetch(
-      `https://${shop}/admin/api/2024-01/variants/${targetVariantId}.json`,
+      `https://${shop}/admin/api/${apiVersion}/variants/${targetVariantId}.json`,
       {
         method: 'PUT',
         headers,
@@ -248,7 +245,7 @@ export async function updateShopifyVariantPrice(
       for (const sibId of siblingIds) {
         try {
           const sibRes = await fetch(
-            `https://${shop}/admin/api/2024-01/variants/${sibId}.json`,
+            `https://${shop}/admin/api/${apiVersion}/variants/${sibId}.json`,
             {
               method: 'PUT',
               headers,

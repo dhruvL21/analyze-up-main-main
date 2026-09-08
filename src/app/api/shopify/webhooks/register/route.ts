@@ -1,80 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-function sanitizeShopDomain(rawShop: string): string {
-  let shop = rawShop.trim().toLowerCase();
-  shop = shop.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-  if (!shop.includes('.myshopify.com')) {
-    shop = `${shop}.myshopify.com`;
-  }
-  return shop;
-}
+import { sanitizeShopDomain } from '@/lib/shopify/config';
+import { registerShopifyWebhooks } from '@/lib/shopify/webhook-manager';
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { shop: rawShop, accessToken, webhookHost } = body;
+    const body = await req.json().catch(() => ({}));
+    const { shop: rawShop, webhookHost } = body;
 
-    if (!rawShop || !accessToken) {
+    if (!rawShop) {
       return NextResponse.json(
-        { success: false, error: 'Shop and accessToken are required.' },
+        { success: false, error: 'Shop domain is required.' },
         { status: 400 }
       );
     }
 
     const shop = sanitizeShopDomain(rawShop);
-    const origin = webhookHost || req.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || 'https://analyzeup.app';
-    const webhookAddress = `${origin}/api/shopify/webhooks`;
-
-    const topics = [
-      'orders/create',
-      'orders/updated',
-      'orders/paid',
-      'refunds/create',
-      'products/create',
-      'products/update',
-    ];
-
-    const results: Record<string, string> = {};
-
-    for (const topic of topics) {
-      try {
-        const res = await fetch(`https://${shop}/admin/api/2024-01/webhooks.json`, {
-          method: 'POST',
-          headers: {
-            'X-Shopify-Access-Token': accessToken.trim(),
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            webhook: {
-              topic,
-              address: webhookAddress,
-              format: 'json',
-            },
-          }),
-        });
-
-        if (res.status === 201) {
-          results[topic] = 'created';
-        } else if (res.status === 422) {
-          // Already registered
-          results[topic] = 'already_exists';
-        } else {
-          const errText = await res.text();
-          results[topic] = `status_${res.status}: ${errText.slice(0, 100)}`;
-        }
-      } catch (err: any) {
-        results[topic] = `error: ${err.message}`;
-      }
+    if (!shop) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid Shopify store URL format.' },
+        { status: 400 }
+      );
     }
+
+    const registration = await registerShopifyWebhooks({
+      shop,
+      appUrl: webhookHost,
+    });
 
     return NextResponse.json({
       success: true,
       shop,
-      webhookAddress,
-      results,
+      callbackUrl: registration.callbackUrl,
+      registered: registration.registered,
+      alreadyExisted: registration.alreadyExisted,
+      failed: registration.failed,
     });
   } catch (error: any) {
-    console.error('[Shopify Register Webhooks Error]:', error);
+    console.error('[Shopify Register Webhooks Route Error]:', error);
     return NextResponse.json(
       { success: false, error: error?.message || 'Failed to register webhooks.' },
       { status: 500 }

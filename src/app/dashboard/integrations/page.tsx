@@ -399,10 +399,44 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
     const urlParams = new URLSearchParams(window.location.search);
     const oauthDataRaw = urlParams.get('oauth_data');
     const shopifyOauthRaw = urlParams.get('shopify_oauth');
+    const shopifyConnected = urlParams.get('shopify_connected');
+    const shopParam = urlParams.get('shop');
     const status = urlParams.get('status');
     const error = urlParams.get('error');
 
-    if (shopifyOauthRaw) {
+    const missingScopesParam = urlParams.get('missing_scopes');
+    const isPartial = status === 'partial' || urlParams.get('shopify_partial') === 'true' || Boolean(missingScopesParam);
+
+    if (isPartial) {
+      const connectedShop = shopParam || 'Shopify Store';
+      const missingList = missingScopesParam ? missingScopesParam.split(',').join(', ') : 'read_locations, write_inventory';
+      toast({
+        variant: 'destructive',
+        title: 'Reauthorization Required ⚠️',
+        description: `Store "${connectedShop}" is missing permissions: ${missingList}. Please click Connect Shopify to grant these scopes.`,
+      });
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (shopifyConnected === 'true') {
+      const connectedShop = shopParam || 'Shopify Store';
+      toast({
+        title: 'Shopify Connected! 🛍️',
+        description: `Successfully linked and authenticated "${connectedShop}". Live sync initialized.`,
+      });
+
+      // Synchronize businessProfile state from Firestore
+      if (user && firestore) {
+        const profileRef = doc(firestore, 'users', user.uid, 'settings', 'business_profile');
+        getDoc(profileRef)
+          .then((snap) => {
+            if (snap.exists()) {
+              updateBusinessProfile(snap.data() as any);
+            }
+          })
+          .catch(console.warn);
+      }
+
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (shopifyOauthRaw) {
       try {
         const decodedStr = atob(decodeURIComponent(shopifyOauthRaw));
         const shopifyData = JSON.parse(decodedStr);
@@ -529,10 +563,12 @@ INV-1005,ORD-5005,2026-08-24,CUST-105,Global Retail Co,SKU-ELEC-03,Ultra-Fast US
       });
       window.history.replaceState({}, '', window.location.pathname);
     } else if (error) {
+      const decodedErr = decodeURIComponent(error);
+      const isShopify = decodedErr.toLowerCase().includes('shopify') || decodedErr.toLowerCase().includes('oauth');
       toast({
         variant: 'destructive',
-        title: 'Google Drive Connection Failed',
-        description: decodeURIComponent(error),
+        title: isShopify ? 'Shopify Connection Error' : 'Google Drive Connection Failed',
+        description: decodedErr,
       });
       window.history.replaceState({}, '', window.location.pathname);
     }

@@ -18,5 +18,30 @@ service cloud.firestore {
     match /users/{userId}/{document=**} {
       allow read, write: if isOwner(userId);
     }
+
+    // Shopify multi-tenant collections
+    match /shopify_connections/{shop} {
+      allow read, write: if true;
+    }
+
+    match /shopify_oauth_states/{nonce} {
+      allow read, write: if true;
+    }
+
+    match /shopify_stores/{shop} {
+      allow read, write: if true;
+    }
+
+    match /shopify_processed_webhooks/{id} {
+      allow read, write: if true;
+    }
+
+    match /shopify_outgoing_operations/{opId} {
+      allow read, write: if true;
+    }
+
+    match /shopify_sync_jobs/{jobId} {
+      allow read, write: if true;
+    }
   }
 }

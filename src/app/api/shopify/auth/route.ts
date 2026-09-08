@@ -1,38 +1,98 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
+import {
+  getShopifyClientId,
+  getShopifyScopes,
+  getShopifyAppUrl,
+  sanitizeShopDomain,
+} from '@/lib/shopify/config';
+import { saveOAuthState } from '@/lib/shopify/connection-store';
+import { resolveServerTenant } from '@/lib/shopify/auth-guard';
 
 function getOAuthRedirectUri(req: NextRequest): string {
-  const url = new URL(req.url);
-  const proto = req.headers.get('x-forwarded-proto') || (url.protocol.startsWith('https') ? 'https' : 'http');
-  const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || url.host;
-  const currentOrigin = `${proto}://${host}`;
-
-  if (process.env.SHOPIFY_REDIRECT_URI) {
-    try {
-      const configured = new URL(process.env.SHOPIFY_REDIRECT_URI);
-      if (configured.host === host) {
-        return process.env.SHOPIFY_REDIRECT_URI;
-      }
-    } catch (e) {}
-  }
-
-  return `${currentOrigin}/api/shopify/callback`;
+  const appUrl = getShopifyAppUrl(req.headers.get('host') || undefined);
+  return `${appUrl}/api/shopify/callback`;
 }
 
-function sanitizeShopDomain(rawShop: string): string | null {
-  if (!rawShop) return null;
-  let shop = rawShop.trim().toLowerCase();
-  shop = shop.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-  if (!shop.includes('.myshopify.com')) {
-    shop = `${shop}.myshopify.com`;
+/**
+ * POST /api/shopify/auth
+ * Authenticated initiation of Shopify OAuth flow.
+ * Verifies caller session server-side, generates atomic one-time state, and returns auth URL.
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const tenant = await resolveServerTenant(req);
+    if (!tenant) {
+      return NextResponse.json(
+        { error: 'Unauthorized: You must be logged in with a valid AnalyzeUp session to connect Shopify.' },
+        { status: 401 }
+      );
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const rawShop = body.shop;
+
+    if (!rawShop) {
+      return NextResponse.json(
+        { error: 'Missing shop parameter. Please enter your Shopify store domain (e.g. your-store.myshopify.com).' },
+        { status: 400 }
+      );
+    }
+
+    const shop = sanitizeShopDomain(rawShop);
+    if (!shop) {
+      return NextResponse.json(
+        { error: 'Invalid Shopify store domain format. Expected: your-store.myshopify.com' },
+        { status: 400 }
+      );
+    }
+
+    const clientId = getShopifyClientId();
+    const scopes = getShopifyScopes().join(',');
+    const redirectUri = getOAuthRedirectUri(req);
+
+    // Generate cryptographically secure one-time state nonce
+    const nonce = crypto.randomBytes(32).toString('hex');
+    const now = Date.now();
+    const tenMinutesMs = 10 * 60 * 1000;
+
+    await saveOAuthState({
+      nonce,
+      tenantId: tenant.tenantId,
+      normalizedShopDomain: shop,
+      createdAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + tenMinutesMs).toISOString(),
+      consumedAt: null,
+    });
+
+    const authUrl =
+      `https://${shop}/admin/oauth/authorize?` +
+      `client_id=${encodeURIComponent(clientId)}&` +
+      `scope=${encodeURIComponent(scopes)}&` +
+      `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+      `state=${encodeURIComponent(nonce)}`;
+
+    return NextResponse.json({
+      success: true,
+      authUrl,
+      shop,
+    });
+  } catch (error: any) {
+    console.error('[Shopify Auth Initiation Error]:', error);
+    return NextResponse.json(
+      { error: error?.message || 'Failed to initiate Shopify authorization.' },
+      { status: 500 }
+    );
   }
-  const validShopRegex = /^[a-zA-Z0-9][a-zA-Z0-9\-]*\.myshopify\.com$/;
-  return validShopRegex.test(shop) ? shop : null;
 }
 
+/**
+ * GET /api/shopify/auth
+ * Support for direct installation links from Shopify App Store / Partner Dashboard.
+ */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const rawShop = searchParams.get('shop');
-  const userId = searchParams.get('userId') || 'default_user';
 
   if (!rawShop) {
     return NextResponse.json(
@@ -49,31 +109,33 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const clientId = process.env.SHOPIFY_CLIENT_ID;
-  if (!clientId) {
-    return NextResponse.json(
-      { error: 'Shopify OAuth configuration (SHOPIFY_CLIENT_ID) is missing on the server.' },
-      { status: 500 }
-    );
-  }
+  // If a tenant session is available, resolve it; otherwise set placeholder to bind upon login
+  const tenant = await resolveServerTenant(req);
+  const tenantId = tenant?.tenantId || 'pending_authorization';
 
+  const clientId = getShopifyClientId();
+  const scopes = getShopifyScopes().join(',');
   const redirectUri = getOAuthRedirectUri(req);
-  const scopes = process.env.SHOPIFY_SCOPES || 'read_all_orders,read_customers,read_inventory,read_products,write_products,read_orders,write_orders,read_returns';
 
-  // State encodes userId and shop
-  const statePayload = {
-    userId,
-    shop,
-    nonce: Math.random().toString(36).substring(2, 15),
-  };
-  const state = Buffer.from(JSON.stringify(statePayload)).toString('base64');
+  const nonce = crypto.randomBytes(32).toString('hex');
+  const now = Date.now();
+  const tenMinutesMs = 10 * 60 * 1000;
+
+  await saveOAuthState({
+    nonce,
+    tenantId,
+    normalizedShopDomain: shop,
+    createdAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + tenMinutesMs).toISOString(),
+    consumedAt: null,
+  });
 
   const authUrl =
     `https://${shop}/admin/oauth/authorize?` +
     `client_id=${encodeURIComponent(clientId)}&` +
     `scope=${encodeURIComponent(scopes)}&` +
     `redirect_uri=${encodeURIComponent(redirectUri)}&` +
-    `state=${encodeURIComponent(state)}`;
+    `state=${encodeURIComponent(nonce)}`;
 
   return NextResponse.redirect(authUrl);
 }

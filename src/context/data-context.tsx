@@ -1317,11 +1317,37 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       window.dispatchEvent(new CustomEvent('analyzeup_tasks_updated'));
     }
 
+    // Sync PO receiving to Shopify Admin API if store is connected and product is linked to Shopify
+    const shopifyStore = businessProfile?.shopifyStoreUrl;
+    const invItemId = (product as any)?.shopifyInventoryItemId || (product as any)?.inventoryItemId;
+    if (product && shopifyStore && (invItemId || product.id?.startsWith('shopify_'))) {
+      user.getIdToken().then((token) => {
+        fetch('/api/shopify/inventory/adjust', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            shop: shopifyStore,
+            inventoryItemId: invItemId || product.id.replace('shopify_', ''),
+            locationId: 'primary',
+            delta: receivedQty,
+            reason: 'received_purchase_order',
+            purchaseOrderId: orderId,
+            receivingEventId: `rcv_${orderId}_${Date.now()}`,
+          }),
+        }).catch((err) => {
+          console.warn('[Shopify PO Inventory Sync Note]:', err);
+        });
+      }).catch(console.warn);
+    }
+
     toast({
       title: '📦 Goods Received & Inventory Updated!',
       description: `Added +${receivedQty} units to "${product?.name || 'Product'}". Stock count and AI analytics updated.`,
     });
-  }, [firestore, user, ordersRef, transactionsRef, orders, products, suppliers, toast]);
+  }, [firestore, user, ordersRef, transactionsRef, orders, products, suppliers, businessProfile, toast]);
 
   const updateOrderStatus = useCallback(async (orderId: string, status: string) => {
     if (status === 'Fulfilled') {
@@ -2234,12 +2260,12 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     const shop = businessProfile?.shopifyStoreUrl;
     const token = businessProfile?.shopifyAccessToken;
 
-    if (!shop || !token) {
+    if (!shop) {
       if (showToast) {
         toast({
           variant: 'destructive',
           title: 'Shopify Not Connected',
-          description: 'Store domain or access token missing. Please connect your store first.',
+          description: 'Store domain missing. Please connect your store first.',
         });
       }
       return;
@@ -2262,7 +2288,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       const res = await fetch('/api/shopify/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shop, accessToken: token }),
+        body: JSON.stringify({ shop, ...(token ? { accessToken: token } : {}) }),
         signal: AbortSignal.timeout(25000),
       });
 
@@ -2374,7 +2400,6 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     if (
       !businessProfile?.shopifyConnected ||
       !businessProfile?.shopifyStoreUrl ||
-      !businessProfile?.shopifyAccessToken ||
       businessProfile?.shopifyAutoSyncEnabled === false
     ) {
       return;

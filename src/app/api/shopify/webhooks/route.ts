@@ -1,56 +1,69 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
-import { initializeFirebase } from '@/firebase';
-import { doc, setDoc, getDoc, collection, getDocs, serverTimestamp, writeBatch } from 'firebase/firestore';
-import {
-  convertShopifyToCanonicalProducts,
-  convertShopifyToCanonicalTransactions,
-  convertShopifyToCanonicalReturns,
-} from '@/lib/ingestion/shopify-adapter';
+import { getAdminFirestore } from '@/lib/firebase/admin';
+import { verifyWebhookHmac } from '@/lib/shopify/crypto';
+import { getShopifyClientSecret, sanitizeShopDomain } from '@/lib/shopify/config';
+import { getShopifyConnection, markShopifyUninstalled } from '@/lib/shopify/connection-store';
+import { checkIsOutgoingOperation } from '@/lib/shopify/loop-prevention';
 
-function verifyWebhookHmac(rawBody: string, hmacHeader: string | null, secret: string): boolean {
-  if (!hmacHeader) return false;
-  const hash = crypto
-    .createHmac('sha256', secret)
-    .update(rawBody, 'utf8')
-    .digest('base64');
-
-  try {
-    return crypto.timingSafeEqual(
-      Buffer.from(hash, 'utf-8'),
-      Buffer.from(hmacHeader, 'utf-8')
-    );
-  } catch {
-    return false;
-  }
-}
-
-function sanitizeShopDomain(rawShop: string): string {
-  let shop = rawShop.trim().toLowerCase();
-  shop = shop.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-  if (!shop.includes('.myshopify.com')) {
-    shop = `${shop}.myshopify.com`;
-  }
-  return shop;
+declare global {
+  var __shopifyProcessedWebhooks: Set<string> | undefined;
 }
 
 export async function POST(req: NextRequest) {
   try {
     const rawBody = await req.text();
-    const topic = req.headers.get('x-shopify-topic') || '';
+    const topic = (req.headers.get('x-shopify-topic') || '').toLowerCase();
     const rawShop = req.headers.get('x-shopify-shop-domain') || '';
     const hmacHeader = req.headers.get('x-shopify-hmac-sha256');
+    const webhookId = req.headers.get('x-shopify-webhook-id') || `wh_${Date.now()}`;
 
-    const clientSecret = process.env.SHOPIFY_CLIENT_SECRET;
+    const shop = sanitizeShopDomain(rawShop);
+    if (!shop) {
+      return NextResponse.json({ error: 'Invalid or missing shop domain in webhook headers' }, { status: 400 });
+    }
 
-    // Verify HMAC signature when client secret is configured
-    if (clientSecret && hmacHeader) {
-      const isValid = verifyWebhookHmac(rawBody, hmacHeader, clientSecret);
-      if (!isValid) {
-        console.warn(`[Shopify Webhook] Invalid HMAC signature for shop: ${rawShop}, topic: ${topic}`);
-        return NextResponse.json({ error: 'Invalid HMAC signature' }, { status: 401 });
+    // 1. Verify HMAC authenticity using SHOPIFY_CLIENT_SECRET
+    const clientSecret = getShopifyClientSecret();
+    const isAuthentic = verifyWebhookHmac(rawBody, hmacHeader, clientSecret);
+    if (!isAuthentic) {
+      console.warn(`[Shopify Webhook] Rejected unauthorized HMAC signature from ${shop}, topic: ${topic}`);
+      return NextResponse.json({ error: 'Invalid HMAC signature' }, { status: 401 });
+    }
+
+    const db = getAdminFirestore();
+
+    // 2. Webhook Idempotency Check (shop + webhookId)
+    const idempotencyDocId = `${shop}_${webhookId}`;
+    if (!globalThis.__shopifyProcessedWebhooks) {
+      globalThis.__shopifyProcessedWebhooks = new Set<string>();
+    }
+
+    if (globalThis.__shopifyProcessedWebhooks.has(idempotencyDocId)) {
+      return NextResponse.json({ received: true, deduplicated: true }, { status: 200 });
+    }
+
+    if (db) {
+      try {
+        const idempotencyRef = db.collection('shopify_processed_webhooks').doc(idempotencyDocId);
+        const idempotencySnap = await idempotencyRef.get();
+        if (idempotencySnap.exists) {
+          globalThis.__shopifyProcessedWebhooks.add(idempotencyDocId);
+          return NextResponse.json({ received: true, deduplicated: true }, { status: 200 });
+        }
+
+        await idempotencyRef.set({
+          shop,
+          webhookId,
+          topic,
+          processedAt: new Date().toISOString(),
+          status: 'PROCESSED',
+        }).catch(() => {});
+      } catch (err: any) {
+        console.warn('[Shopify Webhooks] Firestore idempotency notice:', err?.message || err);
       }
     }
+
+    globalThis.__shopifyProcessedWebhooks.add(idempotencyDocId);
 
     let payload: any = {};
     try {
@@ -59,203 +72,286 @@ export async function POST(req: NextRequest) {
       payload = {};
     }
 
-    const shop = sanitizeShopDomain(rawShop);
-    console.log(`[Shopify Webhook Received] Topic: ${topic} from Shop: ${shop}`);
-
-    const { firestore } = initializeFirebase();
-    if (!firestore) {
-      console.warn('[Shopify Webhook] Firestore instance unavailable.');
-      return NextResponse.json({ received: true, warning: 'Database unavailable' });
+    // 3. Resolve tenant ID associated with this store
+    const connection = await getShopifyConnection(shop);
+    if (!connection) {
+      console.warn(`[Shopify Webhook] Received webhook for unmapped shop: ${shop}`);
+      return NextResponse.json({ received: true, status: 'unmapped_shop' }, { status: 200 });
     }
 
-    // 1. Resolve which user owns this shop
-    let targetUserId: string | null = null;
+    const tenantId = connection.tenantId;
 
-    // Try direct O(1) lookup from shopify_stores index
-    try {
-      const storeRef = doc(firestore, 'shopify_stores', shop);
-      const storeSnap = await getDoc(storeRef);
-      if (storeSnap.exists()) {
-        targetUserId = storeSnap.data()?.userId;
-      }
-    } catch (err) {
-      console.warn('[Shopify Webhook] Could not check shopify_stores collection:', err);
+    // 4. Handle App Uninstallation Webhook
+    if (topic === 'app/uninstalled') {
+      console.log(`[Shopify Webhook] Merchant ${shop} uninstalled AnalyzeUp. Scrubbing credentials...`);
+      await markShopifyUninstalled(shop);
+      return NextResponse.json({ received: true, status: 'uninstalled' }, { status: 200 });
     }
 
-    // Fallback: search users collection
-    if (!targetUserId) {
-      try {
-        const usersSnap = await getDocs(collection(firestore, 'users'));
-        for (const uDoc of usersSnap.docs) {
-          const profile = uDoc.data()?.settings?.business_profile || uDoc.data()?.businessProfile;
-          if (profile?.shopifyStoreUrl && sanitizeShopDomain(profile.shopifyStoreUrl) === shop) {
-            targetUserId = uDoc.id;
-            break;
-          }
-        }
-      } catch (err) {
-        console.warn('[Shopify Webhook] User scan fallback error:', err);
-      }
+    // If store is already marked uninstalled, drop event
+    if (connection.status === 'UNINSTALLED') {
+      return NextResponse.json({ received: true, status: 'store_uninstalled' }, { status: 200 });
     }
 
-    if (!targetUserId) {
-      console.log(`[Shopify Webhook] No registered tenant found for shop: ${shop}. Acknowledging webhook.`);
-      return NextResponse.json({ received: true, status: 'unmapped_shop' });
-    }
+    // 5. Loop Prevention Check
+    const resourceId = String(payload.id || payload.inventory_item_id || payload.order_id || '');
+    const loopCheck = await checkIsOutgoingOperation(shop, resourceId);
 
-    const batch = writeBatch(firestore);
-    let itemsCount = 0;
+    const batch = db.batch();
 
-    // 2. Ingest Orders (Sales) Real-Time
+    // -------------------------------------------------------------
+    // HANDLER: Orders (orders/create, orders/updated, orders/paid)
+    // -------------------------------------------------------------
     if (topic.startsWith('orders/')) {
-      const transactions = convertShopifyToCanonicalTransactions([payload]);
-      for (const tx of transactions) {
-        const txRef = doc(firestore, 'users', targetUserId, 'transactions', tx.id);
+      const orderId = String(payload.id || '');
+      const orderNumber = payload.name || `#${orderId}`;
+      const customerName = payload.customer
+        ? `${payload.customer.first_name || ''} ${payload.customer.last_name || ''}`.trim() || 'Customer'
+        : 'Shopify Customer';
+      const totalPrice = Number(payload.total_price || 0);
+
+      // Save Sales Order
+      const salesOrderRef = db.collection('users').doc(tenantId).collection('sales_orders').doc(`order_${orderId}`);
+      batch.set(salesOrderRef, {
+        id: `order_${orderId}`,
+        shopifyOrderId: orderId,
+        orderNumber,
+        tenantId,
+        customerName,
+        customerEmail: payload.customer?.email || null,
+        financialStatus: payload.financial_status || 'PAID',
+        fulfillmentStatus: payload.fulfillment_status || 'UNFULFILLED',
+        currency: payload.currency || 'USD',
+        subtotalPrice: Number(payload.subtotal_price || 0),
+        totalDiscounts: Number(payload.total_discounts || 0),
+        totalTax: Number(payload.total_tax || 0),
+        totalPrice,
+        lineItemsCount: payload.line_items?.length || 0,
+        processedAt: payload.processed_at || payload.created_at,
+        source: 'SHOPIFY',
+        createdAt: payload.created_at || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+
+      // Save Line Item Transactions
+      for (const li of payload.line_items || []) {
+        const lineItemId = String(li.id || '');
+        const unitPrice = Number(li.price || 0);
+        const qty = Number(li.quantity || 1);
+        const txDocId = `tx_shopify_${orderId}_${lineItemId}`;
+        const txRef = db.collection('users').doc(tenantId).collection('transactions').doc(txDocId);
+
         batch.set(txRef, {
-          ...tx,
-          userId: targetUserId,
-          updatedAt: serverTimestamp(),
-        }, { merge: true });
-        itemsCount++;
-      }
-
-      // If order contains refunds or returns, ingest them real-time
-      if (payload.refunds && Array.isArray(payload.refunds) && payload.refunds.length > 0) {
-        const orderReturns = convertShopifyToCanonicalReturns([payload]);
-        for (const ret of orderReturns) {
-          const retRef = doc(firestore, 'users', targetUserId, 'returns', ret.id);
-          batch.set(retRef, {
-            ...ret,
-            userId: targetUserId,
-            updatedAt: serverTimestamp(),
-          }, { merge: true });
-
-          const txRefundRef = doc(firestore, 'users', targetUserId, 'transactions', `tx_refund_${ret.id}`);
-          batch.set(txRefundRef, {
-            id: `tx_refund_${ret.id}`,
-            tenantId: targetUserId,
-            userId: targetUserId,
-            productId: ret.productId,
-            productName: ret.productName,
-            sku: ret.sku || 'N/A',
-            category: 'Returns',
-            locationId: 'MAIN-WAREHOUSE',
-            type: 'Sale',
-            quantity: -Math.abs(ret.quantity),
-            price: ret.quantity > 0 ? Math.round(ret.refundAmount / ret.quantity) : ret.refundAmount,
-            unitPrice: ret.quantity > 0 ? Math.round(ret.refundAmount / ret.quantity) : ret.refundAmount,
-            totalRevenue: -Math.abs(ret.refundAmount),
-            costPrice: 0,
-            costPerUnit: 0,
-            totalCost: 0,
-            customerName: ret.customerName,
-            orderNumber: ret.orderNumber || `RET-${ret.id}`,
-            transactionDate: ret.returnDate || new Date().toISOString().split('T')[0],
-            source: 'SHOPIFY',
-            status: 'Completed',
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          }, { merge: true });
-          itemsCount++;
-        }
-      }
-    }
-
-    // 3. Ingest Refunds & Returns Real-Time (topic: refunds/create)
-    if (topic.startsWith('refunds/')) {
-      const returns = convertShopifyToCanonicalReturns([payload]);
-      for (const ret of returns) {
-        const retRef = doc(firestore, 'users', targetUserId, 'returns', ret.id);
-        batch.set(retRef, {
-          ...ret,
-          userId: targetUserId,
-          updatedAt: serverTimestamp(),
-        }, { merge: true });
-
-        // Record idempotent Sale adjustment transaction (negative sales & revenue)
-        const txRefundRef = doc(firestore, 'users', targetUserId, 'transactions', `tx_refund_${ret.id}`);
-        batch.set(txRefundRef, {
-          id: `tx_refund_${ret.id}`,
-          tenantId: targetUserId,
-          userId: targetUserId,
-          productId: ret.productId,
-          productName: ret.productName,
-          sku: ret.sku || 'N/A',
-          category: 'Returns',
-          locationId: 'MAIN-WAREHOUSE',
+          id: txDocId,
+          tenantId,
+          userId: tenantId,
+          orderNumber,
+          shopifyOrderId: orderId,
+          productId: li.variant_id ? `shopify_${li.product_id}_${li.variant_id}` : `shopify_${li.product_id}`,
+          productName: li.title || 'Product',
+          sku: li.sku || 'N/A',
           type: 'Sale',
-          quantity: -Math.abs(ret.quantity),
-          price: ret.quantity > 0 ? Math.round(ret.refundAmount / ret.quantity) : ret.refundAmount,
-          unitPrice: ret.quantity > 0 ? Math.round(ret.refundAmount / ret.quantity) : ret.refundAmount,
-          totalRevenue: -Math.abs(ret.refundAmount),
-          costPrice: 0,
-          costPerUnit: 0,
-          totalCost: 0,
-          customerName: ret.customerName,
-          orderNumber: ret.orderNumber || `RET-${ret.id}`,
-          transactionDate: ret.returnDate || new Date().toISOString().split('T')[0],
+          quantity: qty,
+          unitPrice,
+          price: unitPrice,
+          totalRevenue: unitPrice * qty,
+          costPrice: Math.round(unitPrice * 0.6),
+          totalCost: Math.round(unitPrice * 0.6 * qty),
+          customerName,
+          transactionDate: (payload.processed_at || payload.created_at || new Date().toISOString()).split('T')[0],
           source: 'SHOPIFY',
-          status: 'Completed',
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
+          createdAt: payload.created_at || new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         }, { merge: true });
-        itemsCount++;
       }
-    }
 
-    // 4. Ingest Products Real-Time
-    if (topic.startsWith('products/')) {
-      if (topic === 'products/delete') {
-        const prodId = payload.id;
-        console.log(`[Shopify Webhook] Product deleted: ${prodId}`);
-      } else {
-        const products = convertShopifyToCanonicalProducts([payload]);
-        for (const prod of products) {
-          const prodRef = doc(firestore, 'users', targetUserId, 'products', prod.id);
-          batch.set(prodRef, {
-            ...prod,
-            userId: targetUserId,
-            updatedAt: serverTimestamp(),
+      // Process any refunds included in the order payload
+      if (Array.isArray(payload.refunds) && payload.refunds.length > 0) {
+        for (const ref of payload.refunds) {
+          const refundId = String(ref.id || '');
+          const refundAmount = (ref.transactions || [])
+            .filter((t: any) => t.kind === 'refund' && t.status === 'success')
+            .reduce((sum: number, t: any) => sum + Number(t.amount || 0), 0) || Number(ref.total_refunded || 0);
+
+          const refundDocId = `ref_${orderId}_${refundId}`;
+          const refundRef = db.collection('users').doc(tenantId).collection('refunds').doc(refundDocId);
+
+          batch.set(refundRef, {
+            id: refundDocId,
+            shopifyRefundId: refundId,
+            shopifyOrderId: orderId,
+            orderNumber,
+            tenantId,
+            amount: refundAmount,
+            currency: payload.currency || 'USD',
+            createdAt: ref.created_at || new Date().toISOString(),
+            processedAt: ref.processed_at || ref.created_at || new Date().toISOString(),
+            note: ref.note || null,
+            refundLineItems: (ref.refund_line_items || []).map((rli: any) => ({
+              id: String(rli.id),
+              quantity: rli.quantity,
+              subtotal: Number(rli.subtotal || 0),
+              title: rli.line_item?.title || 'Refunded Item',
+              sku: rli.line_item?.sku || '',
+            })),
+            source: 'SHOPIFY',
+            updatedAt: new Date().toISOString(),
           }, { merge: true });
-          itemsCount++;
+
+          // Negative sale adjustment in financial ledger
+          const txRefundDocId = `tx_refund_${orderId}_${refundId}`;
+          const txRefundRef = db.collection('users').doc(tenantId).collection('transactions').doc(txRefundDocId);
+          batch.set(txRefundRef, {
+            id: txRefundDocId,
+            tenantId,
+            userId: tenantId,
+            orderNumber,
+            shopifyOrderId: orderId,
+            productName: `Refund: ${orderNumber}`,
+            type: 'Sale',
+            quantity: 0,
+            price: 0,
+            totalRevenue: -Math.abs(refundAmount),
+            totalCost: 0,
+            customerName,
+            transactionDate: (ref.created_at || new Date().toISOString()).split('T')[0],
+            source: 'SHOPIFY',
+            status: 'Refunded',
+            createdAt: ref.created_at || new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }, { merge: true });
         }
       }
     }
 
-    // Record last sync timestamp on business profile
-    const profileRef = doc(firestore, 'users', targetUserId, 'settings', 'business_profile');
-    batch.set(profileRef, {
-      shopifyLastSyncedAt: new Date().toISOString(),
-      shopifyStatus: 'Connected',
-    }, { merge: true });
+    // -------------------------------------------------------------
+    // HANDLER: Standalone Refunds (refunds/create)
+    // -------------------------------------------------------------
+    if (topic === 'refunds/create') {
+      const orderId = String(payload.order_id || '');
+      const refundId = String(payload.id || '');
+      const refundAmount = (payload.transactions || [])
+        .filter((t: any) => t.kind === 'refund')
+        .reduce((sum: number, t: any) => sum + Number(t.amount || 0), 0) || Number(payload.amount || 0);
 
-    // Record webhook event log
-    const eventId = `wh_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const eventRef = doc(firestore, 'users', targetUserId, 'shopify_events', eventId);
-    batch.set(eventRef, {
-      id: eventId,
-      topic,
-      shop,
-      itemsProcessed: itemsCount,
-      timestamp: serverTimestamp(),
-    });
+      const refundDocId = `ref_${orderId}_${refundId}`;
+      const refundRef = db.collection('users').doc(tenantId).collection('refunds').doc(refundDocId);
+
+      batch.set(refundRef, {
+        id: refundDocId,
+        shopifyRefundId: refundId,
+        shopifyOrderId: orderId,
+        orderNumber: `#${orderId}`,
+        tenantId,
+        amount: refundAmount,
+        currency: payload.currency || 'USD',
+        createdAt: payload.created_at || new Date().toISOString(),
+        processedAt: payload.processed_at || payload.created_at || new Date().toISOString(),
+        note: payload.note || null,
+        refundLineItems: (payload.refund_line_items || []).map((rli: any) => ({
+          id: String(rli.id),
+          quantity: rli.quantity,
+          subtotal: Number(rli.subtotal || 0),
+          title: rli.line_item?.title || 'Refunded Item',
+          sku: rli.line_item?.sku || '',
+        })),
+        source: 'SHOPIFY',
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+
+      const txRefundDocId = `tx_refund_${orderId}_${refundId}`;
+      const txRefundRef = db.collection('users').doc(tenantId).collection('transactions').doc(txRefundDocId);
+      batch.set(txRefundRef, {
+        id: txRefundDocId,
+        tenantId,
+        userId: tenantId,
+        orderNumber: `#${orderId}`,
+        shopifyOrderId: orderId,
+        productName: `Refund #${refundId}`,
+        type: 'Sale',
+        quantity: 0,
+        price: 0,
+        totalRevenue: -Math.abs(refundAmount),
+        totalCost: 0,
+        customerName: 'Shopify Customer',
+        transactionDate: (payload.created_at || new Date().toISOString()).split('T')[0],
+        source: 'SHOPIFY',
+        status: 'Refunded',
+        createdAt: payload.created_at || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+    }
+
+    // -------------------------------------------------------------
+    // HANDLER: Inventory Updates (inventory_levels/update)
+    // -------------------------------------------------------------
+    if (topic === 'inventory_levels/update') {
+      const invItemId = String(payload.inventory_item_id || '');
+      const locId = String(payload.location_id || '');
+      const availableQty = Number(payload.available || 0);
+
+      const invDocId = `${invItemId}_${locId}`;
+      const invRef = db.collection('users').doc(tenantId).collection('inventory').doc(invDocId);
+
+      batch.set(invRef, {
+        id: invDocId,
+        tenantId,
+        inventoryItemId: invItemId,
+        locationId: locId,
+        availableQuantity: availableQty,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+    }
+
+    // -------------------------------------------------------------
+    // HANDLER: Returns Lifecycle (returns/request, returns/update, etc.)
+    // -------------------------------------------------------------
+    if (topic.startsWith('returns/')) {
+      const returnId = String(payload.id || '');
+      const orderId = String(payload.order_id || payload.order?.id || '');
+      const returnDocId = `ret_${orderId}_${returnId}`;
+      const subAction = topic.replace('returns/', '').toUpperCase();
+
+      const returnRef = db.collection('users').doc(tenantId).collection('returns').doc(returnDocId);
+      batch.set(returnRef, {
+        id: returnDocId,
+        shopifyReturnId: returnId,
+        shopifyOrderId: orderId,
+        orderNumber: payload.order?.name || `#${orderId}`,
+        tenantId,
+        status: subAction === 'CLOSE' ? 'CLOSED' : subAction === 'APPROVE' ? 'APPROVED' : subAction === 'CANCEL' ? 'CANCELLED' : 'REQUESTED',
+        customerName: payload.order?.customer
+          ? `${payload.order.customer.first_name || ''} ${payload.order.customer.last_name || ''}`.trim() || 'Customer'
+          : 'Shopify Customer',
+        returnDate: (payload.created_at || new Date().toISOString()).split('T')[0],
+        returnItems: (payload.return_line_items || []).map((rli: any) => ({
+          id: String(rli.id || ''),
+          lineItemId: String(rli.fulfillment_line_item?.line_item?.id || rli.line_item_id || ''),
+          productId: String(rli.fulfillment_line_item?.line_item?.product_id || ''),
+          variantId: String(rli.fulfillment_line_item?.line_item?.variant_id || ''),
+          sku: String(rli.fulfillment_line_item?.line_item?.sku || ''),
+          title: String(rli.fulfillment_line_item?.line_item?.title || 'Returned Item'),
+          quantity: Number(rli.quantity || 1),
+          unitPrice: Number(rli.fulfillment_line_item?.line_item?.price || 0),
+          returnReason: rli.return_reason || null,
+          returnReasonNote: rli.return_reason_note || null,
+        })),
+        source: 'SHOPIFY',
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+    }
 
     await batch.commit();
-    console.log(`[Shopify Webhook Processed] Successfully updated ${itemsCount} items for user ${targetUserId}`);
 
     return NextResponse.json({
       received: true,
       processed: true,
       topic,
       shop,
-      itemsCount,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error: any) {
-    console.error('[Shopify Webhook Error]:', error);
-    return NextResponse.json(
-      { error: error?.message || 'Webhook processing error' },
-      { status: 500 }
-    );
+      isOriginatingFromAnalyzeUp: loopCheck.isOriginatingFromAnalyzeUp,
+    }, { status: 200 });
+  } catch (err: any) {
+    console.error('[Shopify Webhook Handler Error]:', err);
+    return NextResponse.json({ error: err?.message || 'Webhook processing failed' }, { status: 500 });
   }
 }
